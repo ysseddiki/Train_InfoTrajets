@@ -1,22 +1,15 @@
-import { config as loadEnv } from "dotenv";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import Fastify from "fastify";
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import type { HealthResponse } from "@sncf-alerts/shared";
 import { createIngestAdapter } from "./adapters/ingest.js";
 import { migrate } from "./db/pool.js";
+import { loadRepoEnv } from "./domain/env.js";
 import { store } from "./domain/store.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 
-// Load repo-root .env (apps/api → ../..)
-const repoRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../..",
-);
-loadEnv({ path: path.join(repoRoot, ".env") });
+loadRepoEnv();
 
 const port = Number(process.env.API_PORT ?? 3001);
 const host = process.env.API_HOST ?? "0.0.0.0";
