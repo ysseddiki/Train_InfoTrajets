@@ -37,6 +37,16 @@ export interface JourneyConfig {
   updatedAt: string;
 }
 
+export type BoardTrafficStatus =
+  | "on_time"
+  | "delayed"
+  | "cancelled"
+  | "no_data"
+  | "paused"
+  | "outside_window";
+
+export type IngestRunStatus = "ok" | "error" | "skipped";
+
 export interface DashboardOverview {
   journeys: {
     outbound: JourneyStatusCard | null;
@@ -49,12 +59,23 @@ export interface DashboardOverview {
     ingestProvider: string;
     lastIngestAt: string | null;
   };
+  /** Résumé de la dernière requête ingest (poll API / stub) */
+  lastIngest: {
+    at: string | null;
+    status: IngestRunStatus | null;
+    detail: string | null;
+  };
 }
 
 export interface JourneyStatusCard {
   direction: JourneyDirection;
   label: string;
   active: boolean;
+  originLabel: string;
+  destinationLabel: string;
+  /** Synthèse trafic pour le dashboard */
+  boardStatus: BoardTrafficStatus;
+  boardStatusLabel: string;
   latestEvent: {
     id: string;
     kind: DisruptionKind;

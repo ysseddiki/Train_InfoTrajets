@@ -1,12 +1,14 @@
 import bcrypt from "bcryptjs";
 import type {
   AlertDeliveryDto,
+  BoardTrafficStatus,
   DashboardOverview,
   DeliveryChannel,
   DeliveryStatus,
   DisruptionEventDto,
   DisruptionKind,
   DisruptionSeverity,
+  IngestRunStatus,
   JourneyConfig,
   JourneyDirection,
   RecipientsConfig,
@@ -14,6 +16,7 @@ import type {
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
+import { isWithinWatchWindow } from "./matching.js";
 
 const SESSION_COOKIE = "sncf_admin_session";
 const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12);
@@ -100,6 +103,56 @@ function mapDelivery(row: Record<string, unknown>): AlertDeliveryDto {
     sentAt: row.sent_at ? new Date(String(row.sent_at)).toISOString() : null,
     createdAt: new Date(String(row.created_at)).toISOString(),
   };
+}
+
+function resolveBoardStatus(input: {
+  journey: JourneyConfig;
+  latest: DisruptionEventDto | null;
+  lastIngestAt: string | null;
+  lastIngestStatus: IngestRunStatus | null;
+  recentMs: number;
+}): { boardStatus: BoardTrafficStatus; boardStatusLabel: string } {
+  const { journey, latest, lastIngestAt, lastIngestStatus, recentMs } = input;
+
+  if (!journey.active) {
+    return { boardStatus: "paused", boardStatusLabel: "Pause (inactif)" };
+  }
+  if (!isWithinWatchWindow(journey)) {
+    return {
+      boardStatus: "outside_window",
+      boardStatusLabel: "Hors fenêtre horaire",
+    };
+  }
+  if (!lastIngestAt || lastIngestStatus === "error") {
+    return {
+      boardStatus: "no_data",
+      boardStatusLabel:
+        lastIngestStatus === "error"
+          ? "Erreur dernière requête"
+          : "Pas de données (pas encore de poll)",
+    };
+  }
+
+  const recent =
+    latest &&
+    Date.now() - new Date(latest.detectedAt).getTime() <= recentMs
+      ? latest
+      : null;
+
+  if (recent?.kind === "cancellation") {
+    return { boardStatus: "cancelled", boardStatusLabel: "Suppression détectée" };
+  }
+  if (recent?.kind === "delay") {
+    const d = recent.delayMinutes ?? 0;
+    return {
+      boardStatus: "delayed",
+      boardStatusLabel: d > 0 ? `Retard ${d} min` : "Retard détecté",
+    };
+  }
+  if (lastIngestStatus === "ok" || lastIngestStatus === "skipped") {
+    return { boardStatus: "on_time", boardStatusLabel: "À l’heure" };
+  }
+  return { boardStatus: "no_data", boardStatusLabel: "Pas de données" };
 }
 
 export class PgStore {
@@ -357,19 +410,41 @@ export class PgStore {
         (SELECT COUNT(*)::int FROM disruption_events WHERE detected_at >= $1) AS events,
         (SELECT COUNT(*)::int FROM alert_deliveries WHERE created_at >= $1 AND status = 'sent') AS sent,
         (SELECT COUNT(*)::int FROM alert_deliveries WHERE created_at >= $1 AND status = 'failed') AS failed,
-        (SELECT value FROM app_meta WHERE key = 'last_ingest_at') AS last_ingest`,
+        (SELECT value FROM app_meta WHERE key = 'last_ingest_at') AS last_ingest,
+        (SELECT value FROM app_meta WHERE key = 'last_ingest_status') AS last_ingest_status,
+        (SELECT value FROM app_meta WHERE key = 'last_ingest_detail') AS last_ingest_detail`,
       [since],
     );
     const s = statsRes.rows[0];
+    const lastIngestAt = s.last_ingest ? String(s.last_ingest) : null;
+    const lastIngestStatus = (s.last_ingest_status as IngestRunStatus | null) ?? null;
+    const lastIngestDetail = s.last_ingest_detail
+      ? String(s.last_ingest_detail)
+      : null;
+
+    const RECENT_MS = 3 * 60 * 60 * 1000;
 
     const card = (direction: JourneyDirection) => {
       const j = journeys.find((x) => x.direction === direction);
       const latest = events.find((e) => e.direction === direction) ?? null;
       if (!j) return null;
+
+      const { boardStatus, boardStatusLabel } = resolveBoardStatus({
+        journey: j,
+        latest,
+        lastIngestAt,
+        lastIngestStatus,
+        recentMs: RECENT_MS,
+      });
+
       return {
         direction,
         label: j.label,
         active: j.active,
+        originLabel: j.originLabel,
+        destinationLabel: j.destinationLabel,
+        boardStatus,
+        boardStatusLabel,
         latestEvent: latest
           ? {
               id: latest.id,
@@ -393,18 +468,43 @@ export class PgStore {
         deliveriesSentLast24h: Number(s.sent ?? 0),
         deliveriesFailedLast24h: Number(s.failed ?? 0),
         ingestProvider: process.env.INGEST_PROVIDER ?? "stub",
-        lastIngestAt: s.last_ingest ? String(s.last_ingest) : null,
+        lastIngestAt,
+      },
+      lastIngest: {
+        at: lastIngestAt,
+        status: lastIngestStatus,
+        detail: lastIngestDetail,
       },
     };
   }
 
   async setLastIngestAt(iso: string): Promise<void> {
+    await this.setIngestResult({
+      status: "ok",
+      detail: "Poll terminé",
+      at: iso,
+    });
+  }
+
+  async setIngestResult(input: {
+    status: IngestRunStatus;
+    detail: string;
+    at?: string;
+  }): Promise<void> {
     const pool = getPool();
-    await pool.query(
-      `INSERT INTO app_meta (key, value) VALUES ('last_ingest_at', $1)
-       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
-      [iso],
-    );
+    const at = input.at ?? new Date().toISOString();
+    const rows: Array<[string, string]> = [
+      ["last_ingest_at", at],
+      ["last_ingest_status", input.status],
+      ["last_ingest_detail", input.detail.slice(0, 500)],
+    ];
+    for (const [key, value] of rows) {
+      await pool.query(
+        `INSERT INTO app_meta (key, value) VALUES ($1, $2)
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+        [key, value],
+      );
+    }
   }
 
   getSmtpPublic(): SmtpConfigPublic {

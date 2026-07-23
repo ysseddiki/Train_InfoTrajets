@@ -1,5 +1,6 @@
 import type {
   AlertDeliveryDto,
+  BoardTrafficStatus,
   DashboardOverview,
   DisruptionEventDto,
   JourneyConfig,
@@ -41,25 +42,90 @@ function esc(s: string): string {
     .replaceAll('"', "&quot;");
 }
 
+function boardClass(status: BoardTrafficStatus): string {
+  switch (status) {
+    case "on_time":
+      return "status-box status-ok";
+    case "delayed":
+      return "status-box status-delay";
+    case "cancelled":
+      return "status-box status-cancel";
+    case "no_data":
+      return "status-box status-nodata";
+    case "paused":
+      return "status-box status-paused";
+    case "outside_window":
+      return "status-box status-window";
+    default:
+      return "status-box";
+  }
+}
+
+function ingestClass(status: string | null): string {
+  if (status === "ok") return "status-box status-ok";
+  if (status === "error") return "status-box status-delay";
+  if (status === "skipped") return "status-box status-window";
+  return "status-box status-nodata";
+}
+
+function formatWhen(iso: string | null): string {
+  if (!iso) return "jamais";
+  try {
+    return new Date(iso).toLocaleString("fr-FR", {
+      timeZone: "Europe/Paris",
+    });
+  } catch {
+    return iso;
+  }
+}
+
+function journeyCard(
+  title: string,
+  card: DashboardOverview["journeys"]["outbound"],
+): string {
+  if (!card) {
+    return `<article><h2>${title}</h2><p class="muted">Non configuré</p></article>`;
+  }
+  return `
+    <article>
+      <h2>${title}</h2>
+      <p>${esc(card.label)}</p>
+      <p class="muted">${esc(card.originLabel)} → ${esc(card.destinationLabel)}</p>
+      <div class="${boardClass(card.boardStatus)}">
+        <strong>${esc(card.boardStatusLabel)}</strong>
+      </div>
+      <p class="muted">Surveillance : ${card.active ? "active" : "pause"}</p>
+      <p>${esc(card.latestEvent?.title ?? "Aucun événement récent")}</p>
+    </article>
+  `;
+}
+
 async function renderDashboard(root: HTMLElement) {
   root.innerHTML = layout(`<p class="muted">Chargement…</p>`);
   try {
     const data = await apiGet<DashboardOverview>("/v1/dashboard/overview");
+    const ingestStatus = data.lastIngest?.status ?? null;
+    const ingestLabel =
+      ingestStatus === "ok"
+        ? "Dernière requête OK"
+        : ingestStatus === "error"
+          ? "Dernière requête en erreur"
+          : ingestStatus === "skipped"
+            ? "Dernière requête ignorée (hors fenêtre)"
+            : "Aucune requête encore";
+
     root.innerHTML = layout(`
       <h1>Dashboard</h1>
+
+      <section class="${ingestClass(ingestStatus)}">
+        <strong>${esc(ingestLabel)}</strong>
+        <p>Provider : ${esc(data.stats.ingestProvider)} · ${esc(formatWhen(data.lastIngest?.at ?? null))}</p>
+        <p>${esc(data.lastIngest?.detail ?? "—")}</p>
+      </section>
+
       <section class="grid">
-        <article>
-          <h2>Aller</h2>
-          <p>${esc(data.journeys.outbound?.label ?? "—")}</p>
-          <p>Surveillance : <strong>${data.journeys.outbound?.active ? "active" : "pause"}</strong></p>
-          <p>${esc(data.journeys.outbound?.latestEvent?.title ?? "Aucun événement")}</p>
-        </article>
-        <article>
-          <h2>Retour</h2>
-          <p>${esc(data.journeys.inbound?.label ?? "—")}</p>
-          <p>Surveillance : <strong>${data.journeys.inbound?.active ? "active" : "pause"}</strong></p>
-          <p>${esc(data.journeys.inbound?.latestEvent?.title ?? "Aucun événement")}</p>
-        </article>
+        ${journeyCard("Aller", data.journeys.outbound)}
+        ${journeyCard("Retour", data.journeys.inbound)}
       </section>
       <section>
         <h2>Stats 24h</h2>
@@ -67,7 +133,6 @@ async function renderDashboard(root: HTMLElement) {
           <li>Événements : ${data.stats.eventsLast24h}</li>
           <li>Envoyés : ${data.stats.deliveriesSentLast24h}</li>
           <li>Échecs : ${data.stats.deliveriesFailedLast24h}</li>
-          <li>Ingest : ${esc(data.stats.ingestProvider)}</li>
         </ul>
         <p><a href="#/notifications">Voir l’historique des notifications →</a></p>
       </section>

@@ -136,3 +136,52 @@ td {
 section.card {
   margin-top: 1rem;
 }
+
+.status-box {
+  margin: 0.75rem 0;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #f0eeea;
+}
+
+.status-box p {
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+}
+
+.status-ok {
+  background: #e4f5ec;
+  border-color: #8dcfb0;
+  color: #0b6e4f;
+}
+
+.status-delay {
+  background: #fde8e8;
+  border-color: #e3a0a0;
+  color: #9b1d1d;
+}
+
+.status-cancel {
+  background: #f3e0ff;
+  border-color: #c9a0e3;
+  color: #6b2d8b;
+}
+
+.status-nodata {
+  background: #eeeef0;
+  border-color: #c5c5cb;
+  color: #4a4a55;
+}
+
+.status-paused {
+  background: #f4f1ea;
+  border-color: #d5d0c6;
+  color: #5c6775;
+}
+
+.status-window {
+  background: #e8f1fb;
+  border-color: #a8c4e3;
+  color: #1d4f8b;
+}

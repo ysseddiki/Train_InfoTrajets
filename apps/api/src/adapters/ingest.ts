@@ -38,7 +38,10 @@ export async function injectStubEvent(input?: {
     source: "stub",
   });
 
-  await store.setLastIngestAt(now.toISOString());
+  await store.setIngestResult({
+    status: "ok",
+    detail: `Stub injecté (${direction})`,
+  });
   if (created) {
     await notifyForEvent(event);
   }
@@ -46,12 +49,19 @@ export async function injectStubEvent(input?: {
 
 export class StubIngestAdapter implements DisruptionIngestPort {
   async poll(): Promise<void> {
-    // No auto events — use admin debug. Still touch last_ingest when a window is open.
     const journeys = await store.listJourneys();
-    const anyOpen = journeys.some((j) => isWithinWatchWindow(j));
-    if (anyOpen) {
-      await store.setLastIngestAt(new Date().toISOString());
+    const open = journeys.filter((j) => isWithinWatchWindow(j));
+    if (open.length === 0) {
+      await store.setIngestResult({
+        status: "skipped",
+        detail: "Hors fenêtre — aucun appel (stub)",
+      });
+      return;
     }
+    await store.setIngestResult({
+      status: "ok",
+      detail: `Stub OK — ${open.length} sens dans la fenêtre (pas d’appel externe)`,
+    });
   }
 }
 
@@ -65,15 +75,12 @@ type NavitiaDeparture = {
   stop_date_time?: {
     base_departure_date_time?: string;
     departure_date_time?: string;
-    arrival_date_time?: string;
-    base_arrival_date_time?: string;
   };
   route?: {
     direction?: { id?: string; name?: string };
   };
 };
 
-/** Interpret Navitia local datetime string (YYYYMMDDThhmmss). */
 function navitiaLocalToDate(value?: string): Date | null {
   if (!value || value.length < 15) return null;
   const iso = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15) || "00"}`;
@@ -94,7 +101,6 @@ function delayMinutesFromDeparture(dep: NavitiaDeparture): number | null {
 function isCancelled(dep: NavitiaDeparture): boolean {
   const base = dep.stop_date_time?.base_departure_date_time;
   const real = dep.stop_date_time?.departure_date_time;
-  // Heuristic: missing realtime departure while base exists, or headsign hints
   const dir = `${dep.display_informations?.direction ?? ""} ${dep.display_informations?.headsign ?? ""}`.toLowerCase();
   if (dir.includes("supprim") || dir.includes("cancel")) return true;
   if (base && !real) return true;
@@ -105,24 +111,49 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
   async poll(): Promise<void> {
     const token = process.env.NAVITIA_TOKEN;
     if (!token) {
+      await store.setIngestResult({
+        status: "error",
+        detail: "NAVITIA_TOKEN manquant",
+      });
       throw new Error("NAVITIA_TOKEN is required for INGEST_PROVIDER=navitia");
     }
 
     const journeys = await store.listJourneys();
-    let didWork = false;
-
-    for (const journey of journeys) {
-      if (!isWithinWatchWindow(journey)) continue;
-      didWork = true;
-      await this.pollJourney(journey, token);
+    const open = journeys.filter((j) => isWithinWatchWindow(j));
+    if (open.length === 0) {
+      await store.setIngestResult({
+        status: "skipped",
+        detail: "Hors fenêtre — 0 requête Navitia",
+      });
+      return;
     }
 
-    if (didWork) {
-      await store.setLastIngestAt(new Date().toISOString());
+    let checked = 0;
+    let alerts = 0;
+    try {
+      for (const journey of open) {
+        const n = await this.pollJourney(journey, token);
+        checked += 1;
+        alerts += n;
+      }
+      await store.setIngestResult({
+        status: "ok",
+        detail: `Navitia OK — ${checked} gare(s), ${alerts} alerte(s)`,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Erreur Navitia";
+      await store.setIngestResult({
+        status: "error",
+        detail: message.slice(0, 400),
+      });
+      throw err;
     }
   }
 
-  private async pollJourney(journey: JourneyConfig, token: string): Promise<void> {
+  private async pollJourney(
+    journey: JourneyConfig,
+    token: string,
+  ): Promise<number> {
     const stopId = encodeURIComponent(journey.originId);
     const url = `https://api.sncf.com/v1/coverage/sncf/stop_areas/${stopId}/departures?count=20&data_freshness=realtime`;
 
@@ -133,11 +164,12 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
     });
 
     if (!res.ok) {
-      throw new Error(`Navitia departures HTTP ${res.status} for ${journey.direction}`);
+      throw new Error(`Navitia HTTP ${res.status} (${journey.direction})`);
     }
 
     const body = (await res.json()) as { departures?: NavitiaDeparture[] };
     const departures = body.departures ?? [];
+    let createdCount = 0;
 
     for (const dep of departures) {
       const directionText =
@@ -154,18 +186,15 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       const cancelled = isCancelled(dep);
       const delay = delayMinutesFromDeparture(dep) ?? 0;
 
-      if (!cancelled && delay < journey.minDelayMinutes) {
-        continue;
-      }
-      if (!cancelled && delay <= 0) {
-        continue;
-      }
+      if (!cancelled && delay < journey.minDelayMinutes) continue;
+      if (!cancelled && delay <= 0) continue;
 
       const base = dep.stop_date_time?.base_departure_date_time ?? "unknown";
-      const externalEventId = `navitia-${journey.direction}-${journey.originId}-${base}-${directionText}`.slice(
-        0,
-        200,
-      );
+      const externalEventId =
+        `navitia-${journey.direction}-${journey.originId}-${base}-${directionText}`.slice(
+          0,
+          200,
+        );
 
       const kind = cancelled ? "cancellation" : "delay";
       if (!journey.severities.includes(kind)) continue;
@@ -186,9 +215,12 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       });
 
       if (created) {
+        createdCount += 1;
         await notifyForEvent(event);
       }
     }
+
+    return createdCount;
   }
 }
 
