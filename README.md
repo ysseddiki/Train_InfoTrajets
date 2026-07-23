@@ -61,6 +61,26 @@ ADMIN_PASSWORD_SYNC=true
 
 Puis redémarrer l’API une fois, et remettre `false`.
 
+## Mise à jour sur serveur
+
+Ne pas faire un `git pull` brut si `npm install` a modifié `package-lock.json` en local sur la machine.
+
+**Maintenant (une fois) :**
+
+```bash
+git checkout -- package-lock.json
+git pull
+npm ci
+```
+
+**Ensuite :**
+
+```bash
+./scripts/update.sh
+```
+
+Ce script reset le lockfile, pull, puis `npm ci`. Le fichier `.env` n’est pas touché.
+
 ## Démarrage rapide
 
 ```bash
