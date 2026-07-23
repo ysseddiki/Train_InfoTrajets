@@ -18,16 +18,26 @@ import { getPool } from "../db/pool.js";
 const SESSION_COOKIE = "sncf_admin_session";
 const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12);
 
+const NICE_VILLE = {
+  id: "stop_area:SNCF:87756056",
+  label: "Nice-Ville",
+} as const;
+
+const MONACO_MONTE_CARLO = {
+  id: "stop_area:SNCF:87756403",
+  label: "Monaco - Monte-Carlo",
+} as const;
+
 function emptyJourney(direction: JourneyDirection): Omit<JourneyConfig, "updatedAt"> {
   const isOutbound = direction === "outbound";
   return {
     direction,
-    label: isOutbound ? "Aller" : "Retour",
-    originId: "",
-    destinationId: "",
-    originLabel: isOutbound ? "Origine" : "Destination",
-    destinationLabel: isOutbound ? "Destination" : "Origine",
-    network: "transilien",
+    label: isOutbound ? "Aller Nice → Monaco" : "Retour Monaco → Nice",
+    originId: isOutbound ? NICE_VILLE.id : MONACO_MONTE_CARLO.id,
+    destinationId: isOutbound ? MONACO_MONTE_CARLO.id : NICE_VILLE.id,
+    originLabel: isOutbound ? NICE_VILLE.label : MONACO_MONTE_CARLO.label,
+    destinationLabel: isOutbound ? MONACO_MONTE_CARLO.label : NICE_VILLE.label,
+    network: "ter",
     daysOfWeek: [1, 2, 3, 4, 5],
     timeWindow: isOutbound
       ? { start: "07:00", end: "09:30" }
@@ -123,7 +133,15 @@ export class PgStore {
           direction, label, origin_id, destination_id, origin_label, destination_label,
           network, days_of_week, window_start, window_end, min_delay_minutes, severities, active
         ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-        ON CONFLICT (direction) DO NOTHING`,
+        ON CONFLICT (direction) DO UPDATE SET
+          label = EXCLUDED.label,
+          origin_id = EXCLUDED.origin_id,
+          destination_id = EXCLUDED.destination_id,
+          origin_label = EXCLUDED.origin_label,
+          destination_label = EXCLUDED.destination_label,
+          network = EXCLUDED.network,
+          updated_at = now()
+        WHERE journeys.origin_id = '' OR journeys.origin_id IS NULL`,
         [
           base.direction,
           base.label,
