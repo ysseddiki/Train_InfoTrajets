@@ -28,11 +28,13 @@ cp .env.example .env
 
 npm install
 npm run dev:api   # http://127.0.0.1:3001
-npm run dev:web   # http://0.0.0.0:443  (proxy /v1 → API)
+npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 ```
 
-- Dashboard : `http://127.0.0.1:443/#/`
-- Admin : `http://127.0.0.1:443/#/admin`
+- Dashboard : `https://127.0.0.1:443/#/`
+- Admin : `https://127.0.0.1:443/#/admin`
+
+> Port 443 = HTTPS. Le certificat Vite est auto-signé : le navigateur affichera un avertissement à accepter une fois (dev uniquement). Sur macOS, le bind 443 peut nécessiter `sudo`.
 - Health : `http://127.0.0.1:3001/v1/health`
 
 ## Sécurité (règles de base)
