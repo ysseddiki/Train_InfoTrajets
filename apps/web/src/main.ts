@@ -2,9 +2,11 @@ import type {
   AlertDeliveryDto,
   BoardTrafficStatus,
   DashboardOverview,
+  DashboardPeriodStats,
   DisruptionEventDto,
   JourneyConfig,
   JourneyDirection,
+  JourneyStatusCard,
   RecipientsConfig,
   SmtpConfigPublic,
   TeamsConfigPublic,
@@ -12,6 +14,8 @@ import type {
 import { apiGet, apiSend } from "./api/client";
 
 type Route = "dashboard" | "notifications" | "admin";
+
+const DAY_LABELS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
 function routeFromHash(): Route {
   const h = location.hash;
@@ -30,7 +34,7 @@ function layout(content: string): string {
         <a href="#/admin">Admin</a>
       </nav>
     </header>
-    <main>${content}</main>
+    <main class="main-wide">${content}</main>
   `;
 }
 
@@ -62,10 +66,10 @@ function boardClass(status: BoardTrafficStatus): string {
 }
 
 function ingestClass(status: string | null): string {
-  if (status === "ok") return "status-box status-ok";
-  if (status === "error") return "status-box status-delay";
-  if (status === "skipped") return "status-box status-window";
-  return "status-box status-nodata";
+  if (status === "ok") return "ingest-banner status-ok";
+  if (status === "error") return "ingest-banner status-delay";
+  if (status === "skipped") return "ingest-banner status-window";
+  return "ingest-banner status-nodata";
 }
 
 function formatWhen(iso: string | null): string {
@@ -79,25 +83,166 @@ function formatWhen(iso: string | null): string {
   }
 }
 
-function journeyCard(
-  title: string,
-  card: DashboardOverview["journeys"]["outbound"],
-): string {
-  if (!card) {
-    return `<article><h2>${title}</h2><p class="muted">Non configuré</p></article>`;
+function formatRelative(iso: string | null): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return iso;
+  const diffMin = Math.round((Date.now() - t) / 60_000);
+  if (diffMin < 1) return "à l’instant";
+  if (diffMin < 60) return `il y a ${diffMin} min`;
+  const diffH = Math.round(diffMin / 60);
+  if (diffH < 48) return `il y a ${diffH} h`;
+  const diffD = Math.round(diffH / 24);
+  return `il y a ${diffD} j`;
+}
+
+function kindLabel(kind: string): string {
+  switch (kind) {
+    case "delay":
+      return "Retard";
+    case "cancellation":
+      return "Suppression";
+    case "platform_change":
+      return "Quai";
+    case "disruption":
+      return "Perturbation";
+    default:
+      return kind;
   }
+}
+
+function directionLabel(d: JourneyDirection | null | undefined): string {
+  if (d === "outbound") return "Aller";
+  if (d === "inbound") return "Retour";
+  return "—";
+}
+
+function daysSummary(days: number[]): string {
+  if (days.length === 0) return "—";
+  if (days.length === 5 && [1, 2, 3, 4, 5].every((d) => days.includes(d))) {
+    return "Lun–Ven";
+  }
+  if (days.length === 7) return "Tous les jours";
+  return days.map((d) => DAY_LABELS[d] ?? d).join(", ");
+}
+
+function journeyCard(title: string, card: JourneyStatusCard | null): string {
+  if (!card) {
+    return `<article class="journey-card"><h2>${title}</h2><p class="muted">Non configuré</p></article>`;
+  }
+  const ev = card.latestEvent;
+  const eventBlock = ev
+    ? `<div class="journey-event">
+        <span class="pill">${esc(kindLabel(ev.kind))}</span>
+        ${ev.delayMinutes != null ? `<span class="pill pill-warn">+${ev.delayMinutes} min</span>` : ""}
+        <p>${esc(ev.title)}</p>
+        <p class="muted">${esc(formatWhen(ev.detectedAt))} · ${esc(formatRelative(ev.detectedAt))}</p>
+      </div>`
+    : `<p class="muted journey-event-empty">Aucun événement enregistré</p>`;
+
   return `
-    <article>
-      <h2>${title}</h2>
-      <p>${esc(card.label)}</p>
-      <p class="muted">${esc(card.originLabel)} → ${esc(card.destinationLabel)}</p>
-      <div class="${boardClass(card.boardStatus)}">
+    <article class="journey-card">
+      <div class="journey-card-head">
+        <h2>${title}</h2>
+        <span class="watch-badge ${card.active ? "watch-on" : "watch-off"}">
+          ${card.active ? "Surveillance ON" : "Pause"}
+        </span>
+      </div>
+      <p class="journey-label">${esc(card.label)}</p>
+      <p class="journey-od">${esc(card.originLabel)} → ${esc(card.destinationLabel)}</p>
+      <div class="${boardClass(card.boardStatus)} board-hero">
         <strong>${esc(card.boardStatusLabel)}</strong>
       </div>
-      <p class="muted">Surveillance : ${card.active ? "active" : "pause"}</p>
-      <p>${esc(card.latestEvent?.title ?? "Aucun événement récent")}</p>
+      <dl class="meta-list">
+        <div><dt>Fenêtre</dt><dd>${esc(card.timeWindow.start)}–${esc(card.timeWindow.end)} · ${esc(daysSummary(card.daysOfWeek))}</dd></div>
+        <div><dt>Réseau</dt><dd>${esc(card.network)}</dd></div>
+        <div><dt>Seuil retard</dt><dd>${card.minDelayMinutes} min</dd></div>
+      </dl>
+      <h3 class="section-sub">Dernier événement</h3>
+      ${eventBlock}
     </article>
   `;
+}
+
+function periodPanel(label: string, p: DashboardPeriodStats): string {
+  const avg =
+    p.avgDelayMinutes == null ? "—" : `${p.avgDelayMinutes} min`;
+  const max =
+    p.maxDelayMinutes == null ? "—" : `${p.maxDelayMinutes} min`;
+  return `
+    <article class="stats-period">
+      <h3>${esc(label)}</h3>
+      <div class="kpi-row">
+        <div class="kpi"><span class="kpi-value">${p.events}</span><span class="kpi-label">Événements</span></div>
+        <div class="kpi"><span class="kpi-value">${p.delays}</span><span class="kpi-label">Retards</span></div>
+        <div class="kpi"><span class="kpi-value">${p.cancellations}</span><span class="kpi-label">Suppressions</span></div>
+        <div class="kpi"><span class="kpi-value">${p.deliveriesSent}</span><span class="kpi-label">Notifs envoyées</span></div>
+        <div class="kpi"><span class="kpi-value ${p.deliveriesFailed > 0 ? "kpi-bad" : ""}">${p.deliveriesFailed}</span><span class="kpi-label">Échecs</span></div>
+      </div>
+      <div class="stats-detail">
+        <p><span class="muted">Aller</span> <strong>${p.byDirection.outbound}</strong>
+           · <span class="muted">Retour</span> <strong>${p.byDirection.inbound}</strong>
+           ${p.byDirection.unmatched ? ` · <span class="muted">Non matchés</span> <strong>${p.byDirection.unmatched}</strong>` : ""}</p>
+        <p><span class="muted">Retard moyen</span> <strong>${esc(avg)}</strong>
+           · <span class="muted">Max</span> <strong>${esc(max)}</strong></p>
+      </div>
+    </article>
+  `;
+}
+
+function recentEventsTable(events: DisruptionEventDto[]): string {
+  if (events.length === 0) {
+    return `<p class="muted">Aucun événement pour le moment.</p>`;
+  }
+  const rows = events
+    .map(
+      (e) => `
+    <tr>
+      <td>${esc(formatWhen(e.detectedAt))}</td>
+      <td>${esc(directionLabel(e.direction))}</td>
+      <td>${esc(kindLabel(e.kind))}</td>
+      <td>${esc(e.title)}</td>
+      <td>${e.delayMinutes ?? "—"}</td>
+      <td class="muted">${esc(e.source)}</td>
+    </tr>`,
+    )
+    .join("");
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Détecté</th><th>Sens</th><th>Type</th><th>Titre</th><th>Retard</th><th>Source</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function recentDeliveriesTable(deliveries: AlertDeliveryDto[]): string {
+  if (deliveries.length === 0) {
+    return `<p class="muted">Aucune livraison pour le moment.</p>`;
+  }
+  const rows = deliveries
+    .map(
+      (d) => `
+    <tr>
+      <td>${esc(formatWhen(d.createdAt))}</td>
+      <td>${esc(d.channel)}</td>
+      <td><span class="status-chip status-${esc(d.status)}">${esc(d.status)}</span></td>
+      <td>${esc(directionLabel(d.direction))}</td>
+      <td class="muted">${esc(d.detail ?? "—")}</td>
+    </tr>`,
+    )
+    .join("");
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th>Date</th><th>Canal</th><th>Statut</th><th>Sens</th><th>Détail</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
 }
 
 async function renderDashboard(root: HTMLElement) {
@@ -107,36 +252,70 @@ async function renderDashboard(root: HTMLElement) {
     const ingestStatus = data.lastIngest?.status ?? null;
     const ingestLabel =
       ingestStatus === "ok"
-        ? "Dernière requête OK"
+        ? "Ingest OK"
         : ingestStatus === "error"
-          ? "Dernière requête en erreur"
+          ? "Ingest en erreur"
           : ingestStatus === "skipped"
-            ? "Dernière requête ignorée (hors fenêtre)"
-            : "Aucune requête encore";
+            ? "Ingest ignoré (hors fenêtre)"
+            : "Aucun ingest encore";
+
+    const periods = data.stats.periods;
 
     root.innerHTML = layout(`
-      <h1>Dashboard</h1>
+      <div class="dash-head">
+        <div>
+          <h1>Dashboard</h1>
+          <p class="lede">État en cours des trajets Aller / Retour, puis historique issu de l’ingest.</p>
+        </div>
+        <button type="button" class="secondary" id="dash-refresh">Actualiser</button>
+      </div>
 
-      <section class="${ingestClass(ingestStatus)}">
-        <strong>${esc(ingestLabel)}</strong>
-        <p>Provider : ${esc(data.stats.ingestProvider)} · ${esc(formatWhen(data.lastIngest?.at ?? null))}</p>
-        <p>${esc(data.lastIngest?.detail ?? "—")}</p>
+      <section class="dash-section">
+        <h2 class="dash-section-title">Statut en cours</h2>
+        <div class="${ingestClass(ingestStatus)}">
+          <div>
+            <strong>${esc(ingestLabel)}</strong>
+            <p>Provider <code>${esc(data.stats.ingestProvider)}</code> · ${esc(formatWhen(data.lastIngest?.at ?? null))} (${esc(formatRelative(data.lastIngest?.at ?? null))})</p>
+          </div>
+          <p class="ingest-detail">${esc(data.lastIngest?.detail ?? "—")}</p>
+        </div>
+        <div class="grid journey-grid">
+          ${journeyCard("Aller", data.journeys.outbound)}
+          ${journeyCard("Retour", data.journeys.inbound)}
+        </div>
       </section>
 
-      <section class="grid">
-        ${journeyCard("Aller", data.journeys.outbound)}
-        ${journeyCard("Retour", data.journeys.inbound)}
+      <section class="dash-section">
+        <h2 class="dash-section-title">Statistiques</h2>
+        <p class="muted section-hint">Agrégats sur les événements détectés et les notifications envoyées.</p>
+        <div class="stats-grid">
+          ${periodPanel("24 heures", periods.last24h)}
+          ${periodPanel("7 jours", periods.last7d)}
+          ${periodPanel("30 jours", periods.last30d)}
+        </div>
       </section>
-      <section>
-        <h2>Stats 24h</h2>
-        <ul>
-          <li>Événements : ${data.stats.eventsLast24h}</li>
-          <li>Envoyés : ${data.stats.deliveriesSentLast24h}</li>
-          <li>Échecs : ${data.stats.deliveriesFailedLast24h}</li>
-        </ul>
-        <p><a href="#/notifications">Voir l’historique des notifications →</a></p>
+
+      <section class="dash-section">
+        <div class="dash-section-head">
+          <h2 class="dash-section-title">Activité récente</h2>
+          <a href="#/notifications">Historique complet →</a>
+        </div>
+        <div class="activity-grid">
+          <div class="card">
+            <h3>Événements ingest</h3>
+            ${recentEventsTable(data.recentEvents)}
+          </div>
+          <div class="card">
+            <h3>Livraisons</h3>
+            ${recentDeliveriesTable(data.recentDeliveries)}
+          </div>
+        </div>
       </section>
     `);
+
+    document.getElementById("dash-refresh")?.addEventListener("click", () => {
+      void renderDashboard(root);
+    });
   } catch (err) {
     root.innerHTML = layout(`
       <h1>Dashboard</h1>
@@ -161,10 +340,10 @@ async function renderNotifications(root: HTMLElement) {
             .map(
               (d) => `
         <tr>
-          <td>${esc(d.createdAt)}</td>
+          <td>${esc(formatWhen(d.createdAt))}</td>
           <td>${esc(d.channel)}</td>
-          <td>${esc(d.status)}</td>
-          <td>${esc(d.direction ?? "—")}</td>
+          <td><span class="status-chip status-${esc(d.status)}">${esc(d.status)}</span></td>
+          <td>${esc(directionLabel(d.direction))}</td>
           <td>${esc(d.detail ?? "")}</td>
         </tr>`,
             )
@@ -177,9 +356,9 @@ async function renderNotifications(root: HTMLElement) {
             .map(
               (e) => `
         <tr>
-          <td>${esc(e.detectedAt)}</td>
-          <td>${esc(e.direction ?? "—")}</td>
-          <td>${esc(e.kind)}</td>
+          <td>${esc(formatWhen(e.detectedAt))}</td>
+          <td>${esc(directionLabel(e.direction))}</td>
+          <td>${esc(kindLabel(e.kind))}</td>
           <td>${esc(e.title)}</td>
           <td>${e.delayMinutes ?? "—"}</td>
         </tr>`,

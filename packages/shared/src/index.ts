@@ -47,17 +47,40 @@ export type BoardTrafficStatus =
 
 export type IngestRunStatus = "ok" | "error" | "skipped";
 
+/** Agrégats sur une fenêtre glissante (UTC côté API, affichage Paris côté UI) */
+export interface DashboardPeriodStats {
+  events: number;
+  delays: number;
+  cancellations: number;
+  otherKinds: number;
+  avgDelayMinutes: number | null;
+  maxDelayMinutes: number | null;
+  deliveriesSent: number;
+  deliveriesFailed: number;
+  byDirection: {
+    outbound: number;
+    inbound: number;
+    unmatched: number;
+  };
+}
+
 export interface DashboardOverview {
   journeys: {
     outbound: JourneyStatusCard | null;
     inbound: JourneyStatusCard | null;
   };
   stats: {
+    /** @deprecated préférer periods.last24h — conservé pour compat */
     eventsLast24h: number;
     deliveriesSentLast24h: number;
     deliveriesFailedLast24h: number;
     ingestProvider: string;
     lastIngestAt: string | null;
+    periods: {
+      last24h: DashboardPeriodStats;
+      last7d: DashboardPeriodStats;
+      last30d: DashboardPeriodStats;
+    };
   };
   /** Résumé de la dernière requête ingest (poll API / stub) */
   lastIngest: {
@@ -65,6 +88,9 @@ export interface DashboardOverview {
     status: IngestRunStatus | null;
     detail: string | null;
   };
+  /** Derniers événements / livraisons pour le panneau activité */
+  recentEvents: DisruptionEventDto[];
+  recentDeliveries: AlertDeliveryDto[];
 }
 
 export interface JourneyStatusCard {
@@ -73,6 +99,10 @@ export interface JourneyStatusCard {
   active: boolean;
   originLabel: string;
   destinationLabel: string;
+  network: string;
+  timeWindow: TimeWindow;
+  daysOfWeek: number[];
+  minDelayMinutes: number;
   /** Synthèse trafic pour le dashboard */
   boardStatus: BoardTrafficStatus;
   boardStatusLabel: string;

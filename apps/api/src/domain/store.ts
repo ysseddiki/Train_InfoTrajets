@@ -3,6 +3,7 @@ import type {
   AlertDeliveryDto,
   BoardTrafficStatus,
   DashboardOverview,
+  DashboardPeriodStats,
   DeliveryChannel,
   DeliveryStatus,
   DisruptionEventDto,
@@ -382,8 +383,20 @@ export class PgStore {
     return next;
   }
 
-  async listEvents(limit = 50): Promise<DisruptionEventDto[]> {
+  async listEvents(
+    limit = 50,
+    direction?: JourneyDirection,
+  ): Promise<DisruptionEventDto[]> {
     const pool = getPool();
+    if (direction) {
+      const res = await pool.query(
+        `SELECT * FROM disruption_events
+         WHERE direction = $1
+         ORDER BY detected_at DESC LIMIT $2`,
+        [direction, limit],
+      );
+      return res.rows.map(mapEvent);
+    }
     const res = await pool.query(
       `SELECT * FROM disruption_events ORDER BY detected_at DESC LIMIT $1`,
       [limit],
@@ -400,22 +413,85 @@ export class PgStore {
     return res.rows.map(mapDelivery);
   }
 
+  async periodStats(sinceIso: string): Promise<DashboardPeriodStats> {
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT
+        COUNT(*)::int AS events,
+        COUNT(*) FILTER (WHERE kind = 'delay')::int AS delays,
+        COUNT(*) FILTER (WHERE kind = 'cancellation')::int AS cancellations,
+        COUNT(*) FILTER (
+          WHERE kind IS DISTINCT FROM 'delay'
+            AND kind IS DISTINCT FROM 'cancellation'
+        )::int AS other_kinds,
+        ROUND(AVG(delay_minutes) FILTER (WHERE delay_minutes IS NOT NULL))::int AS avg_delay,
+        MAX(delay_minutes) FILTER (WHERE delay_minutes IS NOT NULL)::int AS max_delay,
+        COUNT(*) FILTER (WHERE direction = 'outbound')::int AS outbound,
+        COUNT(*) FILTER (WHERE direction = 'inbound')::int AS inbound,
+        COUNT(*) FILTER (WHERE direction IS NULL)::int AS unmatched
+       FROM disruption_events
+       WHERE detected_at >= $1`,
+      [sinceIso],
+    );
+    const delRes = await pool.query(
+      `SELECT
+        COUNT(*) FILTER (WHERE status = 'sent')::int AS sent,
+        COUNT(*) FILTER (WHERE status = 'failed')::int AS failed
+       FROM alert_deliveries
+       WHERE created_at >= $1`,
+      [sinceIso],
+    );
+    const e = res.rows[0] ?? {};
+    const d = delRes.rows[0] ?? {};
+    return {
+      events: Number(e.events ?? 0),
+      delays: Number(e.delays ?? 0),
+      cancellations: Number(e.cancellations ?? 0),
+      otherKinds: Number(e.other_kinds ?? 0),
+      avgDelayMinutes:
+        e.avg_delay === null || e.avg_delay === undefined
+          ? null
+          : Number(e.avg_delay),
+      maxDelayMinutes:
+        e.max_delay === null || e.max_delay === undefined
+          ? null
+          : Number(e.max_delay),
+      deliveriesSent: Number(d.sent ?? 0),
+      deliveriesFailed: Number(d.failed ?? 0),
+      byDirection: {
+        outbound: Number(e.outbound ?? 0),
+        inbound: Number(e.inbound ?? 0),
+        unmatched: Number(e.unmatched ?? 0),
+      },
+    };
+  }
+
   async getOverview(): Promise<DashboardOverview> {
     const journeys = await this.listJourneys();
-    const events = await this.listEvents(20);
+    const [events, recentEvents, recentDeliveries] = await Promise.all([
+      this.listEvents(20),
+      this.listEvents(12),
+      this.listDeliveries(12),
+    ]);
     const pool = getPool();
-    const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-    const statsRes = await pool.query(
-      `SELECT
-        (SELECT COUNT(*)::int FROM disruption_events WHERE detected_at >= $1) AS events,
-        (SELECT COUNT(*)::int FROM alert_deliveries WHERE created_at >= $1 AND status = 'sent') AS sent,
-        (SELECT COUNT(*)::int FROM alert_deliveries WHERE created_at >= $1 AND status = 'failed') AS failed,
-        (SELECT value FROM app_meta WHERE key = 'last_ingest_at') AS last_ingest,
-        (SELECT value FROM app_meta WHERE key = 'last_ingest_status') AS last_ingest_status,
-        (SELECT value FROM app_meta WHERE key = 'last_ingest_detail') AS last_ingest_detail`,
-      [since],
-    );
-    const s = statsRes.rows[0];
+    const now = Date.now();
+    const since24h = new Date(now - 24 * 3600 * 1000).toISOString();
+    const since7d = new Date(now - 7 * 24 * 3600 * 1000).toISOString();
+    const since30d = new Date(now - 30 * 24 * 3600 * 1000).toISOString();
+
+    const [metaRes, last24h, last7d, last30d] = await Promise.all([
+      pool.query(
+        `SELECT
+          (SELECT value FROM app_meta WHERE key = 'last_ingest_at') AS last_ingest,
+          (SELECT value FROM app_meta WHERE key = 'last_ingest_status') AS last_ingest_status,
+          (SELECT value FROM app_meta WHERE key = 'last_ingest_detail') AS last_ingest_detail`,
+      ),
+      this.periodStats(since24h),
+      this.periodStats(since7d),
+      this.periodStats(since30d),
+    ]);
+
+    const s = metaRes.rows[0] ?? {};
     const lastIngestAt = s.last_ingest ? String(s.last_ingest) : null;
     const lastIngestStatus = (s.last_ingest_status as IngestRunStatus | null) ?? null;
     const lastIngestDetail = s.last_ingest_detail
@@ -443,6 +519,10 @@ export class PgStore {
         active: j.active,
         originLabel: j.originLabel,
         destinationLabel: j.destinationLabel,
+        network: j.network,
+        timeWindow: j.timeWindow,
+        daysOfWeek: j.daysOfWeek,
+        minDelayMinutes: j.minDelayMinutes,
         boardStatus,
         boardStatusLabel,
         latestEvent: latest
@@ -464,17 +544,20 @@ export class PgStore {
         inbound: card("inbound"),
       },
       stats: {
-        eventsLast24h: Number(s.events ?? 0),
-        deliveriesSentLast24h: Number(s.sent ?? 0),
-        deliveriesFailedLast24h: Number(s.failed ?? 0),
+        eventsLast24h: last24h.events,
+        deliveriesSentLast24h: last24h.deliveriesSent,
+        deliveriesFailedLast24h: last24h.deliveriesFailed,
         ingestProvider: process.env.INGEST_PROVIDER ?? "stub",
         lastIngestAt,
+        periods: { last24h, last7d, last30d },
       },
       lastIngest: {
         at: lastIngestAt,
         status: lastIngestStatus,
         detail: lastIngestDetail,
       },
+      recentEvents,
+      recentDeliveries,
     };
   }
 
