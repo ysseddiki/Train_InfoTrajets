@@ -17,24 +17,68 @@ Le client **ne fonctionne pas sans l’API**. Les clés PRIM/Navitia, SMTP et Te
 ## Prérequis
 
 - Node.js **≥ 22**
+- **PostgreSQL 16** (Docker Compose fourni)
 - Accès réseau restreint (VPN/firewall) pour le dashboard (pas d’auth app viewer en v1)
 - Compte admin pour la console
+
+## PostgreSQL
+
+### Option A — Docker Compose (recommandé)
+
+```bash
+docker compose up -d db
+```
+
+Cela démarre Postgres avec :
+
+| Paramètre | Valeur |
+|-----------|--------|
+| Host | `127.0.0.1` |
+| Port | `5432` |
+| User | `sncf` |
+| Password | `sncf` |
+| Database | `sncf_alerts` |
+| URL | `postgres://sncf:sncf@127.0.0.1:5432/sncf_alerts` |
+
+### Option B — Postgres local
+
+Créer un rôle et une base, puis coller l’URL dans `.env` :
+
+```bash
+createuser sncf
+createdb -O sncf sncf_alerts
+# définir un mot de passe pour sncf, puis :
+# DATABASE_URL=postgres://sncf:MOT_DE_PASSE@127.0.0.1:5432/sncf_alerts
+```
+
+L’API exécute automatiquement le schéma (`apps/api/src/db/schema.sql`) au démarrage et crée le compte admin (hash bcrypt) à partir de `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+
+Pour **re-synchroniser** le mot de passe admin depuis `.env` vers la DB :
+
+```env
+ADMIN_PASSWORD_SYNC=true
+```
+
+Puis redémarrer l’API une fois, et remettre `false`.
 
 ## Démarrage rapide
 
 ```bash
 cp .env.example .env
-# Éditer .env : ADMIN_PASSWORD, etc.
+# Éditer .env : ADMIN_PASSWORD, DATABASE_URL, COOKIE_SECURE=true si HTTPS
 
+docker compose up -d db
 npm install
-npm run dev:api   # http://127.0.0.1:3001
+npm run dev:api   # http://127.0.0.1:3001  (requiert DATABASE_URL)
 npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 ```
 
 - Dashboard : `https://127.0.0.1:443/#/`
+- Notifications : `https://127.0.0.1:443/#/notifications`
 - Admin : `https://127.0.0.1:443/#/admin`
 
 > Port 443 = HTTPS. Le certificat Vite est auto-signé : le navigateur affichera un avertissement à accepter une fois (dev uniquement). Sur macOS, le bind 443 peut nécessiter `sudo`.
+> Avec HTTPS, garder `COOKIE_SECURE=true` pour la session admin (cookie httpOnly).
 - Health : `http://127.0.0.1:3001/v1/health`
 
 ## Sécurité (règles de base)
@@ -42,7 +86,10 @@ npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 - Ne **jamais** committer `.env`, tokens, mots de passe, webhooks
 - Ne pas logger `Authorization`, `SMTP_PASSWORD`, `TEAMS_WEBHOOK_URL`, clés API
 - L’API admin masque les secrets (`passwordConfigured` / `webhookConfigured`)
+- Mot de passe admin stocké **hashé** (bcrypt) en base ; session cookie **httpOnly**
+- Rate-limit sur `/v1/admin/login`
 - Changer `ADMIN_PASSWORD` et `SESSION_SECRET` avant tout déploiement
+- Logs : cookies / passwords / webhooks redactés
 
 ## Obtenir les clés API (ingest)
 

@@ -1,0 +1,21 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: sncf-alerts-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: sncf
+      POSTGRES_PASSWORD: sncf
+      POSTGRES_DB: sncf_alerts
+    ports:
+      - "5432:5432"
+    volumes:
+      - sncf_alerts_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sncf -d sncf_alerts"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  sncf_alerts_pg:

@@ -1,30 +1,35 @@
 const API_BASE = "";
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
-  if (!res.ok) {
-    throw new Error(`API ${path} → ${res.status}`);
-  }
-  return res.json() as Promise<T>;
-}
-
-export async function apiSend<T>(
+async function request<T>(
   path: string,
-  method: string,
-  body?: unknown,
-  token?: string,
+  init?: RequestInit,
 ): Promise<T> {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-  };
-  if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`${API_BASE}${path}`, {
-    method,
-    headers,
-    body: body === undefined ? undefined : JSON.stringify(body),
+    credentials: "include",
+    ...init,
+    headers: {
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
   if (!res.ok) {
     throw new Error(`API ${path} → ${res.status}`);
   }
+  if (res.status === 204) return undefined as T;
   return res.json() as Promise<T>;
+}
+
+export function apiGet<T>(path: string): Promise<T> {
+  return request<T>(path);
+}
+
+export function apiSend<T>(
+  path: string,
+  method: string,
+  body?: unknown,
+): Promise<T> {
+  return request<T>(path, {
+    method,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
 }
