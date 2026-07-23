@@ -63,23 +63,25 @@ Puis redémarrer l’API une fois, et remettre `false`.
 
 ## Mise à jour sur serveur
 
-Ne pas faire un `git pull` brut si `npm install` a modifié `package-lock.json` en local sur la machine.
+Sur le serveur, `npm install` / `npm audit` peut modifier `package.json` et `package-lock.json`. Un `git pull` échoue alors.
 
-**Maintenant (une fois) :**
+**Réparation immédiate (maintenant) :**
 
 ```bash
-git checkout -- package-lock.json
-git pull
-npm ci
+git fetch origin
+git reset --hard origin/main
+npm install
 ```
 
-**Ensuite :**
+> Cela écrase les fichiers trackés locaux. Le `.env` (non versionné) est conservé.
+
+**Ensuite (après pull de ce script) :**
 
 ```bash
 ./scripts/update.sh
 ```
 
-Ce script reset le lockfile, pull, puis `npm ci`. Le fichier `.env` n’est pas touché.
+Node.js **≥ 20** est supporté (ex. v20.19 sur Debian).
 
 ## Démarrage rapide
 

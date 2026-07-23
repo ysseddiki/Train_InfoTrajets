@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# Mise à jour serveur : ignore le drift local de package-lock.json puis pull.
+# Mise à jour serveur : aligne le code sur origin/main (ignore le drift npm local).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "→ Reset package-lock.json local (garder la version du repo)"
-git checkout -- package-lock.json
+echo "→ Fetch origin"
+git fetch origin
 
-echo "→ git pull"
-git pull --ff-only
+branch="$(git rev-parse --abbrev-ref HEAD)"
+echo "→ Reset hard sur origin/${branch} (fichiers trackés uniquement ; .env conservé)"
+git reset --hard "origin/${branch}"
 
-echo "→ npm ci (install fidèle au lockfile)"
-npm ci
+echo "→ npm install"
+npm install
 
 echo "Done. Redémarre API/web si besoin."
