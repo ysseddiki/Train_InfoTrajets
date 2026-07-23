@@ -28,11 +28,14 @@ const MONACO_MONTE_CARLO = {
   label: "Monaco - Monte-Carlo",
 } as const;
 
+/** Station-board model: origin = gare surveillée, destination = filtre de sens. */
 function emptyJourney(direction: JourneyDirection): Omit<JourneyConfig, "updatedAt"> {
   const isOutbound = direction === "outbound";
   return {
     direction,
-    label: isOutbound ? "Aller Nice → Monaco" : "Retour Monaco → Nice",
+    label: isOutbound
+      ? "Aller — départs Nice vers Monaco"
+      : "Retour — départs Monaco vers Nice",
     originId: isOutbound ? NICE_VILLE.id : MONACO_MONTE_CARLO.id,
     destinationId: isOutbound ? MONACO_MONTE_CARLO.id : NICE_VILLE.id,
     originLabel: isOutbound ? NICE_VILLE.label : MONACO_MONTE_CARLO.label,
@@ -41,10 +44,10 @@ function emptyJourney(direction: JourneyDirection): Omit<JourneyConfig, "updated
     daysOfWeek: [1, 2, 3, 4, 5],
     timeWindow: isOutbound
       ? { start: "07:00", end: "09:30" }
-      : { start: "17:00", end: "20:00" },
+      : { start: "16:00", end: "19:00" },
     minDelayMinutes: 10,
     severities: ["delay", "cancellation"],
-    active: false,
+    active: true,
   };
 }
 
@@ -126,37 +129,79 @@ export class PgStore {
       );
     }
 
+    const boardSeed = await pool.query(
+      `SELECT value FROM app_meta WHERE key = 'station_board_v1'`,
+    );
+    const forceBoardDefaults = (boardSeed.rowCount ?? 0) === 0;
+
     for (const direction of ["outbound", "inbound"] as JourneyDirection[]) {
       const base = emptyJourney(direction);
+      if (forceBoardDefaults) {
+        await pool.query(
+          `INSERT INTO journeys (
+            direction, label, origin_id, destination_id, origin_label, destination_label,
+            network, days_of_week, window_start, window_end, min_delay_minutes, severities, active, updated_at
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())
+          ON CONFLICT (direction) DO UPDATE SET
+            label = EXCLUDED.label,
+            origin_id = EXCLUDED.origin_id,
+            destination_id = EXCLUDED.destination_id,
+            origin_label = EXCLUDED.origin_label,
+            destination_label = EXCLUDED.destination_label,
+            network = EXCLUDED.network,
+            days_of_week = EXCLUDED.days_of_week,
+            window_start = EXCLUDED.window_start,
+            window_end = EXCLUDED.window_end,
+            min_delay_minutes = EXCLUDED.min_delay_minutes,
+            severities = EXCLUDED.severities,
+            active = EXCLUDED.active,
+            updated_at = now()`,
+          [
+            base.direction,
+            base.label,
+            base.originId,
+            base.destinationId,
+            base.originLabel,
+            base.destinationLabel,
+            base.network,
+            base.daysOfWeek,
+            base.timeWindow.start,
+            base.timeWindow.end,
+            base.minDelayMinutes,
+            base.severities,
+            base.active,
+          ],
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO journeys (
+            direction, label, origin_id, destination_id, origin_label, destination_label,
+            network, days_of_week, window_start, window_end, min_delay_minutes, severities, active
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+          ON CONFLICT (direction) DO NOTHING`,
+          [
+            base.direction,
+            base.label,
+            base.originId,
+            base.destinationId,
+            base.originLabel,
+            base.destinationLabel,
+            base.network,
+            base.daysOfWeek,
+            base.timeWindow.start,
+            base.timeWindow.end,
+            base.minDelayMinutes,
+            base.severities,
+            base.active,
+          ],
+        );
+      }
+    }
+
+    if (forceBoardDefaults) {
       await pool.query(
-        `INSERT INTO journeys (
-          direction, label, origin_id, destination_id, origin_label, destination_label,
-          network, days_of_week, window_start, window_end, min_delay_minutes, severities, active
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-        ON CONFLICT (direction) DO UPDATE SET
-          label = EXCLUDED.label,
-          origin_id = EXCLUDED.origin_id,
-          destination_id = EXCLUDED.destination_id,
-          origin_label = EXCLUDED.origin_label,
-          destination_label = EXCLUDED.destination_label,
-          network = EXCLUDED.network,
-          updated_at = now()
-        WHERE journeys.origin_id = '' OR journeys.origin_id IS NULL`,
-        [
-          base.direction,
-          base.label,
-          base.originId,
-          base.destinationId,
-          base.originLabel,
-          base.destinationLabel,
-          base.network,
-          base.daysOfWeek,
-          base.timeWindow.start,
-          base.timeWindow.end,
-          base.minDelayMinutes,
-          base.severities,
-          base.active,
-        ],
+        `INSERT INTO app_meta (key, value) VALUES ('station_board_v1', '1')
+         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
       );
     }
   }

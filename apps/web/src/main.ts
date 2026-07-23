@@ -51,13 +51,13 @@ async function renderDashboard(root: HTMLElement) {
         <article>
           <h2>Aller</h2>
           <p>${esc(data.journeys.outbound?.label ?? "—")}</p>
-          <p>Actif : <strong>${data.journeys.outbound?.active ? "oui" : "non"}</strong></p>
+          <p>Surveillance : <strong>${data.journeys.outbound?.active ? "active" : "pause"}</strong></p>
           <p>${esc(data.journeys.outbound?.latestEvent?.title ?? "Aucun événement")}</p>
         </article>
         <article>
           <h2>Retour</h2>
           <p>${esc(data.journeys.inbound?.label ?? "—")}</p>
-          <p>Actif : <strong>${data.journeys.inbound?.active ? "oui" : "non"}</strong></p>
+          <p>Surveillance : <strong>${data.journeys.inbound?.active ? "active" : "pause"}</strong></p>
           <p>${esc(data.journeys.inbound?.latestEvent?.title ?? "Aucun événement")}</p>
         </article>
       </section>
@@ -163,17 +163,18 @@ function journeyForm(j: JourneyConfig): string {
   return `
     <form class="card journey-form" data-direction="${j.direction}">
       <h2>${j.direction === "outbound" ? "Aller" : "Retour"}</h2>
+      <p class="muted">Comme l’écran en gare : on surveille les <strong>départs</strong> d’une gare, filtrés vers une destination.</p>
       <label>Label <input name="label" value="${esc(j.label)}" /></label>
-      <label>Origine (id) <input name="originId" value="${esc(j.originId)}" /></label>
-      <label>Origine (label) <input name="originLabel" value="${esc(j.originLabel)}" /></label>
-      <label>Destination (id) <input name="destinationId" value="${esc(j.destinationId)}" /></label>
-      <label>Destination (label) <input name="destinationLabel" value="${esc(j.destinationLabel)}" /></label>
+      <label>Gare surveillée (id) <input name="originId" value="${esc(j.originId)}" /></label>
+      <label>Gare surveillée (nom) <input name="originLabel" value="${esc(j.originLabel)}" /></label>
+      <label>Filtre destination (id) <input name="destinationId" value="${esc(j.destinationId)}" /></label>
+      <label>Filtre destination (nom) <input name="destinationLabel" value="${esc(j.destinationLabel)}" /></label>
       <label>Réseau <input name="network" value="${esc(j.network)}" /></label>
       <label>Jours (1=lun…7=dim) <input name="daysOfWeek" value="${esc(days)}" /></label>
       <label>Fenêtre début <input name="windowStart" value="${esc(j.timeWindow.start)}" /></label>
       <label>Fenêtre fin <input name="windowEnd" value="${esc(j.timeWindow.end)}" /></label>
       <label>Seuil retard (min) <input name="minDelayMinutes" type="number" value="${j.minDelayMinutes}" /></label>
-      <label><input name="active" type="checkbox" ${j.active ? "checked" : ""} /> Actif</label>
+      <label><input name="active" type="checkbox" ${j.active ? "checked" : ""} /> Actif (surveillance ON)</label>
       <button type="submit">Enregistrer</button>
       <p class="form-msg muted"></p>
     </form>

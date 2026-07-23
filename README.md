@@ -113,6 +113,19 @@ npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 - Changer `ADMIN_PASSWORD` et `SESSION_SECRET` avant tout déploiement
 - Logs : cookies / passwords / webhooks redactés
 
+## Modèle de surveillance (Aller / Retour)
+
+Chaque sens = **1 gare surveillée** (comme l’écran départs) + **filtre destination** :
+
+| Sens | Gare | Filtre | Fenêtre défaut | Actif |
+|------|------|--------|----------------|-------|
+| Aller | Nice-Ville (`stop_area:SNCF:87756056`) | vers Monaco | 07:00–09:30 lun–ven | oui |
+| Retour | Monaco – Monte-Carlo (`stop_area:SNCF:87756403`) | vers Nice | 16:00–19:00 lun–ven | oui |
+
+- Poll toutes les **5 min** (`INGEST_INTERVAL_MS=300000`)
+- Appels Navitia **uniquement** si le sens est `active` **et** dans sa fenêtre
+- Toggle **Actif** dans l’admin pour couper un sens
+
 ## Obtenir les clés API (ingest)
 
 Une seule source active via `INGEST_PROVIDER=stub|prim|navitia`.
@@ -123,6 +136,7 @@ Aucune clé. Idéal pour développer dashboard, admin et notifiers.
 
 ```env
 INGEST_PROVIDER=stub
+INGEST_INTERVAL_MS=300000
 ```
 
 ### PRIM — Île-de-France Mobilités (temps réel)
@@ -152,9 +166,12 @@ Utile pour référentiel gares/lignes et perturbations hors ou en complément PR
 ```env
 INGEST_PROVIDER=navitia
 NAVITIA_TOKEN=votre_token
+INGEST_INTERVAL_MS=300000
 ```
 
-> Les adapters PRIM/Navitia sont **prévus** (ports dans `apps/api/src/adapters`) ; le squelette actuel tourne en `stub`. Brancher le provider réel est une tâche suivante (voir `openspec/changes/refine-ops-platform-v1/tasks.md`).
+L’adapter interroge les **départs** de la gare surveillée (`/stop_areas/.../departures`), filtre le sens (ex. Monaco / Nice), et crée une alerte si retard ≥ seuil ou suppression.
+
+> PRIM reste optionnel pour d’autres réseaux. Ne pas lancer `npm audit fix --force` (casse le lockfile).
 
 ## Email (SMTP custom)
 

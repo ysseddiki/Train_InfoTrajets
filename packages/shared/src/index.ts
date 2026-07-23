@@ -22,9 +22,11 @@ export interface TimeWindow {
 export interface JourneyConfig {
   direction: JourneyDirection;
   label: string;
+  /** Gare surveillée (écran départs) */
   originId: string;
-  destinationId: string;
   originLabel: string;
+  /** Filtre de sens : destination / direction affichée */
+  destinationId: string;
   destinationLabel: string;
   network: string;
   daysOfWeek: number[]; // 1=Mon .. 7=Sun

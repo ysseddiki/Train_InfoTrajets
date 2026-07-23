@@ -49,12 +49,14 @@ async function main() {
   await registerAdminRoutes(app);
 
   const ingest = createIngestAdapter();
-  const intervalMs = Number(process.env.INGEST_INTERVAL_MS ?? 60_000);
-  setInterval(() => {
+  const intervalMs = Number(process.env.INGEST_INTERVAL_MS ?? 300_000);
+  const tick = () => {
     void ingest.poll().catch((err) => {
       app.log.error({ err }, "ingest poll failed");
     });
-  }, intervalMs);
+  };
+  tick();
+  setInterval(tick, intervalMs);
 
   await app.listen({ port, host });
 }

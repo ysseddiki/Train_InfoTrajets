@@ -1,7 +1,7 @@
 import type { JourneyConfig, DisruptionEventDto } from "@sncf-alerts/shared";
 
-/** Paris weekday: 1=Mon .. 7=Sun */
-function parisParts(date: Date): { weekday: number; hm: string } {
+/** Europe/Paris weekday: 1=Mon .. 7=Sun */
+export function parisParts(date: Date): { weekday: number; hm: string } {
   const fmt = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Paris",
     weekday: "short",
@@ -25,10 +25,20 @@ function parisParts(date: Date): { weekday: number; hm: string } {
   return { weekday: map[weekdayName] ?? 1, hm: `${hour}:${minute}` };
 }
 
-function inWindow(hm: string, start: string, end: string): boolean {
+export function inWindow(hm: string, start: string, end: string): boolean {
   if (start <= end) return hm >= start && hm <= end;
-  // overnight window
   return hm >= start || hm <= end;
+}
+
+/** True if now is inside the journey watch window (days + hours, Europe/Paris). */
+export function isWithinWatchWindow(
+  journey: JourneyConfig,
+  now = new Date(),
+): boolean {
+  if (!journey.active) return false;
+  const { weekday, hm } = parisParts(now);
+  if (!journey.daysOfWeek.includes(weekday)) return false;
+  return inWindow(hm, journey.timeWindow.start, journey.timeWindow.end);
 }
 
 export function matchesJourney(
@@ -43,7 +53,8 @@ export function matchesJourney(
   if (event.direction && event.direction !== journey.direction) return false;
   if (!journey.severities.includes(event.kind)) return false;
 
-  const { weekday, hm } = parisParts(new Date(event.startsAt || now));
+  const at = new Date(event.startsAt || now);
+  const { weekday, hm } = parisParts(at);
   if (!journey.daysOfWeek.includes(weekday)) return false;
   if (!inWindow(hm, journey.timeWindow.start, journey.timeWindow.end)) {
     return false;
@@ -59,7 +70,10 @@ export function matchesJourney(
 
 export function resolveDirection(
   journeys: JourneyConfig[],
-  event: Pick<DisruptionEventDto, "kind" | "delayMinutes" | "startsAt" | "direction">,
+  event: Pick<
+    DisruptionEventDto,
+    "kind" | "delayMinutes" | "startsAt" | "direction"
+  >,
 ): JourneyConfig | null {
   if (event.direction) {
     const j = journeys.find((x) => x.direction === event.direction);
@@ -70,4 +84,25 @@ export function resolveDirection(
     if (matchesJourney(j, { ...event, direction: j.direction })) return j;
   }
   return null;
+}
+
+/** Does departure board direction match the configured destination filter? */
+export function matchesDestinationFilter(
+  journey: JourneyConfig,
+  directionText: string,
+  destinationId?: string | null,
+): boolean {
+  const text = directionText.toLowerCase();
+  const label = journey.destinationLabel.toLowerCase();
+  const tokens = label
+    .split(/[\s\-–—,/]+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 3);
+
+  if (destinationId && journey.destinationId && destinationId === journey.destinationId) {
+    return true;
+  }
+  if (label && text.includes(label)) return true;
+  // partial: "Monaco", "Nice", etc.
+  return tokens.some((t) => text.includes(t));
 }
