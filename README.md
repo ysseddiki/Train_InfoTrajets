@@ -28,11 +28,11 @@ cp .env.example .env
 
 npm install
 npm run dev:api   # http://127.0.0.1:3001
-npm run dev:web   # http://127.0.0.1:5173  (proxy /v1 → API)
+npm run dev:web   # http://0.0.0.0:443  (proxy /v1 → API)
 ```
 
-- Dashboard : `http://127.0.0.1:5173/#/`
-- Admin : `http://127.0.0.1:5173/#/admin`
+- Dashboard : `http://127.0.0.1:443/#/`
+- Admin : `http://127.0.0.1:443/#/admin`
 - Health : `http://127.0.0.1:3001/v1/health`
 
 ## Sécurité (règles de base)
