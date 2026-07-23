@@ -1,0 +1,12 @@
+---
+description: Notifications Email SMTP et Teams
+globs: apps/api/src/adapters/**
+alwaysApply: false
+---
+
+# Notifications
+
+- Canaux v1 : `email` (SMTP custom) + `teams` (webhook)
+- Un `AlertDelivery` par canal ; échec d’un canal n’bloque pas l’autre
+- Ne jamais logger le mot de passe SMTP ni l’URL webhook complète
+- Destinataires email depuis la config admin, pas depuis des comptes users

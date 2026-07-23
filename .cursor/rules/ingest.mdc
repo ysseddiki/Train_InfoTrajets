@@ -1,0 +1,12 @@
+---
+description: Ingest perturbations SNCF
+globs: apps/api/src/adapters/ingest*
+alwaysApply: false
+---
+
+# Ingest
+
+- Une source active : `stub` | `prim` | `navitia` (`INGEST_PROVIDER`)
+- Idempotence sur `external_event_id`
+- Matching strict Aller/Retour (fenêtre, jours, seuil retard)
+- Documenter l’obtention des clés dans le README, jamais committer les clés

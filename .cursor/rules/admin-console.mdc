@@ -1,0 +1,13 @@
+---
+description: Console admin — config trajets et canaux
+globs: apps/**/admin*
+alwaysApply: false
+---
+
+# Admin console
+
+- Login simple obligatoire avant toute mutation
+- Configurer Aller/Retour, SMTP, destinataires email, Teams
+- Destinataires = liste saisie par l’admin (pas d’auto-inscription)
+- Champs secrets : write-only / masked après sauvegarde
+- Boutons test d’envoi par canal

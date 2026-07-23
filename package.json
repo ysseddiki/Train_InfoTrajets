@@ -1,0 +1,20 @@
+{
+  "name": "sncf-alerts",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ops tool: SNCF Aller/Retour monitoring, dashboard, admin, Email/Teams alerts",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspaces --if-present",
+    "dev:api": "npm run dev -w @sncf-alerts/api",
+    "dev:web": "npm run dev -w @sncf-alerts/web",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

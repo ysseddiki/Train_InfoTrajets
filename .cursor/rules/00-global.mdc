@@ -1,0 +1,34 @@
+---
+description: SNCF-Alerts — règles globales produit, archi, sécurité, OpenSpec
+alwaysApply: true
+---
+
+# SNCF-Alerts — Agent global
+
+## Produit v1
+
+- Outil **ops interne** (pas B2C voyageur)
+- Exactement **2 trajets** : Aller (`outbound`) + Retour (`inbound`)
+- Surfaces : **Dashboard** (sans login app, réseau trusté) + **Admin** (login simple)
+- Un seul acteur applicatif : **admin** — pas de comptes viewer / inscription en v1
+- Notifications : **Email SMTP custom** + **Teams** uniquement
+
+## Architecture
+
+- `apps/web` = client UI only → appelle `/v1` uniquement
+- `apps/api` = serveur : métier, ingest, matching, notifiers, secrets
+- `packages/shared` = types sans secrets
+- Le client ne doit **jamais** contenir clés PRIM/Navitia, SMTP password, webhook Teams
+
+## Sécurité / privacy
+
+- Ne pas committer `.env` ni secrets
+- Ne pas logger tokens, mots de passe, webhooks
+- API admin : secrets masqués (`*Configured`, jamais la valeur)
+- Pas de stockage de mots de passe en clair (hash serveur pour admin)
+
+## OpenSpec
+
+- Lire `openspec/specs/` et `specs/system/baseline-v1.md` avant d’étendre le périmètre
+- Changements structurants → delta dans `openspec/changes/`
+- Ne pas réintroduire push, multi-users voyageurs, SSO sans change OpenSpec

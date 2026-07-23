@@ -1,0 +1,12 @@
+---
+description: Dashboard lecture Aller/Retour
+globs: apps/web/src/**/*
+alwaysApply: false
+---
+
+# Dashboard
+
+- Lecture seule : statut Aller + Retour, stats, événements, livraisons
+- Pas d’auth applicative (restriction réseau documentée)
+- Deux cartes sens (`outbound` / `inbound`) comme composition principale
+- Polissage UI = itération ultérieure ; d’abord données API correctes

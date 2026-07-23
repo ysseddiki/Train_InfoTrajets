@@ -1,0 +1,14 @@
+---
+description: Conventions serveur API SNCF-Alerts
+globs: apps/api/**
+alwaysApply: false
+---
+
+# API server
+
+- Fastify sous `apps/api` ; routes versionnées `/v1`
+- Dashboard routes : pas d’auth app ; Admin routes : session obligatoire
+- Secrets via `process.env` uniquement ; ne jamais renvoyer SMTP password / webhook en clair
+- Adapters derrière ports (`DisruptionIngestPort`, notifiers) — une implémentation ingest active
+- Erreurs préférablement RFC 7807 (`type`, `title`, `status`)
+- Store mémoire = squelette ; préparer la persistance sans exposer PII inutile

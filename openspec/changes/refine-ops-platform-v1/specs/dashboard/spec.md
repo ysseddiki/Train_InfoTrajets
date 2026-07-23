@@ -1,0 +1,19 @@
+# Delta for Dashboard
+
+## ADDED Requirements
+
+### Requirement: Dashboard lecture Aller/Retour
+
+Le dashboard SHALL afficher l’état des trajets Aller (`outbound`) et Retour (`inbound`), des statistiques agrégées et l’historique récent des livraisons, sans authentification applicative (protection réseau).
+
+#### Scenario: Affichage des deux sens
+
+- **GIVEN** les trajets Aller et Retour configurés
+- **WHEN** un utilisateur du réseau trusté ouvre le dashboard
+- **THEN** il voit le statut de chaque sens et les derniers événements
+
+#### Scenario: API indisponible
+
+- **GIVEN** l’API serveur est down
+- **WHEN** le dashboard charge
+- **THEN** une erreur claire est affichée (pas de données inventées en prod)

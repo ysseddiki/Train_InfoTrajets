@@ -1,0 +1,13 @@
+---
+description: Travailler avec OpenSpec sur SNCF-Alerts
+globs: openspec/**/*
+alwaysApply: false
+---
+
+# OpenSpec
+
+- Specs courantes : `openspec/specs/<domain>/spec.md`
+- Changes : `openspec/changes/<name>/{proposal,design,tasks}.md` + deltas
+- Requirements : `### Requirement:` + `#### Scenario:` avec SHALL/MUST
+- Scénarios en GIVEN/WHEN/THEN
+- Après merge d’un change : mettre à jour specs courantes + baseline si besoin
