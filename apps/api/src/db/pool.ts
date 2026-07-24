@@ -221,6 +221,20 @@ export async function migrate(): Promise<void> {
       ON notify_jobs (created_at)
       WHERE status = 'pending'
   `);
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS journey_board_snapshots (
+      journey_id UUID PRIMARY KEY REFERENCES journeys(id) ON DELETE CASCADE,
+      train_number TEXT,
+      scheduled_at TIMESTAMPTZ,
+      realtime_at TIMESTAMPTZ,
+      delay_minutes INT,
+      cancelled BOOLEAN NOT NULL DEFAULT false,
+      status TEXT NOT NULL,
+      status_label TEXT NOT NULL,
+      source TEXT NOT NULL,
+      fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
 }
 
 export async function closePool(): Promise<void> {

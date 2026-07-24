@@ -9,6 +9,33 @@ import {
   kindLabel,
 } from "../lib/format";
 
+function nextDepartureBlock(card: JourneyStatusCard) {
+  const n = card.nextDeparture;
+  if (!n) {
+    return (
+      <p className="muted next-train-empty">Prochain train : pas encore de poll</p>
+    );
+  }
+
+  const timeDisplay =
+    n.realtimeTime && n.scheduledTime && n.realtimeTime !== n.scheduledTime
+      ? `${n.realtimeTime} · théo ${n.scheduledTime}`
+      : (n.realtimeTime ?? n.scheduledTime ?? "—");
+
+  return (
+    <div className={`next-train next-train-${n.status}`}>
+      <p className="next-train-kicker">Prochain train</p>
+      <div className="next-train-row">
+        <span className="next-train-num">
+          {n.trainNumber ? `N° ${n.trainNumber}` : "N° —"}
+        </span>
+        <span className="next-train-time">{timeDisplay}</span>
+      </div>
+      <p className="next-train-status">{n.statusLabel}</p>
+    </div>
+  );
+}
+
 export function JourneyCard({
   title,
   card,
@@ -44,6 +71,7 @@ export function JourneyCard({
       <div className={`${boardClass(card.boardStatus)} board-hero`}>
         <strong>{card.boardStatusLabel}</strong>
       </div>
+      {nextDepartureBlock(card)}
       {gcUrl ? (
         <p className="gc-link-wrap">
           <a

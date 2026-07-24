@@ -7,6 +7,11 @@ export type NavitiaDeparture = {
   display_informations?: {
     direction?: string;
     headsign?: string;
+    trip_short_name?: string;
+    name?: string;
+    label?: string;
+    number?: string;
+    commercial_mode?: { name?: string };
   };
   route?: {
     direction?: { name?: string; id?: string };

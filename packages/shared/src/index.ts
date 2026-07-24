@@ -121,7 +121,30 @@ export type BoardTrafficStatus =
   | "paused"
   | "outside_window";
 
+/** Statut du prochain départ affiché sur le board */
+export type NextDepartureStatus =
+  | "on_time"
+  | "delayed"
+  | "cancelled"
+  | "unknown";
+
+/** Prochain train valide (snapshot dernier poll) */
+export interface NextDepartureInfo {
+  trainNumber: string | null;
+  /** HH:mm théorique (Europe/Paris) */
+  scheduledTime: string | null;
+  /** HH:mm temps réel si différent */
+  realtimeTime: string | null;
+  /** 0 = à l’heure ; null = unknown */
+  delayMinutes: number | null;
+  status: NextDepartureStatus;
+  statusLabel: string;
+  fetchedAt: string;
+  source: "navitia" | "garesetconnexions" | "stub";
+}
+
 export type IngestRunStatus = "ok" | "error" | "skipped";
+
 
 /** Agrégats sur une fenêtre glissante (UTC côté API, affichage Paris côté UI) */
 export interface DashboardPeriodStats {
@@ -216,6 +239,8 @@ export interface JourneyStatusCard {
   /** Synthèse trafic pour le dashboard */
   boardStatus: BoardTrafficStatus;
   boardStatusLabel: string;
+  /** Prochain départ valide (dernier poll) */
+  nextDeparture: NextDepartureInfo | null;
   latestEvent: {
     id: string;
     kind: DisruptionKind;

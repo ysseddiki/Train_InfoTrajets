@@ -3,6 +3,10 @@ import {
   isWithinWatchWindow,
   matchesDestinationFilter,
 } from "../domain/matching.js";
+import {
+  buildNextDepartureStatus,
+  hmTodayToIso,
+} from "../domain/next-departure.js";
 import { notifyForEvent, processNotifyJobs } from "../domain/notify.js";
 import { store } from "../domain/store.js";
 import {
@@ -69,6 +73,28 @@ export async function injectStubEvent(input?: {
     status: "ok",
     detail: `Stub injecté (${direction})`,
   });
+
+  if (journey) {
+    const scheduled = new Date(Date.now() + 15 * 60_000);
+    const delay = kind === "delay" ? delayMinutes : 0;
+    const realtime = new Date(scheduled.getTime() + delay * 60_000);
+    const { status, statusLabel } = buildNextDepartureStatus({
+      cancelled: kind === "cancellation",
+      delayMinutes: kind === "delay" ? delayMinutes : 0,
+    });
+    await store.upsertJourneyBoardSnapshot({
+      journeyId: journey.id,
+      trainNumber: String(8700 + Math.floor(Math.random() * 80)),
+      scheduledAt: scheduled.toISOString(),
+      realtimeAt: realtime.toISOString(),
+      delayMinutes: kind === "delay" ? delayMinutes : null,
+      cancelled: kind === "cancellation",
+      status,
+      statusLabel,
+      source: "stub",
+    });
+  }
+
   if (created) {
     await notifyForEvent(event);
     await processNotifyJobs();
@@ -186,9 +212,36 @@ export class StubIngestAdapter implements DisruptionIngestPort {
       });
       return;
     }
+
+    const fetchedAt = new Date().toISOString();
+    for (const journey of open) {
+      const delayRoll = Math.random();
+      const delayMinutes =
+        delayRoll < 0.55 ? 0 : delayRoll < 0.85 ? 8 + Math.floor(Math.random() * 12) : 20 + Math.floor(Math.random() * 25);
+      const trainNumber = String(8600 + Math.floor(Math.random() * 90));
+      const scheduled = new Date(Date.now() + (12 + Math.floor(Math.random() * 40)) * 60_000);
+      const realtime = new Date(scheduled.getTime() + delayMinutes * 60_000);
+      const { status, statusLabel } = buildNextDepartureStatus({
+        cancelled: false,
+        delayMinutes,
+      });
+      await store.upsertJourneyBoardSnapshot({
+        journeyId: journey.id,
+        trainNumber,
+        scheduledAt: scheduled.toISOString(),
+        realtimeAt: realtime.toISOString(),
+        delayMinutes,
+        cancelled: false,
+        status,
+        statusLabel,
+        source: "stub",
+        fetchedAt,
+      });
+    }
+
     await store.setIngestResult({
       status: "ok",
-      detail: `Stub OK — ${open.length} sens dans la fenêtre (pas d’appel externe)`,
+      detail: `Stub OK — ${open.length} sens (prochain train simulé)`,
     });
   }
 }
@@ -217,6 +270,126 @@ function isCancelled(dep: NavitiaDeparture): boolean {
   if (dir.includes("supprim") || dir.includes("cancel")) return true;
   if (base && !real) return true;
   return false;
+}
+
+function extractTrainNumber(dep: NavitiaDeparture): string | null {
+  const info = dep.display_informations;
+  const candidates = [
+    info?.trip_short_name,
+    info?.headsign,
+    info?.number,
+    info?.name,
+    info?.label,
+  ];
+  for (const c of candidates) {
+    const t = String(c ?? "").trim();
+    if (!t) continue;
+    // Prefer token that looks like a train number (digits, optionally letter prefix)
+    const m = t.match(/\b([A-Z]?\d{3,5})\b/i);
+    if (m) return m[1].toUpperCase();
+    if (/^\d{3,5}$/.test(t)) return t;
+  }
+  const head = String(info?.headsign ?? "").trim();
+  return head || null;
+}
+
+function departureSortKey(dep: NavitiaDeparture): number {
+  const real = navitiaLocalToDate(dep.stop_date_time?.departure_date_time);
+  const base = navitiaLocalToDate(dep.stop_date_time?.base_departure_date_time);
+  return (real ?? base)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+}
+
+async function saveNextFromNavitia(
+  journey: JourneyConfig,
+  departures: NavitiaDeparture[],
+): Promise<void> {
+  const matched = departures
+    .filter((dep) => {
+      const directionText =
+        dep.display_informations?.direction ??
+        dep.route?.direction?.name ??
+        dep.display_informations?.headsign ??
+        "";
+      const destId = dep.route?.direction?.id ?? null;
+      return matchesDestinationFilter(journey, directionText, destId);
+    })
+    .sort((a, b) => departureSortKey(a) - departureSortKey(b));
+
+  // Prochain valide : non supprimé en priorité, sinon premier match
+  const next =
+    matched.find((d) => !isCancelled(d)) ?? matched[0] ?? null;
+  if (!next) return;
+
+  const cancelled = isCancelled(next);
+  const delay = delayMinutesFromDeparture(next);
+  const baseDate = navitiaLocalToDate(
+    next.stop_date_time?.base_departure_date_time,
+  );
+  const realDate = navitiaLocalToDate(
+    next.stop_date_time?.departure_date_time,
+  );
+  const { status, statusLabel } = buildNextDepartureStatus({
+    cancelled,
+    delayMinutes: delay,
+  });
+  const fetchedAt = new Date().toISOString();
+  await store.upsertJourneyBoardSnapshot({
+    journeyId: journey.id,
+    trainNumber: extractTrainNumber(next),
+    scheduledAt: baseDate?.toISOString() ?? null,
+    realtimeAt: realDate?.toISOString() ?? null,
+    delayMinutes: cancelled ? null : delay,
+    cancelled,
+    status,
+    statusLabel,
+    source: "navitia",
+    fetchedAt,
+  });
+}
+
+async function saveNextFromGc(
+  journey: JourneyConfig,
+  departures: GcBoardDeparture[],
+): Promise<void> {
+  const matched = departures.filter((dep) =>
+    matchesDestinationFilter(journey, dep.directionText, null),
+  );
+  const next =
+    matched.find((d) => !d.cancelled) ?? matched[0] ?? null;
+  if (!next) return;
+
+  const scheduledAt = hmTodayToIso(next.baseDepartureHm);
+  let realtimeAt: string | null = scheduledAt;
+  if (
+    scheduledAt &&
+    next.delayMinutes != null &&
+    next.delayMinutes > 0 &&
+    !next.cancelled
+  ) {
+    realtimeAt = new Date(
+      new Date(scheduledAt).getTime() + next.delayMinutes * 60_000,
+    ).toISOString();
+  }
+  const trainMatch = next.identity.match(/\b([A-Z]?\d{3,5})\b/i);
+  const trainNumber = trainMatch ? trainMatch[1].toUpperCase() : null;
+  const { status, statusLabel } = buildNextDepartureStatus({
+    cancelled: next.cancelled,
+    delayMinutes: next.delayMinutes,
+    delayedUnknown: next.delayedUnknown,
+  });
+  const fetchedAt = new Date().toISOString();
+  await store.upsertJourneyBoardSnapshot({
+    journeyId: journey.id,
+    trainNumber,
+    scheduledAt,
+    realtimeAt: next.cancelled ? null : realtimeAt,
+    delayMinutes: next.cancelled ? null : next.delayMinutes,
+    cancelled: next.cancelled,
+    status,
+    statusLabel,
+    source: "garesetconnexions",
+    fetchedAt,
+  });
 }
 
 export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
@@ -319,6 +492,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
   ): Promise<number> {
     const port = new NavitiaDeparturesPort(token);
     const { departures } = await port.fetchDepartures(journey);
+    await saveNextFromNavitia(journey, departures);
     let createdCount = 0;
 
     for (const dep of departures) {
@@ -388,6 +562,7 @@ async function upsertFromGcBoard(
   journey: JourneyConfig,
   departures: GcBoardDeparture[],
 ): Promise<number> {
+  await saveNextFromGc(journey, departures);
   let createdCount = 0;
   for (const dep of departures) {
     if (!matchesDestinationFilter(journey, dep.directionText, null)) {

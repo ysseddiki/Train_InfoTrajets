@@ -24,6 +24,7 @@ import type {
   LiaisonOption,
   LiaisonStatusCard,
   LiaisonUpsertBody,
+  NextDepartureInfo,
   RecipientsConfig,
   SmtpConfigPublic,
   Station,
@@ -38,6 +39,7 @@ import {
 } from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
 import { isWithinWatchWindow } from "./matching.js";
+import { formatHmParis } from "./next-departure.js";
 
 const SESSION_COOKIE = "sncf_admin_session";
 const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12);
@@ -1137,6 +1139,12 @@ export class PgStore {
       stations.map((s) => [s.externalId, s] as const),
     );
 
+    const journeyIds = scopedLiaisons.flatMap((l) => [
+      l.outbound.id,
+      l.inbound.id,
+    ]);
+    const boardByJourney = await this.getJourneyBoardSnapshots(journeyIds);
+
     const card = (j: JourneyConfig): JourneyStatusCard => {
       const latest =
         events.find((e) => e.journeyId === j.id) ??
@@ -1145,13 +1153,33 @@ export class PgStore {
         ) ??
         null;
 
-      const { boardStatus, boardStatusLabel } = resolveBoardStatus({
+      let { boardStatus, boardStatusLabel } = resolveBoardStatus({
         journey: j,
         latest,
         lastIngestAt,
         lastIngestStatus,
         recentMs: RECENT_MS,
       });
+
+      const nextDeparture = boardByJourney.get(j.id) ?? null;
+      // Affiner le board avec le prochain train si on est en fenêtre / actif
+      if (
+        nextDeparture &&
+        boardStatus !== "paused" &&
+        boardStatus !== "outside_window" &&
+        boardStatus !== "no_data"
+      ) {
+        if (nextDeparture.status === "cancelled") {
+          boardStatus = "cancelled";
+          boardStatusLabel = nextDeparture.statusLabel;
+        } else if (nextDeparture.status === "delayed") {
+          boardStatus = "delayed";
+          boardStatusLabel = nextDeparture.statusLabel;
+        } else if (nextDeparture.status === "on_time") {
+          boardStatus = "on_time";
+          boardStatusLabel = nextDeparture.statusLabel;
+        }
+      }
 
       const originStation = stationByExt.get(j.originId);
       const destStation = stationByExt.get(j.destinationId);
@@ -1174,6 +1202,7 @@ export class PgStore {
         minDelayMinutes: j.minDelayMinutes,
         boardStatus,
         boardStatusLabel,
+        nextDeparture,
         latestEvent: latest
           ? {
               id: latest.id,
@@ -1298,6 +1327,87 @@ export class PgStore {
       client.release();
     }
     return { emails };
+  }
+
+  async upsertJourneyBoardSnapshot(input: {
+    journeyId: string;
+    trainNumber: string | null;
+    scheduledAt: string | null;
+    realtimeAt: string | null;
+    delayMinutes: number | null;
+    cancelled: boolean;
+    status: string;
+    statusLabel: string;
+    source: string;
+    fetchedAt?: string;
+  }): Promise<void> {
+    const pool = getPool();
+    const fetchedAt = input.fetchedAt ?? new Date().toISOString();
+    await pool.query(
+      `INSERT INTO journey_board_snapshots (
+         journey_id, train_number, scheduled_at, realtime_at, delay_minutes,
+         cancelled, status, status_label, source, fetched_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+       ON CONFLICT (journey_id) DO UPDATE SET
+         train_number = EXCLUDED.train_number,
+         scheduled_at = EXCLUDED.scheduled_at,
+         realtime_at = EXCLUDED.realtime_at,
+         delay_minutes = EXCLUDED.delay_minutes,
+         cancelled = EXCLUDED.cancelled,
+         status = EXCLUDED.status,
+         status_label = EXCLUDED.status_label,
+         source = EXCLUDED.source,
+         fetched_at = EXCLUDED.fetched_at`,
+      [
+        input.journeyId,
+        input.trainNumber,
+        input.scheduledAt,
+        input.realtimeAt,
+        input.delayMinutes,
+        input.cancelled,
+        input.status,
+        input.statusLabel,
+        input.source,
+        fetchedAt,
+      ],
+    );
+  }
+
+  async getJourneyBoardSnapshots(
+    journeyIds: string[],
+  ): Promise<Map<string, NextDepartureInfo>> {
+    const map = new Map<string, NextDepartureInfo>();
+    if (journeyIds.length === 0) return map;
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT * FROM journey_board_snapshots WHERE journey_id = ANY($1::uuid[])`,
+      [journeyIds],
+    );
+    for (const row of res.rows) {
+      const scheduledAt = row.scheduled_at
+        ? new Date(String(row.scheduled_at)).toISOString()
+        : null;
+      const realtimeAt = row.realtime_at
+        ? new Date(String(row.realtime_at)).toISOString()
+        : null;
+      const scheduledTime = formatHmParis(scheduledAt);
+      const realtimeTime = formatHmParis(realtimeAt);
+      map.set(String(row.journey_id), {
+        trainNumber: row.train_number ? String(row.train_number) : null,
+        scheduledTime,
+        realtimeTime:
+          realtimeTime && realtimeTime !== scheduledTime ? realtimeTime : null,
+        delayMinutes:
+          row.delay_minutes === null || row.delay_minutes === undefined
+            ? null
+            : Number(row.delay_minutes),
+        status: row.status as NextDepartureInfo["status"],
+        statusLabel: String(row.status_label),
+        fetchedAt: new Date(String(row.fetched_at)).toISOString(),
+        source: row.source as NextDepartureInfo["source"],
+      });
+    }
+    return map;
   }
 
   async upsertEvent(

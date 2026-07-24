@@ -1317,6 +1317,70 @@ button.danger-action:disabled {
   border-radius: 14px;
 }
 
+.next-train {
+  margin: 0.35rem 0 0.5rem;
+  padding: 0.75rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--card) 88%, #eef2f0);
+}
+
+.next-train-kicker {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.next-train-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem 0.75rem;
+}
+
+.next-train-num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.next-train-time {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  font-size: 1.15rem;
+}
+
+.next-train-status {
+  margin: 0.35rem 0 0;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.next-train-on_time .next-train-status {
+  color: var(--accent);
+}
+
+.next-train-delayed .next-train-status {
+  color: #c96b2f;
+}
+
+.next-train-cancelled .next-train-status {
+  color: var(--danger);
+}
+
+.next-train-unknown .next-train-status {
+  color: var(--muted);
+}
+
+.next-train-empty {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+}
+
 .journey-tone-on_time .board-hero.status-ok {
   background: linear-gradient(135deg, #0a6b52 0%, #12a076 55%, #34d399 120%);
   border-color: transparent;
