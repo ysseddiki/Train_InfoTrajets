@@ -235,7 +235,7 @@ function resolveBoardStatus(input: {
       boardStatus: "no_data",
       boardStatusLabel:
         lastIngestStatus === "error"
-          ? "Erreur dernière requête"
+          ? "Mode dégradé"
           : "Pas de données (pas encore de poll)",
     };
   }
@@ -1162,12 +1162,12 @@ export class PgStore {
       });
 
       const nextDeparture = boardByJourney.get(j.id) ?? null;
-      // Affiner le board avec le prochain train si on est en fenêtre / actif
+      const ingestDegraded = lastIngestStatus === "error";
+      // Affiner le board avec le prochain train (y compris en mode dégradé si snapshot connu)
       if (
         nextDeparture &&
         boardStatus !== "paused" &&
-        boardStatus !== "outside_window" &&
-        boardStatus !== "no_data"
+        boardStatus !== "outside_window"
       ) {
         if (nextDeparture.status === "cancelled") {
           boardStatus = "cancelled";
@@ -1178,7 +1178,14 @@ export class PgStore {
         } else if (nextDeparture.status === "on_time") {
           boardStatus = "on_time";
           boardStatusLabel = nextDeparture.statusLabel;
+        } else if (nextDeparture.status === "unknown") {
+          boardStatusLabel = nextDeparture.statusLabel;
         }
+        if (ingestDegraded) {
+          boardStatusLabel = `Dégradé · ${boardStatusLabel}`;
+        }
+      } else if (ingestDegraded && boardStatus === "no_data") {
+        boardStatusLabel = "Mode dégradé";
       }
 
       const originStation = stationByExt.get(j.originId);
