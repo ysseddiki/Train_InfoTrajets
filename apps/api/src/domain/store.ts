@@ -1058,6 +1058,63 @@ export class PgStore {
       exhausted: used >= limit,
     };
   }
+
+  async clearStats(input: {
+    eventSources?: Array<"stub" | "prim" | "navitia">;
+    deliveries?: boolean;
+  }): Promise<{ deletedEvents: number; deletedDeliveries: number }> {
+    const sources = [...new Set(input.eventSources ?? [])].filter(
+      (s): s is "stub" | "prim" | "navitia" =>
+        s === "stub" || s === "prim" || s === "navitia",
+    );
+    const clearDeliveries = input.deliveries === true;
+    if (sources.length === 0 && !clearDeliveries) {
+      throw Object.assign(new Error("Nothing selected to clear"), {
+        statusCode: 400,
+      });
+    }
+
+    const pool = getPool();
+    const client = await pool.connect();
+    let deletedEvents = 0;
+    let deletedDeliveries = 0;
+    try {
+      await client.query("BEGIN");
+
+      if (sources.length > 0) {
+        const ev = await client.query(
+          `DELETE FROM disruption_events
+           WHERE source = ANY($1::text[])
+           RETURNING id`,
+          [sources],
+        );
+        deletedEvents = ev.rowCount ?? 0;
+        const ids = ev.rows.map((r) => String(r.id));
+        if (ids.length > 0) {
+          const linked = await client.query(
+            `DELETE FROM alert_deliveries
+             WHERE event_id = ANY($1::uuid[])`,
+            [ids],
+          );
+          deletedDeliveries += linked.rowCount ?? 0;
+        }
+      }
+
+      if (clearDeliveries) {
+        const del = await client.query(`DELETE FROM alert_deliveries`);
+        deletedDeliveries += del.rowCount ?? 0;
+      }
+
+      await client.query("COMMIT");
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+
+    return { deletedEvents, deletedDeliveries };
+  }
 }
 
 export const store = new PgStore();

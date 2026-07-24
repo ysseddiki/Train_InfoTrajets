@@ -8,6 +8,7 @@ import type {
 } from "@sncf-alerts/shared";
 import {
   Bug,
+  Eraser,
   Gauge,
   LogOut,
   Mail,
@@ -24,6 +25,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiGet, apiSend } from "../api/client";
+import { ClearStatsPanel } from "../components/ClearStatsPanel";
 import { LiaisonForm } from "../components/LiaisonForm";
 import { QuotaPanel } from "../components/QuotaPanel";
 import { errorMessage } from "../lib/format";
@@ -35,6 +37,7 @@ type AdminSectionId =
   | "recipients"
   | "channels"
   | "quota"
+  | "clear-stats"
   | "debug";
 
 const ADMIN_SECTIONS: {
@@ -66,6 +69,13 @@ const ADMIN_SECTIONS: {
     label: "Quota API",
     description: "Consommation journalière des appels Navitia (limite 5000).",
     icon: Gauge,
+  },
+  {
+    id: "clear-stats",
+    label: "Clear stats",
+    description:
+      "Effacer les stats dashboard (retards, suppressions, notifs) par source.",
+    icon: Eraser,
   },
   {
     id: "debug",
@@ -399,6 +409,9 @@ function AdminConsole({
       break;
     case "quota":
       panelBody = <QuotaPanel quota={quota} />;
+      break;
+    case "clear-stats":
+      panelBody = <ClearStatsPanel />;
       break;
     case "debug":
       panelBody = (

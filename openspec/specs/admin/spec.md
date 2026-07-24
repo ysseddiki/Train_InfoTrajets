@@ -57,6 +57,17 @@ Si **Veille continue** est cochée, la liste MUST être désactivée (grisée) ;
 - **WHEN** le formulaire s’affiche
 - **THEN** le select 0–12 h est disabled
 
+### Requirement: Clear stats par source
+
+Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `prim`, et/ou livraisons email/Teams.
+
+#### Scenario: Clear événements stub seulement
+
+- **GIVEN** un admin authentifié
+- **WHEN** il envoie `POST /v1/admin/stats/clear` avec `eventSources: ["stub"]`
+- **THEN** seuls les événements `source=stub` (et livraisons liées) sont supprimés
+- **AND** les événements Navitia / PRIM restent
+
 ### Requirement: Destinataires email saisis par l’admin
 
 Un admin SHALL pouvoir ajouter et retirer des adresses email destinataires dans l’interface ; ces adresses sont les seules cibles email v1.

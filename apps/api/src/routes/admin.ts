@@ -177,6 +177,28 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return store.getApiQuota("navitia");
   });
 
+  app.post<{
+    Body?: {
+      eventSources?: Array<"stub" | "prim" | "navitia">;
+      deliveries?: boolean;
+    };
+  }>("/v1/admin/stats/clear", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    try {
+      return await store.clearStats({
+        eventSources: req.body?.eventSources,
+        deliveries: req.body?.deliveries,
+      });
+    } catch (err) {
+      const status = (err as { statusCode?: number }).statusCode ?? 500;
+      return reply.code(status).send({
+        type: status === 400 ? "/errors/validation" : "/errors/server",
+        title: err instanceof Error ? err.message : "Error",
+        status,
+      });
+    }
+  });
+
   app.put<{ Body: RecipientsConfig }>(
     "/v1/admin/channels/recipients",
     async (req, reply) => {

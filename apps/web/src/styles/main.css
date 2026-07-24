@@ -439,6 +439,52 @@ button.danger-ghost {
   font-size: 0.9rem;
 }
 
+.clear-stats-panel > .muted {
+  margin-top: 0;
+}
+
+.clear-stats-group {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem 0.5rem;
+}
+
+.clear-stats-group legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.clear-stats-options {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.clear-stats-option {
+  align-items: flex-start;
+}
+
+.clear-stats-option span {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.clear-stats-hint {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 400;
+}
+
+button.danger-action {
+  background: var(--danger);
+}
+
+button.danger-action:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 @media (max-width: 800px) {
   .admin-layout {
     grid-template-columns: 1fr;

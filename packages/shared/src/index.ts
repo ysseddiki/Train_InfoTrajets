@@ -271,6 +271,21 @@ export interface ApiQuotaStatus {
   exhausted: boolean;
 }
 
+export type IngestEventSource = "stub" | "prim" | "navitia";
+
+/** Sources décorrélées pour vider les stats dashboard (retards, etc.). */
+export interface ClearStatsRequest {
+  /** Supprime les événements ingest de ces sources (et livraisons liées). */
+  eventSources?: IngestEventSource[];
+  /** Supprime l’historique des livraisons email/Teams. */
+  deliveries?: boolean;
+}
+
+export interface ClearStatsResult {
+  deletedEvents: number;
+  deletedDeliveries: number;
+}
+
 export interface HealthResponse {
   status: "ok" | "degraded";
   version: string;
