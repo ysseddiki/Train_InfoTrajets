@@ -7,7 +7,9 @@ alwaysApply: false
 # Admin console
 
 - Login simple obligatoire avant toute mutation
-- Configurer le **voyage A/R** (gares une fois, fenêtres Aller/Retour, Semaine/Week-end, TER implicite)
+- Layout : **nav gauche** par catégorie (`ADMIN_SECTIONS`) + panneau contenu ; ajouter un paramètre = une entrée dans la liste
+- Catégories v1 : Voyage A/R, Destinataires, Canaux, Debug
+- Voyage A/R : gares une fois, fenêtres Aller/Retour, Semaine/Week-end, TER implicite
 - Destinataires = liste saisie par l’admin (pas d’auto-inscription)
 - Champs secrets : write-only / masked après sauvegarde
 - Boutons test d’envoi par canal

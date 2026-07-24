@@ -135,6 +135,133 @@ main.main-wide {
   max-width: 1100px;
 }
 
+.admin-shell-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.admin-shell-head h1 {
+  margin: 0 0 0.25rem;
+}
+
+.admin-user {
+  margin: 0;
+}
+
+.admin-shell-head .secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.admin-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.admin-nav {
+  position: sticky;
+  top: 4.5rem;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 0.85rem 0.65rem;
+}
+
+.admin-nav-label {
+  margin: 0 0.55rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.admin-nav-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.2rem;
+}
+
+.admin-nav-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.65rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 550;
+  text-align: left;
+  cursor: pointer;
+}
+
+.admin-nav-item:hover {
+  background: color-mix(in srgb, var(--accent-soft) 70%, white);
+}
+
+.admin-nav-item.is-active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.admin-panel-head {
+  margin-bottom: 1rem;
+}
+
+.admin-panel-head h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.45rem;
+  letter-spacing: -0.02em;
+}
+
+.admin-panel-head .lede {
+  margin: 0;
+}
+
+.admin-panel-body .voyage-form,
+.admin-panel-body > .card {
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .admin-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-nav {
+    position: static;
+    padding: 0.65rem;
+  }
+
+  .admin-nav-label {
+    display: none;
+  }
+
+  .admin-nav-list {
+    display: flex;
+    gap: 0.35rem;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+  }
+
+  .admin-nav-item {
+    width: auto;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+}
+
 .page-enter {
   animation: page-in 0.35s ease both;
 }

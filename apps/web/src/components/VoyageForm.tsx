@@ -141,7 +141,6 @@ export function VoyageForm({
 
   return (
     <form className="card voyage-form" onSubmit={(e) => void onSubmit(e)}>
-      <h2>Voyage A/R</h2>
       <p className="muted">
         Une paire de gares : le matin on surveille les départs de{" "}
         <strong>A vers B</strong>, le soir de <strong>B vers A</strong>. Réseau

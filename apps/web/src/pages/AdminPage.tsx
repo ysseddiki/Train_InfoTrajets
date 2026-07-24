@@ -5,12 +5,53 @@ import type {
   SmtpConfigPublic,
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { Bug, LogOut, Mail, Radio, Route } from "lucide-react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { apiGet, apiSend } from "../api/client";
 import { VoyageForm } from "../components/VoyageForm";
 import { errorMessage } from "../lib/format";
 
 type AdminMe = { username: string };
+
+type AdminSectionId = "voyage" | "recipients" | "channels" | "debug";
+
+const ADMIN_SECTIONS: {
+  id: AdminSectionId;
+  label: string;
+  description: string;
+  icon: typeof Route;
+}[] = [
+  {
+    id: "voyage",
+    label: "Voyage A/R",
+    description: "Gares, fenêtres horaires et jours de surveillance.",
+    icon: Route,
+  },
+  {
+    id: "recipients",
+    label: "Destinataires",
+    description: "Adresses email qui reçoivent les alertes.",
+    icon: Mail,
+  },
+  {
+    id: "channels",
+    label: "Canaux",
+    description: "État SMTP et Teams, tests d’envoi.",
+    icon: Radio,
+  },
+  {
+    id: "debug",
+    label: "Debug",
+    description: "Injection d’événements stub pour valider le matching.",
+    icon: Bug,
+  },
+];
 
 function AdminConsole({
   username,
@@ -19,6 +60,7 @@ function AdminConsole({
   username: string;
   onLogout: () => void;
 }) {
+  const [section, setSection] = useState<AdminSectionId>("voyage");
   const [outbound, setOutbound] = useState<JourneyConfig | null>(null);
   const [inbound, setInbound] = useState<JourneyConfig | null>(null);
   const [recipients, setRecipients] = useState<RecipientsConfig | null>(null);
@@ -141,28 +183,21 @@ function AdminConsole({
     return <p className="muted page-enter">Chargement…</p>;
   }
 
-  return (
-    <div className="page-enter">
-      <h1>Console admin</h1>
-      <p>
-        Connecté : <strong>{username}</strong>{" "}
-        <button type="button" className="secondary" onClick={onLogout}>
-          Déconnexion
-        </button>
-      </p>
+  const active = ADMIN_SECTIONS.find((s) => s.id === section)!;
 
-      <section className="voyage-block">
-        <VoyageForm outbound={outbound} inbound={inbound} />
-      </section>
-
-      <section className="card" style={{ marginTop: "1rem" }}>
-        <h2>Destinataires email</h2>
-        <form onSubmit={(e) => void saveRecipients(e)}>
+  let panelBody: ReactNode;
+  switch (section) {
+    case "voyage":
+      panelBody = <VoyageForm outbound={outbound} inbound={inbound} />;
+      break;
+    case "recipients":
+      panelBody = (
+        <form className="card" onSubmit={(e) => void saveRecipients(e)}>
           <label>
             Emails (un par ligne)
             <textarea
               name="emails"
-              rows={4}
+              rows={6}
               defaultValue={recipients.emails.join("\n")}
             />
           </label>
@@ -173,81 +208,132 @@ function AdminConsole({
             </p>
           )}
         </form>
-      </section>
-
-      <section className="grid" style={{ marginTop: "1rem" }}>
-        <article className="card">
-          <h2>SMTP</h2>
-          <ul>
-            <li>Activé : {smtp.enabled ? "oui" : "non"}</li>
-            <li>Host : {smtp.host || "—"}</li>
-            <li>From : {smtp.fromAddress || "—"}</li>
-            <li>
-              Password : {smtp.passwordConfigured ? "configuré" : "manquant"}
-            </li>
-          </ul>
+      );
+      break;
+    case "channels":
+      panelBody = (
+        <div className="grid">
+          <article className="card">
+            <h3>SMTP</h3>
+            <ul>
+              <li>Activé : {smtp.enabled ? "oui" : "non"}</li>
+              <li>Host : {smtp.host || "—"}</li>
+              <li>From : {smtp.fromAddress || "—"}</li>
+              <li>
+                Password : {smtp.passwordConfigured ? "configuré" : "manquant"}
+              </li>
+            </ul>
+            <p className="muted">
+              Secrets SMTP via <code>.env</code> (jamais affichés).
+            </p>
+            <button type="button" onClick={() => void testEmail()}>
+              Envoyer un test email
+            </button>
+            {emailMsg && (
+              <p className={emailMsg.ok ? "ok" : "error"}>{emailMsg.text}</p>
+            )}
+          </article>
+          <article className="card">
+            <h3>Teams</h3>
+            <ul>
+              <li>Activé : {teams.enabled ? "oui" : "non"}</li>
+              <li>
+                Webhook : {teams.webhookConfigured ? "configuré" : "manquant"}
+              </li>
+            </ul>
+            <p className="muted">
+              URL webhook via <code>.env</code>.
+            </p>
+            <button type="button" onClick={() => void testTeams()}>
+              Envoyer un test Teams
+            </button>
+            {teamsMsg && (
+              <p className={teamsMsg.ok ? "ok" : "error"}>{teamsMsg.text}</p>
+            )}
+          </article>
+        </div>
+      );
+      break;
+    case "debug":
+      panelBody = (
+        <section className="card debug">
           <p className="muted">
-            Secrets SMTP via <code>.env</code> (jamais affichés).
+            Injecte un événement stub et déclenche le matching / notifications.
           </p>
-          <button type="button" onClick={() => void testEmail()}>
-            Envoyer un test email
+          <label>
+            Sens
+            <select
+              value={stubDirection}
+              onChange={(e) =>
+                setStubDirection(e.target.value as JourneyDirection)
+              }
+            >
+              <option value="outbound">Aller</option>
+              <option value="inbound">Retour</option>
+            </select>
+          </label>
+          <label>
+            Retard (min)
+            <input
+              type="number"
+              value={stubDelay}
+              onChange={(e) => setStubDelay(Number(e.target.value))}
+            />
+          </label>
+          <button type="button" onClick={() => void injectStub()}>
+            Injecter événement stub
           </button>
-          {emailMsg && (
-            <p className={emailMsg.ok ? "ok" : "error"}>{emailMsg.text}</p>
+          {stubMsg && (
+            <p className={stubMsg.ok ? "ok" : "error"}>{stubMsg.text}</p>
           )}
-        </article>
-        <article className="card">
-          <h2>Teams</h2>
-          <ul>
-            <li>Activé : {teams.enabled ? "oui" : "non"}</li>
-            <li>
-              Webhook : {teams.webhookConfigured ? "configuré" : "manquant"}
-            </li>
-          </ul>
-          <p className="muted">
-            URL webhook via <code>.env</code>.
-          </p>
-          <button type="button" onClick={() => void testTeams()}>
-            Envoyer un test Teams
-          </button>
-          {teamsMsg && (
-            <p className={teamsMsg.ok ? "ok" : "error"}>{teamsMsg.text}</p>
-          )}
-        </article>
-      </section>
+        </section>
+      );
+      break;
+  }
 
-      <section className="card debug" style={{ marginTop: "1rem" }}>
-        <h2>Debug ingest (admin)</h2>
-        <p className="muted">
-          Injecte un événement stub et déclenche le matching / notifications.
-        </p>
-        <label>
-          Sens
-          <select
-            value={stubDirection}
-            onChange={(e) =>
-              setStubDirection(e.target.value as JourneyDirection)
-            }
-          >
-            <option value="outbound">Aller</option>
-            <option value="inbound">Retour</option>
-          </select>
-        </label>
-        <label>
-          Retard (min){" "}
-          <input
-            type="number"
-            value={stubDelay}
-            onChange={(e) => setStubDelay(Number(e.target.value))}
-          />
-        </label>
-        <button type="button" onClick={() => void injectStub()}>
-          Injecter événement stub
+  return (
+    <div className="page-enter admin-shell">
+      <header className="admin-shell-head">
+        <div>
+          <h1>Console admin</h1>
+          <p className="muted admin-user">
+            Connecté : <strong>{username}</strong>
+          </p>
+        </div>
+        <button type="button" className="secondary" onClick={onLogout}>
+          <LogOut size={16} strokeWidth={2} aria-hidden />
+          Déconnexion
         </button>
-        {stubMsg && (
-          <p className={stubMsg.ok ? "ok" : "error"}>{stubMsg.text}</p>
-        )}
-      </section>
+      </header>
+
+      <div className="admin-layout">
+        <nav className="admin-nav" aria-label="Paramètres admin">
+          <p className="admin-nav-label">Paramètres</p>
+          <ul className="admin-nav-list">
+            {ADMIN_SECTIONS.map(({ id, label, icon: Icon }) => (
+              <li key={id}>
+                <button
+                  type="button"
+                  className={`admin-nav-item${section === id ? " is-active" : ""}`}
+                  onClick={() => setSection(id)}
+                  aria-current={section === id ? "page" : undefined}
+                >
+                  <Icon size={18} strokeWidth={2} aria-hidden />
+                  <span>{label}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </nav>
+
+        <section className="admin-panel" aria-labelledby="admin-panel-title">
+          <header className="admin-panel-head">
+            <h2 id="admin-panel-title">{active.label}</h2>
+            <p className="lede">{active.description}</p>
+          </header>
+          <div className="admin-panel-body">{panelBody}</div>
+        </section>
+      </div>
     </div>
   );
 }
