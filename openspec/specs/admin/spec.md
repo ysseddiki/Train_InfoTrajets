@@ -2,7 +2,7 @@
 
 ## Purpose
 
-La console d’administration permet à un admin authentifié de configurer les trajets Aller/Retour, le SMTP, les destinataires email, le canal Teams, et de lancer des tests d’envoi.
+La console d’administration permet à un admin authentifié de configurer les **liaisons** (Aller/Retour), le SMTP, les destinataires email, le canal Teams, et de lancer des tests d’envoi.
 
 ## Requirements
 
@@ -13,34 +13,34 @@ La console admin MUST exiger un login simple (session serveur) avant tout accès
 #### Scenario: Accès non authentifié
 
 - **GIVEN** aucune session admin
-- **WHEN** un client appelle `GET /v1/admin/journeys`
+- **WHEN** un client appelle `GET /v1/admin/liaisons`
 - **THEN** l’API retourne `401`
 
-### Requirement: Configuration des trajets Aller et Retour
+### Requirement: Configuration des liaisons
 
-Un admin authentifié SHALL pouvoir créer et mettre à jour les deux trajets (`outbound`, `inbound`) : origine, destination, fenêtre horaire, jours, seuil de retard. L’interface MAY unifier la saisie en un voyage A/R tout en conservant les endpoints par `direction`.
+Un admin authentifié SHALL pouvoir lister, créer, mettre à jour et supprimer des liaisons (chaque liaison = `outbound` + `inbound`). Le nom MAY être vide : l’affichage MUST alors utiliser `origine <-> destination`. Au moins une liaison MUST rester.
 
-#### Scenario: Mise à jour du trajet Aller
+#### Scenario: Mise à jour d’une liaison
 
 - **GIVEN** un admin authentifié
-- **WHEN** il envoie `PUT /v1/admin/journeys/outbound` avec une config valide
-- **THEN** le trajet Aller est persisté et renvoyé (sans secrets)
+- **WHEN** il envoie `PUT /v1/admin/liaisons/:id` avec une config valide
+- **THEN** les deux sens sont persistés et la liaison est renvoyée (sans secrets)
 
-### Requirement: Console voyage A/R unifié
+#### Scenario: Nom auto
 
-La console admin SHALL présenter la configuration des trajets comme **un seul voyage aller-retour** : une paire de gares (miroir automatique Aller/Retour), fenêtres horaires distinctes par sens, jours via Semaine / Week-end, réseau TER implicite (pas de choix réseau dans l’UI).
+- **GIVEN** une liaison avec `name` vide et gares Nice / Monaco
+- **WHEN** l’UI ou l’API calcule `displayName`
+- **THEN** la valeur est basée sur les libellés des gares au format `départ <-> arrivée`
 
-#### Scenario: Enregistrement du voyage
+### Requirement: Console liaison unifiée
 
-- **GIVEN** un admin authentifié sur la console
-- **WHEN** il saisit gare A, gare B, fenêtres Aller/Retour et jours Semaine et/ou Week-end, puis enregistre
-- **THEN** le client persiste `outbound` (A→B) et `inbound` (B→A) via les `PUT /v1/admin/journeys/:direction` existants avec `network` TER
+La console admin SHALL présenter chaque liaison comme un formulaire unifié : une paire de gares (miroir automatique), fenêtres distinctes par sens, jours Semaine / Week-end, réseau TER implicite.
 
-#### Scenario: Pas de choix réseau
+#### Scenario: Enregistrement
 
-- **GIVEN** la console admin voyage
-- **WHEN** l’admin configure le voyage
-- **THEN** aucun champ réseau n’est proposé ; la valeur persistée est TER
+- **GIVEN** un admin authentifié
+- **WHEN** il enregistre une liaison
+- **THEN** le client appelle `PUT /v1/admin/liaisons/:id` avec `network` TER
 
 ### Requirement: Destinataires email saisis par l’admin
 

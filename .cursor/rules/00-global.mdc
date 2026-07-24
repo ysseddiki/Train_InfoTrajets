@@ -8,7 +8,7 @@ alwaysApply: true
 ## Produit v1
 
 - Outil **ops interne** (pas B2C voyageur)
-- Exactement **2 trajets** : Aller (`outbound`) + Retour (`inbound`)
+- Exactement **N liaisons** (Aller/Retour par liaison) : au moins une, plusieurs possibles
 - Surfaces : **Dashboard** (sans login app, réseau trusté) + **Admin** (login simple)
 - Un seul acteur applicatif : **admin** — pas de comptes viewer / inscription en v1
 - Notifications : **Email SMTP custom** + **Teams** uniquement

@@ -20,6 +20,8 @@ export interface TimeWindow {
 }
 
 export interface JourneyConfig {
+  id: string;
+  liaisonId: string;
   direction: JourneyDirection;
   label: string;
   /** Gare surveillée (écran départs) */
@@ -35,6 +37,47 @@ export interface JourneyConfig {
   severities: DisruptionKind[];
   active: boolean;
   updatedAt: string;
+}
+
+/** Nom auto si l’admin ne saisit pas de libellé custom. */
+export function defaultLiaisonName(
+  originLabel: string,
+  destinationLabel: string,
+): string {
+  const a = originLabel.trim() || "Départ";
+  const b = destinationLabel.trim() || "Arrivée";
+  return `${a} <-> ${b}`;
+}
+
+export function resolveLiaisonDisplayName(
+  customName: string | null | undefined,
+  originLabel: string,
+  destinationLabel: string,
+): string {
+  const custom = customName?.trim();
+  if (custom) return custom;
+  return defaultLiaisonName(originLabel, destinationLabel);
+}
+
+/** Paire Aller/Retour (une liaison TER surveillée). */
+export interface LiaisonConfig {
+  id: string;
+  /** Libellé saisi ; vide → displayName auto « départ <-> arrivée » */
+  name: string;
+  displayName: string;
+  outbound: JourneyConfig;
+  inbound: JourneyConfig;
+  updatedAt: string;
+}
+
+export interface LiaisonUpsertBody {
+  name?: string;
+  outbound: Partial<
+    Omit<JourneyConfig, "id" | "liaisonId" | "direction" | "updatedAt">
+  >;
+  inbound: Partial<
+    Omit<JourneyConfig, "id" | "liaisonId" | "direction" | "updatedAt">
+  >;
 }
 
 export type BoardTrafficStatus =
@@ -64,11 +107,17 @@ export interface DashboardPeriodStats {
   };
 }
 
+export interface LiaisonStatusCard {
+  id: string;
+  name: string;
+  displayName: string;
+  outbound: JourneyStatusCard | null;
+  inbound: JourneyStatusCard | null;
+}
+
 export interface DashboardOverview {
-  journeys: {
-    outbound: JourneyStatusCard | null;
-    inbound: JourneyStatusCard | null;
-  };
+  /** Liaisons surveillées (Aller + Retour par liaison). */
+  liaisons: LiaisonStatusCard[];
   stats: {
     /** @deprecated préférer periods.last24h — conservé pour compat */
     eventsLast24h: number;
@@ -94,6 +143,8 @@ export interface DashboardOverview {
 }
 
 export interface JourneyStatusCard {
+  id: string;
+  liaisonId: string;
   direction: JourneyDirection;
   label: string;
   active: boolean;
@@ -119,6 +170,8 @@ export interface JourneyStatusCard {
 export interface DisruptionEventDto {
   id: string;
   externalEventId: string;
+  journeyId: string | null;
+  liaisonId: string | null;
   direction: JourneyDirection | null;
   kind: DisruptionKind;
   severity: DisruptionSeverity;

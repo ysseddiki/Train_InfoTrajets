@@ -8,7 +8,7 @@ alwaysApply: false
 
 - Lecture seule : statut Aller + Retour, stats, événements, livraisons
 - Pas d’auth applicative (restriction réseau documentée)
-- Deux cartes sens (`outbound` / `inbound`) comme composition principale
+- Deux cartes sens (`outbound` / `inbound`) par **liaison** ; plusieurs liaisons possibles
 - Stack React : page `DashboardPage` + composants (`JourneyCard`, stats, tables)
 - Header partagé (`Layout`) : marque + nav icônes (Lucide)
 - Direction visuelle ops : statut dominant, stats secondaires, motion discrète

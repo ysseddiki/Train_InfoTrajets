@@ -1,11 +1,11 @@
 import type {
-  JourneyConfig,
   JourneyDirection,
+  LiaisonConfig,
   RecipientsConfig,
   SmtpConfigPublic,
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
-import { Bug, LogOut, Mail, Radio, Route } from "lucide-react";
+import { Bug, LogOut, Mail, Plus, Radio, Route, Trash2 } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -14,12 +14,12 @@ import {
   type ReactNode,
 } from "react";
 import { apiGet, apiSend } from "../api/client";
-import { VoyageForm } from "../components/VoyageForm";
+import { LiaisonForm } from "../components/LiaisonForm";
 import { errorMessage } from "../lib/format";
 
 type AdminMe = { username: string };
 
-type AdminSectionId = "voyage" | "recipients" | "channels" | "debug";
+type AdminSectionId = "liaisons" | "recipients" | "channels" | "debug";
 
 const ADMIN_SECTIONS: {
   id: AdminSectionId;
@@ -28,9 +28,9 @@ const ADMIN_SECTIONS: {
   icon: typeof Route;
 }[] = [
   {
-    id: "voyage",
-    label: "Voyage A/R",
-    description: "Gares, fenêtres horaires et jours de surveillance.",
+    id: "liaisons",
+    label: "Liaisons",
+    description: "Paires Aller/Retour surveillées (gares, fenêtres, jours).",
     icon: Route,
   },
   {
@@ -60,9 +60,9 @@ function AdminConsole({
   username: string;
   onLogout: () => void;
 }) {
-  const [section, setSection] = useState<AdminSectionId>("voyage");
-  const [outbound, setOutbound] = useState<JourneyConfig | null>(null);
-  const [inbound, setInbound] = useState<JourneyConfig | null>(null);
+  const [section, setSection] = useState<AdminSectionId>("liaisons");
+  const [liaisons, setLiaisons] = useState<LiaisonConfig[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [recipients, setRecipients] = useState<RecipientsConfig | null>(null);
   const [smtp, setSmtp] = useState<SmtpConfigPublic | null>(null);
   const [teams, setTeams] = useState<TeamsConfigPublic | null>(null);
@@ -81,24 +81,32 @@ function AdminConsole({
   const [stubMsg, setStubMsg] = useState<{ text: string; ok: boolean } | null>(
     null,
   );
+  const [liaisonActionMsg, setLiaisonActionMsg] = useState<{
+    text: string;
+    ok: boolean;
+  } | null>(null);
   const [stubDirection, setStubDirection] =
     useState<JourneyDirection>("outbound");
+  const [stubLiaisonId, setStubLiaisonId] = useState<string>("");
   const [stubDelay, setStubDelay] = useState(15);
+
+  const selected =
+    liaisons.find((l) => l.id === selectedId) ?? liaisons[0] ?? null;
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
-        const [o, i, r, s, t] = await Promise.all([
-          apiGet<JourneyConfig>("/v1/admin/journeys/outbound"),
-          apiGet<JourneyConfig>("/v1/admin/journeys/inbound"),
+        const [list, r, s, t] = await Promise.all([
+          apiGet<LiaisonConfig[]>("/v1/admin/liaisons"),
           apiGet<RecipientsConfig>("/v1/admin/channels/recipients"),
           apiGet<SmtpConfigPublic>("/v1/admin/channels/smtp"),
           apiGet<TeamsConfigPublic>("/v1/admin/channels/teams"),
         ]);
         if (cancelled) return;
-        setOutbound(o);
-        setInbound(i);
+        setLiaisons(list);
+        setSelectedId((prev) => prev ?? list[0]?.id ?? null);
+        setStubLiaisonId((prev) => prev || list[0]?.id || "");
         setRecipients(r);
         setSmtp(s);
         setTeams(t);
@@ -160,12 +168,45 @@ function AdminConsole({
     try {
       await apiSend("/v1/admin/debug/stub-event", "POST", {
         direction: stubDirection,
+        liaisonId: stubLiaisonId || undefined,
         delayMinutes: stubDelay,
         kind: "delay",
       });
       setStubMsg({ text: "Événement injecté — voir Notifications", ok: true });
     } catch {
       setStubMsg({ text: "Échec injection", ok: false });
+    }
+  }
+
+  async function addLiaison() {
+    setLiaisonActionMsg(null);
+    try {
+      const created = await apiSend<LiaisonConfig>("/v1/admin/liaisons", "POST");
+      setLiaisons((prev) => [...prev, created]);
+      setSelectedId(created.id);
+      setStubLiaisonId(created.id);
+      setLiaisonActionMsg({ text: "Liaison ajoutée", ok: true });
+    } catch {
+      setLiaisonActionMsg({ text: "Impossible d’ajouter", ok: false });
+    }
+  }
+
+  async function removeLiaison() {
+    if (!selected || liaisons.length <= 1) return;
+    if (!window.confirm(`Supprimer « ${selected.displayName} » ?`)) return;
+    setLiaisonActionMsg(null);
+    try {
+      await apiSend(`/v1/admin/liaisons/${selected.id}`, "DELETE");
+      const next = liaisons.filter((l) => l.id !== selected.id);
+      setLiaisons(next);
+      setSelectedId(next[0]?.id ?? null);
+      setStubLiaisonId(next[0]?.id ?? "");
+      setLiaisonActionMsg({ text: "Liaison supprimée", ok: true });
+    } catch {
+      setLiaisonActionMsg({
+        text: "Suppression impossible (au moins une liaison requise)",
+        ok: false,
+      });
     }
   }
 
@@ -179,7 +220,7 @@ function AdminConsole({
     );
   }
 
-  if (!outbound || !inbound || !recipients || !smtp || !teams) {
+  if (!recipients || !smtp || !teams || liaisons.length === 0 || !selected) {
     return <p className="muted page-enter">Chargement…</p>;
   }
 
@@ -187,8 +228,62 @@ function AdminConsole({
 
   let panelBody: ReactNode;
   switch (section) {
-    case "voyage":
-      panelBody = <VoyageForm outbound={outbound} inbound={inbound} />;
+    case "liaisons":
+      panelBody = (
+        <div className="liaison-manager">
+          <div className="liaison-toolbar">
+            <div className="liaison-picker" role="tablist" aria-label="Liaisons">
+              {liaisons.map((l) => (
+                <button
+                  key={l.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={l.id === selected.id}
+                  className={`liaison-chip${l.id === selected.id ? " is-active" : ""}`}
+                  onClick={() => setSelectedId(l.id)}
+                >
+                  {l.displayName}
+                </button>
+              ))}
+            </div>
+            <div className="liaison-actions">
+              <button type="button" className="secondary" onClick={() => void addLiaison()}>
+                <Plus size={16} strokeWidth={2} aria-hidden />
+                Ajouter
+              </button>
+              <button
+                type="button"
+                className="secondary danger-ghost"
+                onClick={() => void removeLiaison()}
+                disabled={liaisons.length <= 1}
+                title={
+                  liaisons.length <= 1
+                    ? "Au moins une liaison est requise"
+                    : "Supprimer cette liaison"
+                }
+              >
+                <Trash2 size={16} strokeWidth={2} aria-hidden />
+                Supprimer
+              </button>
+            </div>
+          </div>
+          {liaisonActionMsg && (
+            <p
+              className={`form-msg ${liaisonActionMsg.ok ? "ok" : "error"}`}
+            >
+              {liaisonActionMsg.text}
+            </p>
+          )}
+          <LiaisonForm
+            liaison={selected}
+            onSaved={(next) => {
+              setLiaisons((prev) =>
+                prev.map((l) => (l.id === next.id ? next : l)),
+              );
+            }}
+          />
+        </div>
+      );
       break;
     case "recipients":
       panelBody = (
@@ -260,6 +355,19 @@ function AdminConsole({
           <p className="muted">
             Injecte un événement stub et déclenche le matching / notifications.
           </p>
+          <label>
+            Liaison
+            <select
+              value={stubLiaisonId}
+              onChange={(e) => setStubLiaisonId(e.target.value)}
+            >
+              {liaisons.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             Sens
             <select

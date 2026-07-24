@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.1.2`  
+> **Version** : `1.2.0`  
 > **Date** : 2026-07-24  
-> **Change** : `openspec/changes/adopt-react-web`  
+> **Change** : `openspec/changes/multi-liaisons`  
 > **Format** : OpenSpec
 
 ---
@@ -12,9 +12,9 @@
 
 SNCF-Alerts est un outil **ops interne** (quelques opérateurs) qui :
 
-1. Surveille **deux trajets** configurés : **Aller** (`outbound`) et **Retour** (`inbound`)
-2. Affiche un **dashboard** de lecture (stats, état A/R, historique) — **sans login app**, derrière restriction réseau
-3. Expose une **console admin** (login simple) pour configurer trajets, SMTP, destinataires email, Teams
+1. Surveille **une ou plusieurs liaisons** (chaque liaison = **Aller** `outbound` + **Retour** `inbound`)
+2. Affiche un **dashboard** de lecture (stats, état par liaison, historique) — **sans login app**, derrière restriction réseau
+3. Expose une **console admin** (login simple) pour configurer liaisons, SMTP, destinataires email, Teams
 4. Envoie des notifications via **Email (SMTP custom)** et **Microsoft Teams**
 
 Le client (`apps/web`) et le serveur (`apps/api`) sont séparés. Specs détaillées : `openspec/specs/*`.
@@ -24,7 +24,6 @@ Le client (`apps/web`) et le serveur (`apps/api`) sont séparés. Specs détaill
 - Comptes viewer / inscription voyageurs (version lointaine possible)
 - SSO / OIDC / 2FA
 - Push, SMS
-- Plus de deux trajets
 - Billetterie, itinéraires alternatifs
 
 ---
@@ -49,7 +48,7 @@ Le système MUST disposer d’une baseline OpenSpec alignée sur le pivot ops (`
 
 ```text
 AdminAccount (unique)
-JourneyConfig (outbound | inbound) ──* DisruptionEvent
+Liaison ──2 JourneyConfig (outbound | inbound) ──* DisruptionEvent
 NotificationSettings ── EmailRecipients[]
                      ── SmtpConfig (secret_ref)
                      ── TeamsConfig (secret_ref)
@@ -68,19 +67,29 @@ AlertDelivery *── DisruptionEvent
 
 Pas d’autres users en v1.
 
-### 1.3 JourneyConfig
-
-Un enregistrement par sens (`direction`).
+### 1.2b Liaison
 
 | Champ | Type | Notes |
 |-------|------|-------|
-| `direction` | `outbound` \| `inbound` | PK logique (Aller / Retour) |
-| `label` | string | Ex. « Maison → Bureau » |
+| `id` | UUID | PK |
+| `name` | string | Custom ; vide → display `origine <-> destination` |
+| `updated_at` | datetime | UTC |
+
+### 1.3 JourneyConfig
+
+Un enregistrement par sens (`direction`) **par liaison**.
+
+| Champ | Type | Notes |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `liaison_id` | UUID | FK Liaison |
+| `direction` | `outbound` \| `inbound` | Unique avec `liaison_id` |
+| `label` | string | Ex. « Aller — Nice → Monaco » |
 | `origin_id` | string | ID gare/source externe |
 | `destination_id` | string | ID gare/source externe |
 | `origin_label` | string | Affichage |
 | `destination_label` | string | Affichage |
-| `network` | string | ex. `transilien`, `ter` |
+| `network` | string | `ter` (implicite UI) |
 | `days_of_week` | int[1..7] | 1=lundi |
 | `time_window` | `{ start, end }` | HH:mm, TZ `Europe/Paris` |
 | `min_delay_minutes` | int | Seuil retard |
@@ -94,8 +103,10 @@ Un enregistrement par sens (`direction`).
 |-------|------|-------|
 | `id` | UUID | PK |
 | `external_event_id` | string | unique (idempotence) |
-| `direction` | `outbound` \| `inbound` \| null | Match ou non matché |
-| `severity` | enum | delay, cancellation, … |
+| `journey_id` | UUID \| null | Leg matché |
+| `liaison_id` | UUID \| null | Liaison parente |
+| `direction` | `outbound` \| `inbound` \| null | Sens du leg |
+| `kind` | enum | delay, cancellation, … |
 | `severity` | enum | info, warning, critical |
 | `title` | string | |
 | `description` | string | |
@@ -146,8 +157,9 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 | Method | Path | Description |
 |--------|------|-------------|
 | GET | `/v1/health` | Santé API |
-| GET | `/v1/dashboard/overview` | Stats + statut A/R |
-| GET | `/v1/journeys` | Config publique des 2 trajets (sans secrets) |
+| GET | `/v1/dashboard/overview` | Stats + statut par liaison |
+| GET | `/v1/liaisons` | Config publique des liaisons |
+| GET | `/v1/journeys` | Config publique des legs (flat) |
 | GET | `/v1/events` | Événements récents (`?direction=`) |
 | GET | `/v1/deliveries` | Historique envois |
 
@@ -158,7 +170,9 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 | POST | `/v1/admin/login` | Login |
 | POST | `/v1/admin/logout` | Logout |
 | GET | `/v1/admin/me` | Session courante |
-| GET/PUT | `/v1/admin/journeys/:direction` | `outbound` \| `inbound` |
+| GET/POST | `/v1/admin/liaisons` | Liste / créer |
+| GET/PUT/DELETE | `/v1/admin/liaisons/:id` | Lire / maj / supprimer |
+| GET/PUT | `/v1/admin/journeys/:direction` | Compat (1ʳᵉ liaison) |
 | GET/PUT | `/v1/admin/channels/smtp` | Config SMTP (password write-only) |
 | GET/PUT | `/v1/admin/channels/teams` | Webhook Teams (write-only) |
 | GET/PUT | `/v1/admin/channels/recipients` | Liste emails |

@@ -1,4 +1,4 @@
--- SNCF-Alerts schema v1
+-- SNCF-Alerts schema v1.2 (multi-liaisons)
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -18,21 +18,30 @@ CREATE TABLE IF NOT EXISTS sessions (
 
 CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires_at);
 
+CREATE TABLE IF NOT EXISTS liaisons (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name TEXT NOT NULL DEFAULT '',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS journeys (
-  direction TEXT PRIMARY KEY CHECK (direction IN ('outbound', 'inbound')),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  liaison_id UUID NOT NULL REFERENCES liaisons(id) ON DELETE CASCADE,
+  direction TEXT NOT NULL CHECK (direction IN ('outbound', 'inbound')),
   label TEXT NOT NULL,
   origin_id TEXT NOT NULL DEFAULT '',
   destination_id TEXT NOT NULL DEFAULT '',
   origin_label TEXT NOT NULL DEFAULT '',
   destination_label TEXT NOT NULL DEFAULT '',
-  network TEXT NOT NULL DEFAULT 'transilien',
+  network TEXT NOT NULL DEFAULT 'ter',
   days_of_week INT[] NOT NULL DEFAULT '{1,2,3,4,5}',
   window_start TEXT NOT NULL DEFAULT '07:00',
   window_end TEXT NOT NULL DEFAULT '09:30',
   min_delay_minutes INT NOT NULL DEFAULT 10,
   severities TEXT[] NOT NULL DEFAULT '{delay,cancellation}',
   active BOOLEAN NOT NULL DEFAULT false,
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (liaison_id, direction)
 );
 
 CREATE TABLE IF NOT EXISTS recipients (
@@ -42,6 +51,8 @@ CREATE TABLE IF NOT EXISTS recipients (
 CREATE TABLE IF NOT EXISTS disruption_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   external_event_id TEXT NOT NULL UNIQUE,
+  journey_id UUID,
+  liaison_id UUID,
   direction TEXT CHECK (direction IS NULL OR direction IN ('outbound', 'inbound')),
   kind TEXT NOT NULL,
   severity TEXT NOT NULL,

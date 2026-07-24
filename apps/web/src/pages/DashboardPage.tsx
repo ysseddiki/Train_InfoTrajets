@@ -69,7 +69,7 @@ export function DashboardPage() {
           <p className="eyebrow">Ops · lecture</p>
           <h1>Dashboard</h1>
           <p className="lede">
-            État en cours des trajets Aller / Retour, puis historique issu de
+            État en cours des liaisons Aller / Retour, puis historique issu de
             l’ingest.
           </p>
         </div>
@@ -97,9 +97,19 @@ export function DashboardPage() {
           </div>
           <p className="ingest-detail">{data.lastIngest?.detail ?? "—"}</p>
         </div>
-        <div className="grid journey-grid">
-          <JourneyCard title="Aller" card={data.journeys.outbound} />
-          <JourneyCard title="Retour" card={data.journeys.inbound} />
+        <div className="liaison-dash-list">
+          {data.liaisons.map((liaison) => (
+            <div key={liaison.id} className="liaison-dash-block">
+              <h2 className="liaison-dash-title">{liaison.displayName}</h2>
+              <div className="grid journey-grid">
+                <JourneyCard title="Aller" card={liaison.outbound} />
+                <JourneyCard title="Retour" card={liaison.inbound} />
+              </div>
+            </div>
+          ))}
+          {data.liaisons.length === 0 && (
+            <p className="muted">Aucune liaison configurée.</p>
+          )}
         </div>
       </section>
 

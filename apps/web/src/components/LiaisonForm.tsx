@@ -1,4 +1,5 @@
-import type { JourneyConfig } from "@sncf-alerts/shared";
+import type { LiaisonConfig } from "@sncf-alerts/shared";
+import { defaultLiaisonName } from "@sncf-alerts/shared";
 import { useState, type FormEvent } from "react";
 import { apiSend } from "../api/client";
 
@@ -24,73 +25,51 @@ export function daysFromFlags(weekdays: boolean, weekend: boolean): number[] {
   return days;
 }
 
-type StationFields = {
-  id: string;
-  label: string;
-};
+type StationFields = { id: string; label: string };
 
-type JourneyPutBody = {
-  label: string;
-  originId: string;
-  originLabel: string;
-  destinationId: string;
-  destinationLabel: string;
-  network: string;
-  daysOfWeek: number[];
-  timeWindow: { start: string; end: string };
-  minDelayMinutes: number;
-  active: boolean;
-};
-
-export function buildPayloads(input: {
-  stationA: StationFields;
-  stationB: StationFields;
-  daysOfWeek: number[];
-  outboundWindow: { start: string; end: string };
-  inboundWindow: { start: string; end: string };
-  outboundActive: boolean;
-  inboundActive: boolean;
-  minDelayMinutes: number;
-}): { outbound: JourneyPutBody; inbound: JourneyPutBody } {
-  const { stationA: a, stationB: b } = input;
+function legPayload(
+  stationOrigin: StationFields,
+  stationDest: StationFields,
+  direction: "outbound" | "inbound",
+  daysOfWeek: number[],
+  timeWindow: { start: string; end: string },
+  minDelayMinutes: number,
+  active: boolean,
+) {
+  const a = stationOrigin;
+  const b = stationDest;
   return {
-    outbound: {
-      label: `Aller — ${a.label} → ${b.label}`,
-      originId: a.id,
-      originLabel: a.label,
-      destinationId: b.id,
-      destinationLabel: b.label,
-      network: NETWORK_TER,
-      daysOfWeek: input.daysOfWeek,
-      timeWindow: input.outboundWindow,
-      minDelayMinutes: input.minDelayMinutes,
-      active: input.outboundActive,
-    },
-    inbound: {
-      label: `Retour — ${b.label} → ${a.label}`,
-      originId: b.id,
-      originLabel: b.label,
-      destinationId: a.id,
-      destinationLabel: a.label,
-      network: NETWORK_TER,
-      daysOfWeek: input.daysOfWeek,
-      timeWindow: input.inboundWindow,
-      minDelayMinutes: input.minDelayMinutes,
-      active: input.inboundActive,
-    },
+    label:
+      direction === "outbound"
+        ? `Aller — ${a.label} → ${b.label}`
+        : `Retour — ${a.label} → ${b.label}`,
+    originId: a.id,
+    originLabel: a.label,
+    destinationId: b.id,
+    destinationLabel: b.label,
+    network: NETWORK_TER,
+    daysOfWeek,
+    timeWindow,
+    minDelayMinutes,
+    active,
   };
 }
 
-export function VoyageForm({
-  outbound,
-  inbound,
+export function LiaisonForm({
+  liaison,
+  onSaved,
 }: {
-  outbound: JourneyConfig;
-  inbound: JourneyConfig;
+  liaison: LiaisonConfig;
+  onSaved?: (next: LiaisonConfig) => void;
 }) {
+  const { outbound, inbound } = liaison;
   const dayFlags = flagsFromDays(outbound.daysOfWeek);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
+  const autoNameHint = defaultLiaisonName(
+    outbound.originLabel,
+    outbound.destinationLabel,
+  );
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -107,31 +86,47 @@ export function VoyageForm({
       fd.get("weekdays") === "on",
       fd.get("weekend") === "on",
     );
-    const payloads = buildPayloads({
-      stationA,
-      stationB,
-      daysOfWeek,
-      outboundWindow: {
-        start: String(fd.get("outboundStart") ?? "07:00").slice(0, 5),
-        end: String(fd.get("outboundEnd") ?? "09:30").slice(0, 5),
-      },
-      inboundWindow: {
-        start: String(fd.get("inboundStart") ?? "16:00").slice(0, 5),
-        end: String(fd.get("inboundEnd") ?? "19:00").slice(0, 5),
-      },
-      outboundActive: fd.get("outboundActive") === "on",
-      inboundActive: fd.get("inboundActive") === "on",
-      minDelayMinutes: Number(fd.get("minDelayMinutes") ?? 10),
-    });
+    const minDelayMinutes = Number(fd.get("minDelayMinutes") ?? 10);
+    const name = String(fd.get("name") ?? "").trim();
+
+    const body = {
+      name,
+      outbound: legPayload(
+        stationA,
+        stationB,
+        "outbound",
+        daysOfWeek,
+        {
+          start: String(fd.get("outboundStart") ?? "07:00").slice(0, 5),
+          end: String(fd.get("outboundEnd") ?? "09:30").slice(0, 5),
+        },
+        minDelayMinutes,
+        fd.get("outboundActive") === "on",
+      ),
+      inbound: legPayload(
+        stationB,
+        stationA,
+        "inbound",
+        daysOfWeek,
+        {
+          start: String(fd.get("inboundStart") ?? "16:00").slice(0, 5),
+          end: String(fd.get("inboundEnd") ?? "19:00").slice(0, 5),
+        },
+        minDelayMinutes,
+        fd.get("inboundActive") === "on",
+      ),
+    };
 
     setSaving(true);
     setMsg(null);
     try {
-      await Promise.all([
-        apiSend("/v1/admin/journeys/outbound", "PUT", payloads.outbound),
-        apiSend("/v1/admin/journeys/inbound", "PUT", payloads.inbound),
-      ]);
-      setMsg({ text: "Voyage enregistré", ok: true });
+      const next = await apiSend<LiaisonConfig>(
+        `/v1/admin/liaisons/${liaison.id}`,
+        "PUT",
+        body,
+      );
+      setMsg({ text: "Liaison enregistrée", ok: true });
+      onSaved?.(next);
     } catch {
       setMsg({ text: "Erreur à l’enregistrement", ok: false });
     } finally {
@@ -140,11 +135,27 @@ export function VoyageForm({
   }
 
   return (
-    <form className="card voyage-form" onSubmit={(e) => void onSubmit(e)}>
+    <form
+      key={liaison.id}
+      className="card voyage-form"
+      onSubmit={(e) => void onSubmit(e)}
+    >
       <p className="muted">
         Une paire de gares : le matin on surveille les départs de{" "}
         <strong>A vers B</strong>, le soir de <strong>B vers A</strong>. Réseau
         TER uniquement.
+      </p>
+
+      <label>
+        Nom de la liaison
+        <input
+          name="name"
+          defaultValue={liaison.name}
+          placeholder={autoNameHint}
+        />
+      </label>
+      <p className="muted field-hint">
+        Si vide → <code>{autoNameHint}</code>
       </p>
 
       <fieldset className="voyage-section">
@@ -299,7 +310,7 @@ export function VoyageForm({
       </label>
 
       <button type="submit" disabled={saving}>
-        {saving ? "Enregistrement…" : "Enregistrer le voyage"}
+        {saving ? "Enregistrement…" : "Enregistrer la liaison"}
       </button>
       {msg && (
         <p className={`form-msg ${msg.ok ? "ok" : "error"}`}>{msg.text}</p>

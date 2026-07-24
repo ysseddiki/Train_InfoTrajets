@@ -13,17 +13,36 @@ export interface DisruptionIngestPort {
 /** Inject a synthetic disruption (admin debug). */
 export async function injectStubEvent(input?: {
   direction?: JourneyDirection;
+  journeyId?: string;
+  liaisonId?: string;
   delayMinutes?: number;
   kind?: "delay" | "cancellation";
 }): Promise<void> {
-  const direction = input?.direction ?? "outbound";
+  const journeys = await store.listJourneys();
+  let journey =
+    (input?.journeyId
+      ? journeys.find((j) => j.id === input.journeyId)
+      : undefined) ??
+    (input?.liaisonId
+      ? journeys.find(
+          (j) =>
+            j.liaisonId === input.liaisonId &&
+            j.direction === (input.direction ?? "outbound"),
+        )
+      : undefined) ??
+    journeys.find((j) => j.direction === (input?.direction ?? "outbound")) ??
+    journeys[0];
+
+  const direction = journey?.direction ?? input?.direction ?? "outbound";
   const delayMinutes = input?.delayMinutes ?? 15;
   const kind = input?.kind ?? "delay";
   const now = new Date();
-  const externalEventId = `stub-${direction}-${now.toISOString()}`;
+  const externalEventId = `stub-${journey?.id ?? direction}-${now.toISOString()}`;
 
   const { event, created } = await store.upsertEvent({
     externalEventId,
+    journeyId: journey?.id ?? null,
+    liaisonId: journey?.liaisonId ?? null,
     direction,
     kind,
     severity: delayMinutes >= 20 ? "critical" : "warning",
@@ -195,10 +214,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
 
       const base = dep.stop_date_time?.base_departure_date_time ?? "unknown";
       const externalEventId =
-        `navitia-${journey.direction}-${journey.originId}-${base}-${directionText}`.slice(
-          0,
-          200,
-        );
+        `navitia-${journey.id}-${base}-${directionText}`.slice(0, 200);
 
       const kind = cancelled ? "cancellation" : "delay";
       if (!journey.severities.includes(kind)) continue;
@@ -207,6 +223,8 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
         delay == null ? "unknown" : `${delay} min`;
       const { event, created } = await store.upsertEvent({
         externalEventId,
+        journeyId: journey.id,
+        liaisonId: journey.liaisonId,
         direction: journey.direction,
         kind,
         severity:

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-SNCF-Alerts est un outil **ops interne** qui surveille deux trajets SNCF (**Aller** / **Retour**), affiche un dashboard de lecture, permet à un **admin** de configurer cibles et canaux, et envoie des alertes via **Email (SMTP custom)** et **Microsoft Teams**.
+SNCF-Alerts est un outil **ops interne** qui surveille une ou plusieurs **liaisons** SNCF (chaque liaison = Aller + Retour), affiche un dashboard de lecture, permet à un **admin** de configurer cibles et canaux, et envoie des alertes via **Email (SMTP custom)** et **Microsoft Teams**.
 
 Le client (`apps/web`) et le serveur (`apps/api`) sont strictement séparés. Les secrets et intégrations externes restent côté serveur. Aucun compte voyageur en v1 (éventuellement version lointaine).
 
@@ -10,7 +10,7 @@ Le client (`apps/web`) et le serveur (`apps/api`) sont strictement séparés. Le
 
 ### Requirement: Produit ops interne Aller/Retour
 
-Le système SHALL être un outil ops interne qui surveille exactement deux trajets configurés (`outbound` / Aller et `inbound` / Retour), expose un dashboard de lecture et une console admin, et notifie via Email (SMTP) et Teams.
+Le système SHALL être un outil ops interne qui surveille une ou plusieurs liaisons (chaque liaison = `outbound` / Aller et `inbound` / Retour), expose un dashboard de lecture et une console admin, et notifie via Email (SMTP) et Teams.
 
 #### Scenario: Périmètre v1
 
@@ -18,7 +18,7 @@ Le système SHALL être un outil ops interne qui surveille exactement deux traje
 - **WHEN** un opérateur utilise le produit
 - **THEN** seules les surfaces Dashboard et Admin sont disponibles
 - **AND** aucun compte voyageur ni canal push n’existe
-
+- **AND** au moins une liaison est configurée (seed par défaut)
 ### Requirement: Séparation client/serveur
 
 Le client web MUST n’appeler que l’API HTTP `/v1` ; les intégrations PRIM/Navitia, SMTP et Teams MUST s’exécuter uniquement côté serveur.

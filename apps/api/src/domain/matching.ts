@@ -77,12 +77,19 @@ export function resolveDirection(
   journeys: JourneyConfig[],
   event: Pick<
     DisruptionEventDto,
-    "kind" | "delayMinutes" | "startsAt" | "direction"
+    "kind" | "delayMinutes" | "startsAt" | "direction" | "journeyId"
   >,
 ): JourneyConfig | null {
-  if (event.direction) {
-    const j = journeys.find((x) => x.direction === event.direction);
+  if (event.journeyId) {
+    const j = journeys.find((x) => x.id === event.journeyId);
     if (j && matchesJourney(j, event)) return j;
+    return null;
+  }
+  if (event.direction) {
+    const candidates = journeys.filter((x) => x.direction === event.direction);
+    for (const j of candidates) {
+      if (matchesJourney(j, event)) return j;
+    }
     return null;
   }
   for (const j of journeys) {

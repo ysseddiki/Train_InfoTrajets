@@ -12,10 +12,15 @@ import type {
   IngestRunStatus,
   JourneyConfig,
   JourneyDirection,
+  JourneyStatusCard,
+  LiaisonConfig,
+  LiaisonStatusCard,
+  LiaisonUpsertBody,
   RecipientsConfig,
   SmtpConfigPublic,
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
+import { resolveLiaisonDisplayName } from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
 import { isWithinWatchWindow } from "./matching.js";
 
@@ -33,17 +38,33 @@ const MONACO_MONTE_CARLO = {
 } as const;
 
 /** Station-board model: origin = gare surveillée, destination = filtre de sens. */
-function emptyJourney(direction: JourneyDirection): Omit<JourneyConfig, "updatedAt"> {
+function emptyLeg(
+  liaisonId: string,
+  direction: JourneyDirection,
+  opts?: { active?: boolean; blank?: boolean },
+): Omit<JourneyConfig, "id" | "updatedAt"> {
   const isOutbound = direction === "outbound";
+  const blank = opts?.blank === true;
+  const origin = blank
+    ? { id: "", label: "" }
+    : isOutbound
+      ? NICE_VILLE
+      : MONACO_MONTE_CARLO;
+  const dest = blank
+    ? { id: "", label: "" }
+    : isOutbound
+      ? MONACO_MONTE_CARLO
+      : NICE_VILLE;
   return {
+    liaisonId,
     direction,
     label: isOutbound
-      ? "Aller — départs Nice vers Monaco"
-      : "Retour — départs Monaco vers Nice",
-    originId: isOutbound ? NICE_VILLE.id : MONACO_MONTE_CARLO.id,
-    destinationId: isOutbound ? MONACO_MONTE_CARLO.id : NICE_VILLE.id,
-    originLabel: isOutbound ? NICE_VILLE.label : MONACO_MONTE_CARLO.label,
-    destinationLabel: isOutbound ? MONACO_MONTE_CARLO.label : NICE_VILLE.label,
+      ? `Aller — ${origin.label || "A"} → ${dest.label || "B"}`
+      : `Retour — ${origin.label || "B"} → ${dest.label || "A"}`,
+    originId: origin.id,
+    destinationId: dest.id,
+    originLabel: origin.label,
+    destinationLabel: dest.label,
     network: "ter",
     daysOfWeek: [1, 2, 3, 4, 5],
     timeWindow: isOutbound
@@ -51,12 +72,14 @@ function emptyJourney(direction: JourneyDirection): Omit<JourneyConfig, "updated
       : { start: "16:00", end: "19:00" },
     minDelayMinutes: 10,
     severities: ["delay", "cancellation"],
-    active: true,
+    active: opts?.active ?? !blank,
   };
 }
 
 function mapJourney(row: Record<string, unknown>): JourneyConfig {
   return {
+    id: String(row.id),
+    liaisonId: String(row.liaison_id),
     direction: row.direction as JourneyDirection,
     label: String(row.label),
     originId: String(row.origin_id),
@@ -80,6 +103,8 @@ function mapEvent(row: Record<string, unknown>): DisruptionEventDto {
   return {
     id: String(row.id),
     externalEventId: String(row.external_event_id),
+    journeyId: row.journey_id ? String(row.journey_id) : null,
+    liaisonId: row.liaison_id ? String(row.liaison_id) : null,
     direction: (row.direction as JourneyDirection | null) ?? null,
     kind: row.kind as DisruptionKind,
     severity: row.severity as DisruptionSeverity,
@@ -189,67 +214,92 @@ export class PgStore {
     );
     const forceBoardDefaults = (boardSeed.rowCount ?? 0) === 0;
 
-    for (const direction of ["outbound", "inbound"] as JourneyDirection[]) {
-      const base = emptyJourney(direction);
-      if (forceBoardDefaults) {
-        await pool.query(
-          `INSERT INTO journeys (
-            direction, label, origin_id, destination_id, origin_label, destination_label,
-            network, days_of_week, window_start, window_end, min_delay_minutes, severities, active, updated_at
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,now())
-          ON CONFLICT (direction) DO UPDATE SET
-            label = EXCLUDED.label,
-            origin_id = EXCLUDED.origin_id,
-            destination_id = EXCLUDED.destination_id,
-            origin_label = EXCLUDED.origin_label,
-            destination_label = EXCLUDED.destination_label,
-            network = EXCLUDED.network,
-            days_of_week = EXCLUDED.days_of_week,
-            window_start = EXCLUDED.window_start,
-            window_end = EXCLUDED.window_end,
-            min_delay_minutes = EXCLUDED.min_delay_minutes,
-            severities = EXCLUDED.severities,
-            active = EXCLUDED.active,
-            updated_at = now()`,
-          [
-            base.direction,
-            base.label,
-            base.originId,
-            base.destinationId,
-            base.originLabel,
-            base.destinationLabel,
-            base.network,
-            base.daysOfWeek,
-            base.timeWindow.start,
-            base.timeWindow.end,
-            base.minDelayMinutes,
-            base.severities,
-            base.active,
-          ],
+    const liaisonCount = await pool.query(`SELECT COUNT(*)::int AS n FROM liaisons`);
+    const nLiaisons = Number(liaisonCount.rows[0]?.n ?? 0);
+
+    if (nLiaisons === 0 || forceBoardDefaults) {
+      let liaisonId: string;
+      if (nLiaisons === 0) {
+        const created = await pool.query(
+          `INSERT INTO liaisons (name, updated_at) VALUES ('', now()) RETURNING id`,
         );
+        liaisonId = String(created.rows[0].id);
       } else {
-        await pool.query(
-          `INSERT INTO journeys (
-            direction, label, origin_id, destination_id, origin_label, destination_label,
-            network, days_of_week, window_start, window_end, min_delay_minutes, severities, active
-          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-          ON CONFLICT (direction) DO NOTHING`,
-          [
-            base.direction,
-            base.label,
-            base.originId,
-            base.destinationId,
-            base.originLabel,
-            base.destinationLabel,
-            base.network,
-            base.daysOfWeek,
-            base.timeWindow.start,
-            base.timeWindow.end,
-            base.minDelayMinutes,
-            base.severities,
-            base.active,
-          ],
+        const first = await pool.query(
+          `SELECT id FROM liaisons ORDER BY updated_at ASC LIMIT 1`,
         );
+        liaisonId = String(first.rows[0].id);
+        if (forceBoardDefaults) {
+          await pool.query(`UPDATE liaisons SET name = '', updated_at = now() WHERE id = $1`, [
+            liaisonId,
+          ]);
+        }
+      }
+
+      for (const direction of ["outbound", "inbound"] as JourneyDirection[]) {
+        const base = emptyLeg(liaisonId, direction, { active: true });
+        if (forceBoardDefaults) {
+          await pool.query(
+            `INSERT INTO journeys (
+              liaison_id, direction, label, origin_id, destination_id, origin_label, destination_label,
+              network, days_of_week, window_start, window_end, min_delay_minutes, severities, active, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now())
+            ON CONFLICT (liaison_id, direction) DO UPDATE SET
+              label = EXCLUDED.label,
+              origin_id = EXCLUDED.origin_id,
+              destination_id = EXCLUDED.destination_id,
+              origin_label = EXCLUDED.origin_label,
+              destination_label = EXCLUDED.destination_label,
+              network = EXCLUDED.network,
+              days_of_week = EXCLUDED.days_of_week,
+              window_start = EXCLUDED.window_start,
+              window_end = EXCLUDED.window_end,
+              min_delay_minutes = EXCLUDED.min_delay_minutes,
+              severities = EXCLUDED.severities,
+              active = EXCLUDED.active,
+              updated_at = now()`,
+            [
+              liaisonId,
+              base.direction,
+              base.label,
+              base.originId,
+              base.destinationId,
+              base.originLabel,
+              base.destinationLabel,
+              base.network,
+              base.daysOfWeek,
+              base.timeWindow.start,
+              base.timeWindow.end,
+              base.minDelayMinutes,
+              base.severities,
+              base.active,
+            ],
+          );
+        } else {
+          await pool.query(
+            `INSERT INTO journeys (
+              liaison_id, direction, label, origin_id, destination_id, origin_label, destination_label,
+              network, days_of_week, window_start, window_end, min_delay_minutes, severities, active
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+            ON CONFLICT (liaison_id, direction) DO NOTHING`,
+            [
+              liaisonId,
+              base.direction,
+              base.label,
+              base.originId,
+              base.destinationId,
+              base.originLabel,
+              base.destinationLabel,
+              base.network,
+              base.daysOfWeek,
+              base.timeWindow.start,
+              base.timeWindow.end,
+              base.minDelayMinutes,
+              base.severities,
+              base.active,
+            ],
+          );
+        }
       }
     }
 
@@ -316,41 +366,43 @@ export class PgStore {
 
   async listJourneys(): Promise<JourneyConfig[]> {
     const pool = getPool();
-    const res = await pool.query(`SELECT * FROM journeys ORDER BY direction`);
+    const res = await pool.query(
+      `SELECT * FROM journeys ORDER BY liaison_id, direction`,
+    );
     return res.rows.map(mapJourney);
   }
 
-  async getJourney(direction: JourneyDirection): Promise<JourneyConfig | null> {
+  async getJourneyById(id: string): Promise<JourneyConfig | null> {
     const pool = getPool();
-    const res = await pool.query(`SELECT * FROM journeys WHERE direction = $1`, [
-      direction,
-    ]);
+    const res = await pool.query(`SELECT * FROM journeys WHERE id = $1`, [id]);
     if (res.rowCount === 0) return null;
     return mapJourney(res.rows[0]);
   }
 
-  async upsertJourney(
+  private async insertLeg(
+    liaisonId: string,
     direction: JourneyDirection,
     patch: Partial<JourneyConfig>,
   ): Promise<JourneyConfig> {
-    const current = (await this.getJourney(direction)) ?? {
-      ...emptyJourney(direction),
-      updatedAt: new Date().toISOString(),
-    };
-    const next: JourneyConfig = {
-      ...current,
+    const base = emptyLeg(liaisonId, direction, {
+      blank: true,
+      active: false,
+    });
+    const next: Omit<JourneyConfig, "id"> = {
+      ...base,
       ...patch,
+      liaisonId,
       direction,
-      timeWindow: patch.timeWindow ?? current.timeWindow,
+      timeWindow: patch.timeWindow ?? base.timeWindow,
       updatedAt: new Date().toISOString(),
     };
     const pool = getPool();
-    await pool.query(
+    const res = await pool.query(
       `INSERT INTO journeys (
-        direction, label, origin_id, destination_id, origin_label, destination_label,
+        liaison_id, direction, label, origin_id, destination_id, origin_label, destination_label,
         network, days_of_week, window_start, window_end, min_delay_minutes, severities, active, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
-      ON CONFLICT (direction) DO UPDATE SET
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+      ON CONFLICT (liaison_id, direction) DO UPDATE SET
         label = EXCLUDED.label,
         origin_id = EXCLUDED.origin_id,
         destination_id = EXCLUDED.destination_id,
@@ -363,8 +415,10 @@ export class PgStore {
         min_delay_minutes = EXCLUDED.min_delay_minutes,
         severities = EXCLUDED.severities,
         active = EXCLUDED.active,
-        updated_at = EXCLUDED.updated_at`,
+        updated_at = EXCLUDED.updated_at
+      RETURNING *`,
       [
+        next.liaisonId,
         next.direction,
         next.label,
         next.originId,
@@ -381,7 +435,177 @@ export class PgStore {
         next.updatedAt,
       ],
     );
-    return next;
+    return mapJourney(res.rows[0]);
+  }
+
+  private toLiaison(
+    id: string,
+    name: string,
+    updatedAt: string,
+    legs: JourneyConfig[],
+  ): LiaisonConfig | null {
+    const outbound = legs.find((j) => j.direction === "outbound");
+    const inbound = legs.find((j) => j.direction === "inbound");
+    if (!outbound || !inbound) return null;
+    return {
+      id,
+      name,
+      displayName: resolveLiaisonDisplayName(
+        name,
+        outbound.originLabel,
+        outbound.destinationLabel,
+      ),
+      outbound,
+      inbound,
+      updatedAt,
+    };
+  }
+
+  async listLiaisons(): Promise<LiaisonConfig[]> {
+    const pool = getPool();
+    const [liaisonsRes, journeys] = await Promise.all([
+      pool.query(`SELECT * FROM liaisons ORDER BY updated_at ASC`),
+      this.listJourneys(),
+    ]);
+    const out: LiaisonConfig[] = [];
+    for (const row of liaisonsRes.rows) {
+      const id = String(row.id);
+      const legs = journeys.filter((j) => j.liaisonId === id);
+      const liaison = this.toLiaison(
+        id,
+        String(row.name ?? ""),
+        new Date(String(row.updated_at)).toISOString(),
+        legs,
+      );
+      if (liaison) out.push(liaison);
+    }
+    return out;
+  }
+
+  async getLiaison(id: string): Promise<LiaisonConfig | null> {
+    const pool = getPool();
+    const res = await pool.query(`SELECT * FROM liaisons WHERE id = $1`, [id]);
+    if (res.rowCount === 0) return null;
+    const row = res.rows[0];
+    const legsRes = await pool.query(
+      `SELECT * FROM journeys WHERE liaison_id = $1`,
+      [id],
+    );
+    return this.toLiaison(
+      id,
+      String(row.name ?? ""),
+      new Date(String(row.updated_at)).toISOString(),
+      legsRes.rows.map(mapJourney),
+    );
+  }
+
+  async createLiaison(): Promise<LiaisonConfig> {
+    const pool = getPool();
+    const created = await pool.query(
+      `INSERT INTO liaisons (name, updated_at) VALUES ('', now()) RETURNING *`,
+    );
+    const liaisonId = String(created.rows[0].id);
+    const outbound = await this.insertLeg(liaisonId, "outbound", {
+      ...emptyLeg(liaisonId, "outbound", { blank: true, active: false }),
+    });
+    const inbound = await this.insertLeg(liaisonId, "inbound", {
+      ...emptyLeg(liaisonId, "inbound", { blank: true, active: false }),
+    });
+    return {
+      id: liaisonId,
+      name: "",
+      displayName: resolveLiaisonDisplayName(
+        "",
+        outbound.originLabel,
+        outbound.destinationLabel,
+      ),
+      outbound,
+      inbound,
+      updatedAt: new Date(String(created.rows[0].updated_at)).toISOString(),
+    };
+  }
+
+  async upsertLiaison(
+    id: string,
+    body: LiaisonUpsertBody,
+  ): Promise<LiaisonConfig> {
+    const current = await this.getLiaison(id);
+    if (!current) {
+      throw Object.assign(new Error("Liaison not found"), { statusCode: 404 });
+    }
+    const name =
+      body.name !== undefined ? String(body.name).trim() : current.name;
+
+    const outboundPatch = body.outbound ?? {};
+    const inboundPatch = body.inbound ?? {};
+
+    const outbound = await this.insertLeg(id, "outbound", {
+      ...current.outbound,
+      ...outboundPatch,
+      timeWindow: outboundPatch.timeWindow ?? current.outbound.timeWindow,
+    });
+    const inbound = await this.insertLeg(id, "inbound", {
+      ...current.inbound,
+      ...inboundPatch,
+      timeWindow: inboundPatch.timeWindow ?? current.inbound.timeWindow,
+    });
+
+    const pool = getPool();
+    const res = await pool.query(
+      `UPDATE liaisons SET name = $2, updated_at = now() WHERE id = $1 RETURNING *`,
+      [id, name],
+    );
+    return {
+      id,
+      name,
+      displayName: resolveLiaisonDisplayName(
+        name,
+        outbound.originLabel,
+        outbound.destinationLabel,
+      ),
+      outbound,
+      inbound,
+      updatedAt: new Date(String(res.rows[0].updated_at)).toISOString(),
+    };
+  }
+
+  async deleteLiaison(id: string): Promise<void> {
+    const pool = getPool();
+    const count = await pool.query(`SELECT COUNT(*)::int AS n FROM liaisons`);
+    if (Number(count.rows[0]?.n ?? 0) <= 1) {
+      throw Object.assign(new Error("Cannot delete the last liaison"), {
+        statusCode: 400,
+      });
+    }
+    const res = await pool.query(`DELETE FROM liaisons WHERE id = $1`, [id]);
+    if ((res.rowCount ?? 0) === 0) {
+      throw Object.assign(new Error("Liaison not found"), { statusCode: 404 });
+    }
+  }
+
+  /** @deprecated prefer getLiaison / listLiaisons — kept for single-leg lookups */
+  async getJourney(direction: JourneyDirection): Promise<JourneyConfig | null> {
+    const liaisons = await this.listLiaisons();
+    const first = liaisons[0];
+    if (!first) return null;
+    return direction === "outbound" ? first.outbound : first.inbound;
+  }
+
+  async upsertJourney(
+    direction: JourneyDirection,
+    patch: Partial<JourneyConfig>,
+  ): Promise<JourneyConfig> {
+    const liaisons = await this.listLiaisons();
+    let liaison = liaisons[0];
+    if (!liaison) {
+      liaison = await this.createLiaison();
+    }
+    const updated = await this.upsertLiaison(liaison.id, {
+      name: liaison.name,
+      outbound: direction === "outbound" ? patch : {},
+      inbound: direction === "inbound" ? patch : {},
+    });
+    return direction === "outbound" ? updated.outbound : updated.inbound;
   }
 
   async listEvents(
@@ -468,7 +692,6 @@ export class PgStore {
   }
 
   async getOverview(): Promise<DashboardOverview> {
-    const journeys = await this.listJourneys();
     const [events, recentEvents, recentDeliveries] = await Promise.all([
       this.listEvents(20),
       this.listEvents(12),
@@ -500,11 +723,15 @@ export class PgStore {
       : null;
 
     const RECENT_MS = 3 * 60 * 60 * 1000;
+    const liaisons = await this.listLiaisons();
 
-    const card = (direction: JourneyDirection) => {
-      const j = journeys.find((x) => x.direction === direction);
-      const latest = events.find((e) => e.direction === direction) ?? null;
-      if (!j) return null;
+    const card = (j: JourneyConfig): JourneyStatusCard => {
+      const latest =
+        events.find((e) => e.journeyId === j.id) ??
+        events.find(
+          (e) => e.liaisonId === j.liaisonId && e.direction === j.direction,
+        ) ??
+        null;
 
       const { boardStatus, boardStatusLabel } = resolveBoardStatus({
         journey: j,
@@ -515,7 +742,9 @@ export class PgStore {
       });
 
       return {
-        direction,
+        id: j.id,
+        liaisonId: j.liaisonId,
+        direction: j.direction,
         label: j.label,
         active: j.active,
         originLabel: j.originLabel,
@@ -539,11 +768,16 @@ export class PgStore {
       };
     };
 
+    const liaisonCards: LiaisonStatusCard[] = liaisons.map((l) => ({
+      id: l.id,
+      name: l.name,
+      displayName: l.displayName,
+      outbound: card(l.outbound),
+      inbound: card(l.inbound),
+    }));
+
     return {
-      journeys: {
-        outbound: card("outbound"),
-        inbound: card("inbound"),
-      },
+      liaisons: liaisonCards,
       stats: {
         eventsLast24h: last24h.events,
         deliveriesSentLast24h: last24h.deliveriesSent,
@@ -653,12 +887,14 @@ export class PgStore {
     if ((existing.rowCount ?? 0) > 0) {
       const res = await pool.query(
         `UPDATE disruption_events SET
-          direction = $2, kind = $3, severity = $4, title = $5, description = $6,
-          delay_minutes = $7, starts_at = $8, ends_at = $9, source = $10
+          journey_id = $2, liaison_id = $3, direction = $4, kind = $5, severity = $6,
+          title = $7, description = $8, delay_minutes = $9, starts_at = $10, ends_at = $11, source = $12
          WHERE external_event_id = $1
          RETURNING *`,
         [
           input.externalEventId,
+          input.journeyId,
+          input.liaisonId,
           input.direction,
           input.kind,
           input.severity,
@@ -674,12 +910,14 @@ export class PgStore {
     }
     const res = await pool.query(
       `INSERT INTO disruption_events (
-        external_event_id, direction, kind, severity, title, description,
+        external_event_id, journey_id, liaison_id, direction, kind, severity, title, description,
         delay_minutes, starts_at, ends_at, source, detected_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,COALESCE($11::timestamptz, now()))
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13::timestamptz, now()))
       RETURNING *`,
       [
         input.externalEventId,
+        input.journeyId,
+        input.liaisonId,
         input.direction,
         input.kind,
         input.severity,

@@ -234,6 +234,78 @@ main.main-wide {
   margin: 0;
 }
 
+.field-hint {
+  margin: -0.35rem 0 0.85rem;
+  font-size: 0.88rem;
+}
+
+.liaison-manager {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.liaison-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.liaison-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.liaison-chip {
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.liaison-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.liaison-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.liaison-actions .secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+button.danger-ghost {
+  color: var(--danger);
+}
+
+.liaison-dash-list {
+  display: grid;
+  gap: 1.5rem;
+}
+
+.liaison-dash-title {
+  margin: 0 0 0.65rem;
+  font-size: 1.15rem;
+  letter-spacing: -0.01em;
+}
+
+.liaison-dash-block .journey-grid {
+  margin-top: 0;
+}
+
 @media (max-width: 800px) {
   .admin-layout {
     grid-template-columns: 1fr;

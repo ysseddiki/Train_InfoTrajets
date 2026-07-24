@@ -5,12 +5,17 @@ import type {
   DisruptionEventDto,
   JourneyConfig,
   JourneyDirection,
+  LiaisonConfig,
 } from "@sncf-alerts/shared";
 import { store } from "../domain/store.js";
 
 export async function registerDashboardRoutes(app: FastifyInstance) {
   app.get("/v1/dashboard/overview", async (): Promise<DashboardOverview> => {
     return store.getOverview();
+  });
+
+  app.get("/v1/liaisons", async (): Promise<LiaisonConfig[]> => {
+    return store.listLiaisons();
   });
 
   app.get("/v1/journeys", async (): Promise<JourneyConfig[]> => {

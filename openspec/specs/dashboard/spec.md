@@ -2,19 +2,19 @@
 
 ## Purpose
 
-Le dashboard est la surface de lecture pour visualiser l’état des trajets Aller/Retour, les stats et l’historique des alertes. Accès sans login applicatif ; protection par le réseau (VPN/firewall).
+Le dashboard est la surface de lecture pour visualiser l’état des **liaisons** (Aller/Retour), les stats et l’historique des alertes. Accès sans login applicatif ; protection par le réseau (VPN/firewall).
 
 ## Requirements
 
-### Requirement: Dashboard lecture Aller/Retour
+### Requirement: Dashboard lecture par liaison
 
-Le dashboard SHALL afficher l’état des trajets Aller (`outbound`) et Retour (`inbound`), des statistiques agrégées et l’historique récent des livraisons, sans authentification applicative (protection réseau).
+Le dashboard SHALL afficher l’état de chaque liaison (Aller `outbound` + Retour `inbound`), des statistiques agrégées et l’historique récent des livraisons, sans authentification applicative (protection réseau).
 
-#### Scenario: Affichage des deux sens
+#### Scenario: Affichage des liaisons
 
-- **GIVEN** les trajets Aller et Retour configurés
+- **GIVEN** une ou plusieurs liaisons configurées
 - **WHEN** un utilisateur du réseau trusté ouvre le dashboard
-- **THEN** il voit le statut de chaque sens et les derniers événements
+- **THEN** il voit le statut Aller/Retour de chaque liaison et les derniers événements
 
 #### Scenario: API indisponible
 

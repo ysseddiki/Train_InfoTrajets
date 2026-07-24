@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type {
   JourneyConfig,
   JourneyDirection,
+  LiaisonUpsertBody,
   RecipientsConfig,
 } from "@sncf-alerts/shared";
 import { injectStubEvent } from "../adapters/ingest.js";
@@ -65,6 +66,73 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return { username: session.username, role: "admin" };
   });
 
+  app.get("/v1/admin/liaisons", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return store.listLiaisons();
+  });
+
+  app.post("/v1/admin/liaisons", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return store.createLiaison();
+  });
+
+  app.get<{ Params: { id: string } }>(
+    "/v1/admin/liaisons/:id",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      const liaison = await store.getLiaison(req.params.id);
+      if (!liaison) {
+        return reply.code(404).send({
+          type: "/errors/not-found",
+          title: "Liaison not found",
+          status: 404,
+        });
+      }
+      return liaison;
+    },
+  );
+
+  app.put<{ Params: { id: string }; Body: LiaisonUpsertBody }>(
+    "/v1/admin/liaisons/:id",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      try {
+        return await store.upsertLiaison(req.params.id, req.body ?? {});
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type: status === 404 ? "/errors/not-found" : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    "/v1/admin/liaisons/:id",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      try {
+        await store.deleteLiaison(req.params.id);
+        return { ok: true };
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type:
+            status === 404
+              ? "/errors/not-found"
+              : status === 400
+                ? "/errors/validation"
+                : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
+
+  /** Compat: lit/écrit la première liaison. */
   app.get<{ Params: { direction: JourneyDirection } }>(
     "/v1/admin/journeys/:direction",
     async (req, reply) => {
@@ -128,10 +196,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     },
   );
 
-  /** Debug: inject stub disruption (admin only) */
   app.post<{
     Body?: {
       direction?: JourneyDirection;
+      journeyId?: string;
+      liaisonId?: string;
       delayMinutes?: number;
       kind?: "delay" | "cancellation";
     };
