@@ -4,6 +4,7 @@ import type {
   LiaisonConfig,
   RecipientsConfig,
   SmtpConfigPublic,
+  Station,
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
 import {
@@ -13,6 +14,7 @@ import {
   Gauge,
   LogOut,
   Mail,
+  MapPin,
   Plus,
   Radio,
   Route,
@@ -30,12 +32,14 @@ import { ClearStatsPanel } from "../components/ClearStatsPanel";
 import { IngestConfigPanel } from "../components/IngestConfigPanel";
 import { LiaisonForm } from "../components/LiaisonForm";
 import { QuotaPanel } from "../components/QuotaPanel";
+import { StationsPanel } from "../components/StationsPanel";
 import { errorMessage } from "../lib/format";
 
 type AdminMe = { username: string };
 
 type AdminSectionId =
   | "liaisons"
+  | "stations"
   | "ingest"
   | "recipients"
   | "channels"
@@ -54,6 +58,12 @@ const ADMIN_SECTIONS: {
     label: "Liaisons",
     description: "Paires Aller/Retour surveillées (gares, fenêtres, jours).",
     icon: Route,
+  },
+  {
+    id: "stations",
+    label: "Gares",
+    description: "Catalogue des gares (nom + id Navitia) pour les liaisons.",
+    icon: MapPin,
   },
   {
     id: "ingest",
@@ -103,6 +113,7 @@ function AdminConsole({
 }) {
   const [section, setSection] = useState<AdminSectionId>("liaisons");
   const [liaisons, setLiaisons] = useState<LiaisonConfig[]>([]);
+  const [stations, setStations] = useState<Station[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [recipients, setRecipients] = useState<RecipientsConfig | null>(null);
   const [smtp, setSmtp] = useState<SmtpConfigPublic | null>(null);
@@ -139,8 +150,9 @@ function AdminConsole({
     let cancelled = false;
     void (async () => {
       try {
-        const [list, r, s, t, q] = await Promise.all([
+        const [list, st, r, s, t, q] = await Promise.all([
           apiGet<LiaisonConfig[]>("/v1/admin/liaisons"),
+          apiGet<Station[]>("/v1/admin/stations"),
           apiGet<RecipientsConfig>("/v1/admin/channels/recipients"),
           apiGet<SmtpConfigPublic>("/v1/admin/channels/smtp"),
           apiGet<TeamsConfigPublic>("/v1/admin/channels/teams"),
@@ -148,6 +160,7 @@ function AdminConsole({
         ]);
         if (cancelled) return;
         setLiaisons(list);
+        setStations(st);
         setSelectedId((prev) => prev ?? list[0]?.id ?? null);
         setStubLiaisonId((prev) => prev || list[0]?.id || "");
         setRecipients(r);
@@ -343,6 +356,8 @@ function AdminConsole({
           )}
           <LiaisonForm
             liaison={selected}
+            stations={stations}
+            onCreateStation={() => setSection("stations")}
             onSaved={(next) => {
               setLiaisons((prev) =>
                 prev.map((l) => (l.id === next.id ? next : l)),
@@ -350,6 +365,11 @@ function AdminConsole({
             }}
           />
         </div>
+      );
+      break;
+    case "stations":
+      panelBody = (
+        <StationsPanel stations={stations} onChange={setStations} />
       );
       break;
     case "ingest":

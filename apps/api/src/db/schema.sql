@@ -95,3 +95,10 @@ CREATE TABLE IF NOT EXISTS api_quota_daily (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (day, provider)
 );
+
+CREATE TABLE IF NOT EXISTS stations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  external_id TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);

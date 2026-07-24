@@ -135,6 +135,17 @@ async function ensureWatchColumns(p: pg.Pool): Promise<void> {
   }
 }
 
+async function ensureStationsTable(p: pg.Pool): Promise<void> {
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS stations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      external_id TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+  `);
+}
+
 export async function migrate(): Promise<void> {
   const p = getPool();
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -144,6 +155,7 @@ export async function migrate(): Promise<void> {
   await ensureEventLiaisonColumns(p);
   await ensureApiQuotaTable(p);
   await ensureWatchColumns(p);
+  await ensureStationsTable(p);
 }
 
 export async function closePool(): Promise<void> {

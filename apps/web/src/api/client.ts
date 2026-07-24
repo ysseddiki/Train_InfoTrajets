@@ -3,6 +3,7 @@ import { reportApiResult } from "./statusBus";
 const API_BASE = "";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  let httpErrorHandled = false;
   try {
     const res = await fetch(`${API_BASE}${path}`, {
       credentials: "include",
@@ -13,14 +14,25 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
     });
     if (!res.ok) {
+      httpErrorHandled = true;
       reportApiResult(false);
-      throw new Error(`API ${path} → ${res.status}`);
+      let detail = "";
+      try {
+        const body = (await res.json()) as {
+          title?: string;
+          detail?: string;
+        };
+        detail = [body.title, body.detail].filter(Boolean).join(" — ");
+      } catch {
+        /* ignore */
+      }
+      throw new Error(detail || `API ${path} → ${res.status}`);
     }
     reportApiResult(true);
     if (res.status === 204) return undefined as T;
     return res.json() as Promise<T>;
   } catch (err) {
-    if (!(err instanceof Error && err.message.startsWith("API "))) {
+    if (!httpErrorHandled) {
       reportApiResult(false);
     }
     throw err;

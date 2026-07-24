@@ -1,4 +1,4 @@
-import type { LiaisonConfig } from "@sncf-alerts/shared";
+import type { LiaisonConfig, Station } from "@sncf-alerts/shared";
 import {
   clampWatchLeadHours,
   DEFAULT_WATCH_LEAD_HOURS,
@@ -6,7 +6,8 @@ import {
   WATCH_LEAD_HOURS_MAX,
   WATCH_LEAD_HOURS_MIN,
 } from "@sncf-alerts/shared";
-import { useState, type FormEvent } from "react";
+import { Plus } from "lucide-react";
+import { useMemo, useState, type FormEvent } from "react";
 import { apiSend } from "../api/client";
 
 const WEEKDAYS = [1, 2, 3, 4, 5] as const;
@@ -70,6 +71,87 @@ function legPayload(
   };
 }
 
+function matchStationId(
+  stations: Station[],
+  externalId: string,
+  label: string,
+): string {
+  const byId = stations.find((s) => s.externalId === externalId);
+  if (byId) return byId.id;
+  const byLabel = stations.find(
+    (s) => s.label.toLowerCase() === label.toLowerCase(),
+  );
+  return byLabel?.id ?? "";
+}
+
+function StationPicker({
+  name,
+  title,
+  stations,
+  selectedId,
+  onChange,
+  onCreate,
+}: {
+  name: "A" | "B";
+  title: string;
+  stations: Station[];
+  selectedId: string;
+  onChange: (stationId: string) => void;
+  onCreate: () => void;
+}) {
+  const selected = stations.find((s) => s.id === selectedId);
+  return (
+    <div className="voyage-station">
+      <h3>{title}</h3>
+      <div className="station-picker-row">
+        <label className="station-picker-select">
+          Gare
+          <select
+            value={selectedId}
+            onChange={(e) => onChange(e.target.value)}
+            required
+          >
+            <option value="" disabled>
+              {stations.length === 0
+                ? "Aucune gare — créez-en une"
+                : "Choisir une gare…"}
+            </option>
+            {stations.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className="secondary station-create-btn"
+          onClick={onCreate}
+          title="Créer une gare"
+        >
+          <Plus size={16} strokeWidth={2} aria-hidden />
+          Créer
+        </button>
+      </div>
+      <input
+        type="hidden"
+        name={`station${name}Id`}
+        value={selected?.externalId ?? ""}
+      />
+      <input
+        type="hidden"
+        name={`station${name}Label`}
+        value={selected?.label ?? ""}
+      />
+      {selected && (
+        <p className="muted field-hint station-id-hint">
+          Id : <code>{selected.externalId}</code>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function WatchFields({
   prefix,
   watchAlways,
@@ -110,8 +192,11 @@ function WatchFields({
           ))}
         </select>
       </label>
-      {/* Valeur conservée même si le select est disabled (absent de FormData) */}
-      <input type="hidden" name={`${prefix}WatchLeadValue`} value={watchLeadHours} />
+      <input
+        type="hidden"
+        name={`${prefix}WatchLeadValue`}
+        value={watchLeadHours}
+      />
       <p className="muted field-hint">
         Fenêtre ci-dessus = trajet. La veille démarre plus tôt (ou en continu)
         pour anticiper les annonces.
@@ -122,10 +207,14 @@ function WatchFields({
 
 export function LiaisonForm({
   liaison,
+  stations,
   onSaved,
+  onCreateStation,
 }: {
   liaison: LiaisonConfig;
+  stations: Station[];
   onSaved?: (next: LiaisonConfig) => void;
+  onCreateStation?: () => void;
 }) {
   const { outbound, inbound } = liaison;
   const dayFlags = flagsFromDays(outbound.daysOfWeek);
@@ -139,22 +228,42 @@ export function LiaisonForm({
   const [inboundLead, setInboundLead] = useState(
     clampWatchLeadHours(inbound.watchLeadHours ?? DEFAULT_WATCH_LEAD_HOURS),
   );
+  const [stationAId, setStationAId] = useState(() =>
+    matchStationId(stations, outbound.originId, outbound.originLabel),
+  );
+  const [stationBId, setStationBId] = useState(() =>
+    matchStationId(
+      stations,
+      outbound.destinationId,
+      outbound.destinationLabel,
+    ),
+  );
+
+  const stationA = useMemo(
+    () => stations.find((s) => s.id === stationAId),
+    [stations, stationAId],
+  );
+  const stationB = useMemo(
+    () => stations.find((s) => s.id === stationBId),
+    [stations, stationBId],
+  );
+
   const autoNameHint = defaultLiaisonName(
-    outbound.originLabel,
-    outbound.destinationLabel,
+    stationA?.label ?? outbound.originLabel,
+    stationB?.label ?? outbound.destinationLabel,
   );
 
   async function onSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (!stationA || !stationB) {
+      setMsg({ text: "Choisissez les deux gares (ou créez-en)", ok: false });
+      return;
+    }
+    if (stationA.id === stationB.id) {
+      setMsg({ text: "Départ et arrivée doivent être différents", ok: false });
+      return;
+    }
     const fd = new FormData(e.currentTarget);
-    const stationA = {
-      id: String(fd.get("stationAId") ?? "").trim(),
-      label: String(fd.get("stationALabel") ?? "").trim(),
-    };
-    const stationB = {
-      id: String(fd.get("stationBId") ?? "").trim(),
-      label: String(fd.get("stationBLabel") ?? "").trim(),
-    };
     const daysOfWeek = daysFromFlags(
       fd.get("weekdays") === "on",
       fd.get("weekend") === "on",
@@ -165,8 +274,8 @@ export function LiaisonForm({
     const body = {
       name,
       outbound: legPayload(
-        stationA,
-        stationB,
+        { id: stationA.externalId, label: stationA.label },
+        { id: stationB.externalId, label: stationB.label },
         "outbound",
         daysOfWeek,
         {
@@ -183,8 +292,8 @@ export function LiaisonForm({
         fd.get("outboundActive") === "on",
       ),
       inbound: legPayload(
-        stationB,
-        stationA,
+        { id: stationB.externalId, label: stationB.label },
+        { id: stationA.externalId, label: stationA.label },
         "inbound",
         daysOfWeek,
         {
@@ -250,44 +359,22 @@ export function LiaisonForm({
       <fieldset className="voyage-section">
         <legend>Gares</legend>
         <div className="voyage-stations">
-          <div className="voyage-station">
-            <h3>Départ (matin)</h3>
-            <label>
-              Nom
-              <input
-                name="stationALabel"
-                defaultValue={outbound.originLabel}
-                required
-              />
-            </label>
-            <label>
-              Id technique
-              <input
-                name="stationAId"
-                defaultValue={outbound.originId}
-                required
-              />
-            </label>
-          </div>
-          <div className="voyage-station">
-            <h3>Arrivée (soir)</h3>
-            <label>
-              Nom
-              <input
-                name="stationBLabel"
-                defaultValue={outbound.destinationLabel}
-                required
-              />
-            </label>
-            <label>
-              Id technique
-              <input
-                name="stationBId"
-                defaultValue={outbound.destinationId}
-                required
-              />
-            </label>
-          </div>
+          <StationPicker
+            name="A"
+            title="Départ (matin)"
+            stations={stations}
+            selectedId={stationAId}
+            onChange={setStationAId}
+            onCreate={() => onCreateStation?.()}
+          />
+          <StationPicker
+            name="B"
+            title="Arrivée (soir)"
+            stations={stations}
+            selectedId={stationBId}
+            onChange={setStationBId}
+            onCreate={() => onCreateStation?.()}
+          />
         </div>
       </fieldset>
 
@@ -317,8 +404,8 @@ export function LiaisonForm({
         <fieldset className="voyage-section voyage-leg">
           <legend>Aller</legend>
           <p className="muted voyage-leg-hint">
-            Départs {outbound.originLabel || "A"} →{" "}
-            {outbound.destinationLabel || "B"}
+            Départs {stationA?.label || outbound.originLabel || "A"} →{" "}
+            {stationB?.label || outbound.destinationLabel || "B"}
           </p>
           <div className="voyage-window-row">
             <label>
@@ -360,8 +447,8 @@ export function LiaisonForm({
         <fieldset className="voyage-section voyage-leg">
           <legend>Retour</legend>
           <p className="muted voyage-leg-hint">
-            Départs {inbound.originLabel || "B"} →{" "}
-            {inbound.destinationLabel || "A"}
+            Départs {stationB?.label || inbound.originLabel || "B"} →{" "}
+            {stationA?.label || inbound.destinationLabel || "A"}
           </p>
           <div className="voyage-window-row">
             <label>

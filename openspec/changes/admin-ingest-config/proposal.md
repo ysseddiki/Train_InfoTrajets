@@ -6,10 +6,10 @@ Provider et tokens ingest étaient dans `.env` : peu pratique pour les ops, et l
 
 ## What Changes
 
-- Config ingest (provider `stub` | `navitia` | `prim` + secret) persistée en admin (`GET/PUT /v1/admin/ingest`)
-- Secret write-only : à la lecture, `tokenConfigured` + `tokenPreview` (5 premiers caractères uniquement)
-- Poll lit la config DB (plus `INGEST_PROVIDER` / `NAVITIA_TOKEN` comme source de vérité) ; bootstrap optionnel depuis env au premier démarrage
-- Section admin **Ingest**
+- Config ingest : **3 slots indépendants** (stub / navitia / prim) + `activeProvider`
+- Secret write-only ; `tokenPreview` = 5 premiers caractères
+- Check API à l’enregistrement du token et à l’activation (`POST /v1/admin/ingest/probe` + probe dans PUT)
+- Section admin **Ingest** (cartes par provider)
 
 ## Impact
 

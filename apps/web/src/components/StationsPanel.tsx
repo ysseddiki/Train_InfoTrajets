@@ -1,0 +1,181 @@
+import type { Station } from "@sncf-alerts/shared";
+import { Pencil, Plus, Trash2 } from "lucide-react";
+import { useState, type FormEvent } from "react";
+import { apiSend } from "../api/client";
+
+export function StationsPanel({
+  stations,
+  onChange,
+}: {
+  stations: Station[];
+  onChange: (next: Station[]) => void;
+}) {
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [label, setLabel] = useState("");
+  const [externalId, setExternalId] = useState("");
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  function startCreate() {
+    setEditingId(null);
+    setLabel("");
+    setExternalId("");
+    setMsg(null);
+  }
+
+  function startEdit(s: Station) {
+    setEditingId(s.id);
+    setLabel(s.label);
+    setExternalId(s.externalId);
+    setMsg(null);
+  }
+
+  async function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    try {
+      if (editingId) {
+        const updated = await apiSend<Station>(
+          `/v1/admin/stations/${editingId}`,
+          "PUT",
+          { label, externalId },
+        );
+        onChange(stations.map((s) => (s.id === updated.id ? updated : s)));
+        setMsg({ text: "Gare mise à jour", ok: true });
+      } else {
+        const created = await apiSend<Station>("/v1/admin/stations", "POST", {
+          label,
+          externalId,
+        });
+        onChange(
+          [...stations, created].sort((a, b) =>
+            a.label.localeCompare(b.label, "fr"),
+          ),
+        );
+        setMsg({ text: "Gare créée", ok: true });
+        setEditingId(created.id);
+      }
+    } catch {
+      setMsg({
+        text: editingId
+          ? "Erreur de mise à jour (id déjà pris ?)"
+          : "Erreur de création (id déjà pris ?)",
+        ok: false,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onDelete(s: Station) {
+    if (!window.confirm(`Supprimer « ${s.label} » ?`)) return;
+    setBusy(true);
+    setMsg(null);
+    try {
+      await apiSend(`/v1/admin/stations/${s.id}`, "DELETE");
+      onChange(stations.filter((x) => x.id !== s.id));
+      if (editingId === s.id) startCreate();
+      setMsg({ text: "Gare supprimée", ok: true });
+    } catch {
+      setMsg({
+        text: "Suppression impossible (gare utilisée par une liaison)",
+        ok: false,
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="stations-panel">
+      <div className="stations-layout">
+        <aside className="card stations-list">
+          <div className="stations-list-head">
+            <h3>Catalogue</h3>
+            <button
+              type="button"
+              className="secondary"
+              onClick={startCreate}
+            >
+              <Plus size={16} strokeWidth={2} aria-hidden />
+              Nouvelle
+            </button>
+          </div>
+          {stations.length === 0 ? (
+            <p className="muted">Aucune gare — créez-en une.</p>
+          ) : (
+            <ul className="stations-items">
+              {stations.map((s) => (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    className={`stations-item${editingId === s.id ? " is-active" : ""}`}
+                    onClick={() => startEdit(s)}
+                  >
+                    <span className="stations-item-label">{s.label}</span>
+                    <span className="muted stations-item-id">{s.externalId}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="secondary danger-ghost stations-item-del"
+                    title="Supprimer"
+                    onClick={() => void onDelete(s)}
+                    disabled={busy}
+                  >
+                    <Trash2 size={14} strokeWidth={2} aria-hidden />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </aside>
+
+        <form className="card stations-form" onSubmit={(e) => void onSubmit(e)}>
+          <h3>
+            {editingId ? (
+              <>
+                <Pencil size={16} strokeWidth={2} aria-hidden /> Modifier
+              </>
+            ) : (
+              <>
+                <Plus size={16} strokeWidth={2} aria-hidden /> Créer une gare
+              </>
+            )}
+          </h3>
+          <label>
+            Nom
+            <input
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Nice-Ville"
+              required
+            />
+          </label>
+          <label>
+            Id technique (Navitia)
+            <input
+              value={externalId}
+              onChange={(e) => setExternalId(e.target.value)}
+              placeholder="stop_area:SNCF:87756056"
+              required
+            />
+          </label>
+          <p className="muted field-hint">
+            Identifiant <code>stop_area</code> utilisé pour les appels départs.
+          </p>
+          <button type="submit" disabled={busy}>
+            {busy
+              ? "Enregistrement…"
+              : editingId
+                ? "Enregistrer"
+                : "Créer la gare"}
+          </button>
+          {msg && (
+            <p className={`form-msg ${msg.ok ? "ok" : "error"}`}>{msg.text}</p>
+          )}
+        </form>
+      </div>
+    </div>
+  );
+}

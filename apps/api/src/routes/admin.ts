@@ -4,8 +4,12 @@ import type {
   JourneyDirection,
   LiaisonUpsertBody,
   IngestConfigUpdate,
+  IngestProbeRequest,
+  IngestProviderId,
   RecipientsConfig,
+  StationUpsertBody,
 } from "@sncf-alerts/shared";
+import { probeIngestCredential } from "../adapters/ingest-probe.js";
 import { injectStubEvent } from "../adapters/ingest.js";
 import {
   clearSessionCookie,
@@ -20,9 +24,7 @@ import {
 } from "../domain/rate-limit.js";
 import { store } from "../domain/store.js";
 
-function isIngestProvider(
-  value: unknown,
-): value is IngestConfigUpdate["provider"] {
+function isIngestProvider(value: unknown): value is IngestProviderId {
   return value === "stub" || value === "navitia" || value === "prim";
 }
 
@@ -139,6 +141,83 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     },
   );
 
+  app.get("/v1/admin/stations", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return store.listStations();
+  });
+
+  app.post<{ Body: StationUpsertBody }>(
+    "/v1/admin/stations",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      try {
+        return await store.createStation(req.body ?? { externalId: "", label: "" });
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type:
+            status === 409
+              ? "/errors/conflict"
+              : status === 400
+                ? "/errors/validation"
+                : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
+
+  app.put<{ Params: { id: string }; Body: StationUpsertBody }>(
+    "/v1/admin/stations/:id",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      try {
+        return await store.updateStation(
+          req.params.id,
+          req.body ?? { externalId: "", label: "" },
+        );
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type:
+            status === 404
+              ? "/errors/not-found"
+              : status === 409
+                ? "/errors/conflict"
+                : status === 400
+                  ? "/errors/validation"
+                  : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
+
+  app.delete<{ Params: { id: string } }>(
+    "/v1/admin/stations/:id",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      try {
+        await store.deleteStation(req.params.id);
+        return { ok: true };
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type:
+            status === 404
+              ? "/errors/not-found"
+              : status === 400
+                ? "/errors/validation"
+                : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
+
   /** Compat: lit/écrit la première liaison. */
   app.get<{ Params: { direction: JourneyDirection } }>(
     "/v1/admin/journeys/:direction",
@@ -179,21 +258,106 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return store.getIngestConfigPublic();
   });
 
-  app.put<{ Body: IngestConfigUpdate }>(
-    "/v1/admin/ingest",
+  app.post<{ Body: IngestProbeRequest }>(
+    "/v1/admin/ingest/probe",
     async (req, reply) => {
       if (!(await requireAdmin(req, reply))) return;
-      const body = req.body ?? ({} as IngestConfigUpdate);
-      if (!isIngestProvider(body.provider)) {
+      const provider = req.body?.provider;
+      if (!isIngestProvider(provider)) {
         return reply.code(400).send({
           type: "/errors/validation",
           title: "provider must be stub | navitia | prim",
           status: 400,
         });
       }
+      const override = req.body?.token?.trim() || null;
+      const secret =
+        override ||
+        (provider === "stub" ? null : await store.getIngestSecret(provider));
+      const result = await probeIngestCredential(provider, secret);
+      await store.saveIngestCheck(result);
+      return result;
+    },
+  );
+
+  app.put<{ Body: IngestConfigUpdate }>(
+    "/v1/admin/ingest",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      const body = req.body ?? {};
+      if (
+        body.activeProvider !== undefined &&
+        !isIngestProvider(body.activeProvider)
+      ) {
+        return reply.code(400).send({
+          type: "/errors/validation",
+          title: "activeProvider must be stub | navitia | prim",
+          status: 400,
+        });
+      }
+
+      const navitiaToken = body.navitiaToken?.trim() || undefined;
+      const primApiKey = body.primApiKey?.trim() || undefined;
+
+      // Check API before saving new credentials
+      if (navitiaToken) {
+        const probe = await probeIngestCredential("navitia", navitiaToken);
+        await store.saveIngestCheck(probe);
+        if (!probe.ok) {
+          return reply.code(400).send({
+            type: "/errors/ingest-probe",
+            title: "Navitia token rejeté",
+            status: 400,
+            detail: probe.detail,
+            probe,
+          });
+        }
+      }
+      if (primApiKey) {
+        const probe = await probeIngestCredential("prim", primApiKey);
+        await store.saveIngestCheck(probe);
+        if (!probe.ok) {
+          return reply.code(400).send({
+            type: "/errors/ingest-probe",
+            title: "Clé PRIM rejetée",
+            status: 400,
+            detail: probe.detail,
+            probe,
+          });
+        }
+      }
+
+      // Activating a remote provider requires a working stored credential
+      if (body.activeProvider === "navitia" || body.activeProvider === "prim") {
+        const tokenForActive =
+          body.activeProvider === "navitia"
+            ? navitiaToken || (await store.getIngestSecret("navitia"))
+            : primApiKey || (await store.getIngestSecret("prim"));
+        const probe = await probeIngestCredential(
+          body.activeProvider,
+          tokenForActive,
+        );
+        await store.saveIngestCheck(probe);
+        if (!probe.ok) {
+          return reply.code(400).send({
+            type: "/errors/ingest-probe",
+            title: `Impossible d’activer ${body.activeProvider}`,
+            status: 400,
+            detail: probe.detail,
+            probe,
+          });
+        }
+      }
+
+      if (body.activeProvider === "stub") {
+        const probe = await probeIngestCredential("stub", null);
+        await store.saveIngestCheck(probe);
+      }
+
       return store.updateIngestConfig({
-        provider: body.provider,
-        token: body.token,
+        activeProvider: body.activeProvider,
+        navitiaToken,
+        primApiKey,
       });
     },
   );

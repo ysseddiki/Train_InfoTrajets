@@ -178,7 +178,8 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 | GET/PUT | `/v1/admin/channels/smtp` | Config SMTP (password write-only) |
 | GET/PUT | `/v1/admin/channels/teams` | Webhook Teams (write-only) |
 | GET/PUT | `/v1/admin/channels/recipients` | Liste emails |
-| GET/PUT | `/v1/admin/ingest` | Provider + token (write-only ; preview 5 car.) |
+| GET/PUT | `/v1/admin/ingest` | 3 providers + actif ; token write-only + check API |
+| POST | `/v1/admin/ingest/probe` | Test credential (Navitia / PRIM / stub) |
 | POST | `/v1/admin/channels/:type/test` | `email` \| `teams` |
 
 ### Ports internes

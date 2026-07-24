@@ -13,6 +13,7 @@ import type {
   IngestConfigPublic,
   IngestConfigUpdate,
   IngestProviderId,
+  IngestProviderSlotPublic,
   IngestRunStatus,
   JourneyConfig,
   JourneyDirection,
@@ -22,6 +23,8 @@ import type {
   LiaisonUpsertBody,
   RecipientsConfig,
   SmtpConfigPublic,
+  Station,
+  StationUpsertBody,
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
 import {
@@ -39,6 +42,9 @@ const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12);
 const META_INGEST_PROVIDER = "ingest_provider";
 const META_NAVITIA_TOKEN = "ingest_navitia_token";
 const META_PRIM_API_KEY = "ingest_prim_api_key";
+const META_NAVITIA_CHECK = "ingest_navitia_check";
+const META_PRIM_CHECK = "ingest_prim_check";
+const META_STUB_CHECK = "ingest_stub_check";
 
 function parseIngestProvider(value: string | null | undefined): IngestProviderId {
   if (value === "navitia" || value === "prim" || value === "stub") return value;
@@ -50,6 +56,18 @@ function secretMetaKey(provider: IngestProviderId): string | null {
   if (provider === "prim") return META_PRIM_API_KEY;
   return null;
 }
+
+function checkMetaKey(provider: IngestProviderId): string {
+  if (provider === "navitia") return META_NAVITIA_CHECK;
+  if (provider === "prim") return META_PRIM_CHECK;
+  return META_STUB_CHECK;
+}
+
+type StoredCheck = {
+  ok: boolean;
+  at: string;
+  detail: string;
+};
 
 const NICE_VILLE = {
   id: "stop_area:SNCF:87756056",
@@ -99,6 +117,15 @@ function emptyLeg(
     minDelayMinutes: 10,
     severities: ["delay", "cancellation"],
     active: opts?.active ?? !blank,
+  };
+}
+
+function mapStation(row: Record<string, unknown>): Station {
+  return {
+    id: String(row.id),
+    externalId: String(row.external_id),
+    label: String(row.label),
+    updatedAt: new Date(String(row.updated_at)).toISOString(),
   };
 }
 
@@ -348,7 +375,21 @@ export class PgStore {
       );
     }
 
+    await this.seedDefaultStations();
     await this.ensureIngestConfigBootstrapped();
+  }
+
+  private async seedDefaultStations(): Promise<void> {
+    const defaults = [NICE_VILLE, MONACO_MONTE_CARLO];
+    const pool = getPool();
+    for (const s of defaults) {
+      await pool.query(
+        `INSERT INTO stations (external_id, label, updated_at)
+         VALUES ($1, $2, now())
+         ON CONFLICT (external_id) DO NOTHING`,
+        [s.id, s.label],
+      );
+    }
   }
 
   private async getMeta(key: string): Promise<string | null> {
@@ -397,25 +438,89 @@ export class PgStore {
     return v?.trim() ? v : null;
   }
 
-  async getIngestConfigPublic(): Promise<IngestConfigPublic> {
-    const provider = await this.getIngestProvider();
-    const secret = await this.getIngestSecret(provider);
+  private async readStoredCheck(
+    provider: IngestProviderId,
+  ): Promise<StoredCheck | null> {
+    const raw = await this.getMeta(checkMetaKey(provider));
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as StoredCheck;
+      if (typeof parsed.ok !== "boolean" || typeof parsed.at !== "string") {
+        return null;
+      }
+      return {
+        ok: parsed.ok,
+        at: parsed.at,
+        detail: String(parsed.detail ?? ""),
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  async saveIngestCheck(result: {
+    provider: IngestProviderId;
+    ok: boolean;
+    detail: string;
+    checkedAt: string;
+  }): Promise<void> {
+    await this.setMeta(
+      checkMetaKey(result.provider),
+      JSON.stringify({
+        ok: result.ok,
+        at: result.checkedAt,
+        detail: result.detail.slice(0, 400),
+      } satisfies StoredCheck),
+    );
+  }
+
+  private async buildSlot(
+    id: IngestProviderId,
+  ): Promise<IngestProviderSlotPublic> {
+    const requiresToken = id === "navitia" || id === "prim";
+    const secret = requiresToken ? await this.getIngestSecret(id) : null;
+    const check = await this.readStoredCheck(id);
     return {
-      provider,
-      tokenConfigured: Boolean(secret),
+      id,
+      requiresToken,
+      tokenConfigured: id === "stub" ? true : Boolean(secret),
       tokenPreview: ingestTokenPreview(secret),
+      lastCheckOk: check?.ok ?? null,
+      lastCheckAt: check?.at ?? null,
+      lastCheckDetail: check?.detail ?? null,
     };
   }
 
+  async getIngestConfigPublic(): Promise<IngestConfigPublic> {
+    await this.ensureIngestConfigBootstrapped();
+    const activeProvider = await this.getIngestProvider();
+    const [stub, navitia, prim] = await Promise.all([
+      this.buildSlot("stub"),
+      this.buildSlot("navitia"),
+      this.buildSlot("prim"),
+    ]);
+    return {
+      activeProvider,
+      providers: { stub, navitia, prim },
+    };
+  }
+
+  /**
+   * Met à jour secrets et/ou provider actif.
+   * Les nouveaux tokens MUST avoir passé un probe OK avant appel (fait côté route).
+   */
   async updateIngestConfig(
     body: IngestConfigUpdate,
   ): Promise<IngestConfigPublic> {
-    const provider = parseIngestProvider(body.provider);
-    await this.setMeta(META_INGEST_PROVIDER, provider);
-    const incoming = body.token?.trim() ?? "";
-    const key = secretMetaKey(provider);
-    if (key && incoming) {
-      await this.setMeta(key, incoming);
+    const nav = body.navitiaToken?.trim() ?? "";
+    if (nav) await this.setMeta(META_NAVITIA_TOKEN, nav);
+    const prim = body.primApiKey?.trim() ?? "";
+    if (prim) await this.setMeta(META_PRIM_API_KEY, prim);
+    if (body.activeProvider !== undefined) {
+      await this.setMeta(
+        META_INGEST_PROVIDER,
+        parseIngestProvider(body.activeProvider),
+      );
     }
     return this.getIngestConfigPublic();
   }
@@ -1204,6 +1309,107 @@ export class PgStore {
     }
 
     return { deletedEvents, deletedDeliveries };
+  }
+
+  async listStations(): Promise<Station[]> {
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT * FROM stations ORDER BY label ASC`,
+    );
+    return res.rows.map(mapStation);
+  }
+
+  async getStation(id: string): Promise<Station | null> {
+    const pool = getPool();
+    const res = await pool.query(`SELECT * FROM stations WHERE id = $1`, [id]);
+    if (res.rowCount === 0) return null;
+    return mapStation(res.rows[0]);
+  }
+
+  async createStation(body: StationUpsertBody): Promise<Station> {
+    const externalId = String(body.externalId ?? "").trim();
+    const label = String(body.label ?? "").trim();
+    if (!externalId || !label) {
+      throw Object.assign(new Error("label and externalId are required"), {
+        statusCode: 400,
+      });
+    }
+    const pool = getPool();
+    try {
+      const res = await pool.query(
+        `INSERT INTO stations (external_id, label, updated_at)
+         VALUES ($1, $2, now())
+         RETURNING *`,
+        [externalId, label],
+      );
+      return mapStation(res.rows[0]);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "23505") {
+        throw Object.assign(new Error("Station externalId already exists"), {
+          statusCode: 409,
+        });
+      }
+      throw err;
+    }
+  }
+
+  async updateStation(id: string, body: StationUpsertBody): Promise<Station> {
+    const current = await this.getStation(id);
+    if (!current) {
+      throw Object.assign(new Error("Station not found"), { statusCode: 404 });
+    }
+    const externalId =
+      body.externalId !== undefined
+        ? String(body.externalId).trim()
+        : current.externalId;
+    const label =
+      body.label !== undefined ? String(body.label).trim() : current.label;
+    if (!externalId || !label) {
+      throw Object.assign(new Error("label and externalId are required"), {
+        statusCode: 400,
+      });
+    }
+    const pool = getPool();
+    try {
+      const res = await pool.query(
+        `UPDATE stations
+         SET external_id = $2, label = $3, updated_at = now()
+         WHERE id = $1
+         RETURNING *`,
+        [id, externalId, label],
+      );
+      return mapStation(res.rows[0]);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "23505") {
+        throw Object.assign(new Error("Station externalId already exists"), {
+          statusCode: 409,
+        });
+      }
+      throw err;
+    }
+  }
+
+  async deleteStation(id: string): Promise<void> {
+    const pool = getPool();
+    const used = await pool.query(
+      `SELECT 1 FROM journeys
+       WHERE origin_id = (SELECT external_id FROM stations WHERE id = $1)
+          OR destination_id = (SELECT external_id FROM stations WHERE id = $1)
+       LIMIT 1`,
+      [id],
+    );
+    if ((used.rowCount ?? 0) > 0) {
+      throw Object.assign(
+        new Error("Station is used by a liaison and cannot be deleted"),
+        { statusCode: 400 },
+      );
+    }
+    const res = await pool.query(`DELETE FROM stations WHERE id = $1`, [id]);
+    if ((res.rowCount ?? 0) === 0) {
+      throw Object.assign(new Error("Station not found"), { statusCode: 404 });
+    }
   }
 }
 

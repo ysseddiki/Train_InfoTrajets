@@ -252,19 +252,52 @@ export interface TeamsConfigPublic {
 
 export type IngestProviderId = "stub" | "navitia" | "prim";
 
-/** Config ingest exposée à l’admin (secret jamais en clair). */
-export interface IngestConfigPublic {
-  provider: IngestProviderId;
+/** Slot public pour un provider (secret jamais en clair). */
+export interface IngestProviderSlotPublic {
+  id: IngestProviderId;
+  requiresToken: boolean;
   tokenConfigured: boolean;
-  /** 5 premiers caractères du secret du provider courant, ou null */
+  /** 5 premiers caractères, ou null */
   tokenPreview: string | null;
+  lastCheckOk: boolean | null;
+  lastCheckAt: string | null;
+  lastCheckDetail: string | null;
+}
+
+/** Config ingest : 3 providers indépendants + celui actif. */
+export interface IngestConfigPublic {
+  activeProvider: IngestProviderId;
+  providers: Record<IngestProviderId, IngestProviderSlotPublic>;
 }
 
 export interface IngestConfigUpdate {
+  /** Provider utilisé par le poll */
+  activeProvider?: IngestProviderId;
+  /** Remplace le token Navitia si non vide */
+  navitiaToken?: string;
+  /** Remplace la clé PRIM si non vide */
+  primApiKey?: string;
+}
+
+export interface IngestProbeRequest {
   provider: IngestProviderId;
-  /** Si non vide, remplace le secret ; omit / vide = conserver */
+  /** Token/clé à tester (sinon secret stocké) */
   token?: string;
 }
+
+export interface IngestProbeResult {
+  provider: IngestProviderId;
+  ok: boolean;
+  httpStatus: number | null;
+  detail: string;
+  checkedAt: string;
+}
+
+/** @deprecated prefer IngestConfigPublic.activeProvider */
+export type IngestConfigUpdateLegacy = {
+  provider: IngestProviderId;
+  token?: string;
+};
 
 /** Aperçu identification uniquement (jamais le secret complet). */
 export function ingestTokenPreview(
@@ -279,6 +312,20 @@ export function ingestTokenPreview(
 
 export interface RecipientsConfig {
   emails: string[];
+}
+
+/** Gare catalogue (admin) — référencée par les liaisons via externalId Navitia. */
+export interface Station {
+  id: string;
+  /** ID Navitia / stop_area (ex. stop_area:SNCF:87756056) */
+  externalId: string;
+  label: string;
+  updatedAt: string;
+}
+
+export interface StationUpsertBody {
+  externalId: string;
+  label: string;
 }
 
 /** Compteur journalier d’appels API externes (Navitia / PRIM). */

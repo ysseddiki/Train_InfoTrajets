@@ -8,8 +8,9 @@ alwaysApply: false
 
 - Login simple obligatoire avant toute mutation
 - Layout : **nav gauche** par catégorie (`ADMIN_SECTIONS`) + panneau contenu
-- Catégories v1 : Liaisons, **Ingest**, Destinataires, Canaux, Quota API, Clear stats, Debug
-- Ingest : provider `stub`|`navitia`|`prim` ; token write-only, `tokenPreview` = 5 premiers caractères
+- Catégories v1 : Liaisons, **Gares**, Ingest, Destinataires, Canaux, Quota API, Clear stats, Debug
+- Gares : catalogue (label + externalId Navitia) ; select dans Liaisons + bouton Créer
+- Ingest : 3 providers configurables indépendamment ; un actif ; token write-only + preview 5 car. ; check API à l’enregistrement
 - Liaisons : plusieurs paires A/R possibles ; nom custom ou auto `départ <-> arrivée` ; au moins une
 - Quota API : compteur journalier Navitia (réussi/échoué), barre 0–`NAVITIA_DAILY_QUOTA` (défaut 5000)
 - Clear stats : sources décorrélées (événements stub / navitia / prim, livraisons)

@@ -68,6 +68,16 @@ Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboa
 - **THEN** seuls les événements `source=stub` (et livraisons liées) sont supprimés
 - **AND** les événements Navitia / PRIM restent
 
+### Requirement: Catalogue de gares
+
+Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (label + id Navitia). La configuration d’une liaison SHALL sélectionner les gares via une liste déroulante et MUST proposer un accès « Créer » vers le catalogue si la gare n’existe pas.
+
+#### Scenario: Création depuis la liaison
+
+- **GIVEN** un admin édite une liaison
+- **WHEN** il clique Créer à côté du sélecteur de gare
+- **THEN** il accède à la section Gares pour ajouter une entrée au catalogue
+
 ### Requirement: Destinataires email saisis par l’admin
 
 Un admin SHALL pouvoir ajouter et retirer des adresses email destinataires dans l’interface ; ces adresses sont les seules cibles email v1.
@@ -80,22 +90,20 @@ Un admin SHALL pouvoir ajouter et retirer des adresses email destinataires dans 
 
 ### Requirement: Configuration ingest en admin
 
-Un admin authentifié SHALL pouvoir lire et mettre à jour la source d’ingest via `GET/PUT /v1/admin/ingest` :
+Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers `stub`, `navitia` et `prim`, puis choisir le provider **actif** via `GET/PUT /v1/admin/ingest`.
 
-- `provider` : `stub` | `navitia` | `prim`
-- secret associé (token Navitia ou clé PRIM) : **write-only**
+- Secrets Navitia / PRIM : **write-only** ; `tokenPreview` = 5 premiers caractères
+- `POST /v1/admin/ingest/probe` : test API sans forcément activer
+- À l’enregistrement d’un token (ou à l’activation d’un provider distant), le serveur MUST appeler l’API cible ; en cas d’échec MUST NOT persister le token / MUST NOT activer le provider, et MUST renvoyer une erreur avec le détail du check
 
-La réponse publique MUST inclure `tokenConfigured` et, si un secret est présent, `tokenPreview` = les **5 premiers caractères** uniquement. MUST NOT renvoyer le secret complet.
+#### Scenario: Trois slots indépendants
 
-#### Scenario: Lecture masquée
+- **GIVEN** un token Navitia et une clé PRIM déjà saisis
+- **WHEN** l’admin active `stub`
+- **THEN** les secrets Navitia et PRIM restent configurés (slots indépendants)
 
-- **GIVEN** un token Navitia stocké commençant par `abc12…`
-- **WHEN** l’admin appelle `GET /v1/admin/ingest`
-- **THEN** `tokenConfigured` est true et `tokenPreview` vaut `abc12`
-- **AND** le corps ne contient pas le reste du token
+#### Scenario: Token Navitia invalide
 
-#### Scenario: Mise à jour sans resaisie
-
-- **GIVEN** un token déjà configuré
-- **WHEN** l’admin envoie `PUT` avec un nouveau `provider` et sans `token` (ou token vide)
-- **THEN** le secret existant est conservé
+- **GIVEN** un admin authentifié
+- **WHEN** il envoie `PUT /v1/admin/ingest` avec un `navitiaToken` rejeté par `api.sncf.com`
+- **THEN** l’API retourne `400` et le secret n’est pas mis à jour
