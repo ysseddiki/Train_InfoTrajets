@@ -15,6 +15,7 @@ import {
 } from "./departures-garesetconnexions.js";
 import {
   NavitiaDeparturesPort,
+  navitiaDepartureMatchesFilter,
   type NavitiaDeparture,
 } from "./departures-navitia.js";
 
@@ -74,26 +75,7 @@ export async function injectStubEvent(input?: {
     detail: `Stub injecté (${direction})`,
   });
 
-  if (journey) {
-    const scheduled = new Date(Date.now() + 15 * 60_000);
-    const delay = kind === "delay" ? delayMinutes : 0;
-    const realtime = new Date(scheduled.getTime() + delay * 60_000);
-    const { status, statusLabel } = buildNextDepartureStatus({
-      cancelled: kind === "cancellation",
-      delayMinutes: kind === "delay" ? delayMinutes : 0,
-    });
-    await store.upsertJourneyBoardSnapshot({
-      journeyId: journey.id,
-      trainNumber: String(8700 + Math.floor(Math.random() * 80)),
-      scheduledAt: scheduled.toISOString(),
-      realtimeAt: realtime.toISOString(),
-      delayMinutes: kind === "delay" ? delayMinutes : null,
-      cancelled: kind === "cancellation",
-      status,
-      statusLabel,
-      source: "stub",
-    });
-  }
+  // Pas de snapshot board stub — le prochain train vient uniquement de Navitia / G&C
 
   if (created) {
     await notifyForEvent(event);
@@ -213,35 +195,10 @@ export class StubIngestAdapter implements DisruptionIngestPort {
       return;
     }
 
-    const fetchedAt = new Date().toISOString();
-    for (const journey of open) {
-      const delayRoll = Math.random();
-      const delayMinutes =
-        delayRoll < 0.55 ? 0 : delayRoll < 0.85 ? 8 + Math.floor(Math.random() * 12) : 20 + Math.floor(Math.random() * 25);
-      const trainNumber = String(8600 + Math.floor(Math.random() * 90));
-      const scheduled = new Date(Date.now() + (12 + Math.floor(Math.random() * 40)) * 60_000);
-      const realtime = new Date(scheduled.getTime() + delayMinutes * 60_000);
-      const { status, statusLabel } = buildNextDepartureStatus({
-        cancelled: false,
-        delayMinutes,
-      });
-      await store.upsertJourneyBoardSnapshot({
-        journeyId: journey.id,
-        trainNumber,
-        scheduledAt: scheduled.toISOString(),
-        realtimeAt: realtime.toISOString(),
-        delayMinutes,
-        cancelled: false,
-        status,
-        statusLabel,
-        source: "stub",
-        fetchedAt,
-      });
-    }
-
+    // Stub : événements synthétiques éventuels ailleurs ; pas de board « prochain train »
     await store.setIngestResult({
       status: "ok",
-      detail: `Stub OK — ${open.length} sens (prochain train simulé)`,
+      detail: `Stub OK — ${open.length} sens (pas de snapshot board — provider démo)`,
     });
   }
 }
@@ -300,20 +257,17 @@ function departureSortKey(dep: NavitiaDeparture): number {
 }
 
 async function saveNextFromNavitia(
+  token: string,
   journey: JourneyConfig,
   departures: NavitiaDeparture[],
 ): Promise<void> {
-  const matched = departures
-    .filter((dep) => {
-      const directionText =
-        dep.display_informations?.direction ??
-        dep.route?.direction?.name ??
-        dep.display_informations?.headsign ??
-        "";
-      const destId = dep.route?.direction?.id ?? null;
-      return matchesDestinationFilter(journey, directionText, destId);
-    })
-    .sort((a, b) => departureSortKey(a) - departureSortKey(b));
+  const matched: NavitiaDeparture[] = [];
+  for (const dep of departures) {
+    if (await navitiaDepartureMatchesFilter(token, journey, dep)) {
+      matched.push(dep);
+    }
+  }
+  matched.sort((a, b) => departureSortKey(a) - departureSortKey(b));
 
   // Prochain valide : non supprimé en priorité, sinon premier match
   const next =
@@ -492,20 +446,19 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
   ): Promise<number> {
     const port = new NavitiaDeparturesPort(token);
     const { departures } = await port.fetchDepartures(journey);
-    await saveNextFromNavitia(journey, departures);
+    await saveNextFromNavitia(token, journey, departures);
     let createdCount = 0;
 
     for (const dep of departures) {
+      if (!(await navitiaDepartureMatchesFilter(token, journey, dep))) {
+        continue;
+      }
+
       const directionText =
         dep.display_informations?.direction ??
         dep.route?.direction?.name ??
         dep.display_informations?.headsign ??
         "";
-      const destId = dep.route?.direction?.id ?? null;
-
-      if (!matchesDestinationFilter(journey, directionText, destId)) {
-        continue;
-      }
 
       const cancelled = isCancelled(dep);
       const delay = delayMinutesFromDeparture(dep);

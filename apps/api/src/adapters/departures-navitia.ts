@@ -1,5 +1,6 @@
 import type { JourneyConfig } from "@sncf-alerts/shared";
-import { departuresCache } from "../domain/departures-cache.js";
+import { departuresCache, TtlCache } from "../domain/departures-cache.js";
+import { matchesDestinationFilter } from "../domain/matching.js";
 import type { DeparturesPort } from "../ports/departures.js";
 import { store } from "../domain/store.js";
 
@@ -21,7 +22,103 @@ export type NavitiaDeparture = {
     departure_date_time?: string;
   };
   stop_point?: { id?: string };
+  links?: Array<{ type?: string; id?: string; href?: string }>;
 };
+
+/** Cache stop_area ids d’un vehicle_journey (enrichissement filtre). */
+const vehicleJourneyStopsCache = new TtlCache<string[]>(
+  Number(process.env.NAVITIA_VJ_CACHE_TTL_MS ?? 600_000),
+);
+
+function navitiaAuthHeader(token: string): string {
+  return `Basic ${Buffer.from(`${token}:`).toString("base64")}`;
+}
+
+export function extractVehicleJourneyId(dep: NavitiaDeparture): string | null {
+  for (const link of dep.links ?? []) {
+    if (link.type === "vehicle_journey" && link.id) return link.id;
+  }
+  return null;
+}
+
+/**
+ * Liste les stop_area du parcours vehicle_journey (cache TTL).
+ */
+export async function fetchVehicleJourneyStopAreaIds(
+  token: string,
+  vehicleJourneyId: string,
+): Promise<string[]> {
+  const cached = vehicleJourneyStopsCache.get(vehicleJourneyId);
+  if (cached) return cached;
+
+  const id = encodeURIComponent(vehicleJourneyId);
+  const url = `https://api.sncf.com/v1/coverage/sncf/vehicle_journeys/${id}?depth=2`;
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      headers: { Authorization: navitiaAuthHeader(token) },
+      signal: AbortSignal.timeout(12_000),
+    });
+  } catch {
+    await store.recordApiRequest({ provider: "navitia", ok: false });
+    return [];
+  }
+
+  if (!res.ok) {
+    await store.recordApiRequest({ provider: "navitia", ok: false });
+    return [];
+  }
+
+  await store.recordApiRequest({ provider: "navitia", ok: true });
+  const body = (await res.json()) as {
+    vehicle_journeys?: Array<{
+      stop_times?: Array<{
+        stop_point?: { stop_area?: { id?: string }; id?: string };
+      }>;
+    }>;
+  };
+
+  const ids = new Set<string>();
+  for (const vj of body.vehicle_journeys ?? []) {
+    for (const st of vj.stop_times ?? []) {
+      const areaId = st.stop_point?.stop_area?.id;
+      if (areaId) ids.add(areaId);
+    }
+  }
+  const list = [...ids];
+  vehicleJourneyStopsCache.set(vehicleJourneyId, list);
+  return list;
+}
+
+/**
+ * Filtre gare desservie : texte / id / corridor, puis enrichissement
+ * vehicle_journey (la gare filtre est-elle sur le parcours ?).
+ */
+export async function navitiaDepartureMatchesFilter(
+  token: string,
+  journey: JourneyConfig,
+  dep: NavitiaDeparture,
+): Promise<boolean> {
+  const directionText =
+    dep.display_informations?.direction ??
+    dep.route?.direction?.name ??
+    dep.display_informations?.headsign ??
+    "";
+  const destId = dep.route?.direction?.id ?? null;
+
+  if (matchesDestinationFilter(journey, directionText, destId)) {
+    return true;
+  }
+
+  if (!journey.destinationId) return false;
+
+  const vjId = extractVehicleJourneyId(dep);
+  if (!vjId) return false;
+
+  const stops = await fetchVehicleJourneyStopAreaIds(token, vjId);
+  return stops.includes(journey.destinationId);
+}
 
 /**
  * Adapter Navitia derrière DeparturesPort + cache TTL process.
@@ -47,7 +144,7 @@ export class NavitiaDeparturesPort implements DeparturesPort {
     try {
       res = await fetch(url, {
         headers: {
-          Authorization: `Basic ${Buffer.from(`${this.token}:`).toString("base64")}`,
+          Authorization: navitiaAuthHeader(this.token),
         },
       });
     } catch (err) {

@@ -55,4 +55,9 @@ describe("matchesDestinationFilter (gare desservie)", () => {
       true,
     );
   });
+
+  it("matches Menton via corridor allowlist (terminus beyond Monaco)", () => {
+    const j = journey({});
+    assert.equal(matchesDestinationFilter(j, "Menton"), true);
+  });
 });

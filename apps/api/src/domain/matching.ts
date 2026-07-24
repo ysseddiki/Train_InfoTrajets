@@ -1,5 +1,6 @@
 import type { JourneyConfig, DisruptionEventDto } from "@sncf-alerts/shared";
 import { clampWatchLeadHours } from "@sncf-alerts/shared";
+import { matchesCorridorAllowlist } from "./corridor.js";
 
 /** Europe/Paris weekday: 1=Mon .. 7=Sun */
 export function parisParts(date: Date): { weekday: number; hm: string } {
@@ -164,5 +165,8 @@ export function matchesDestinationFilter(
   }
   if (label && text.includes(label)) return true;
   // partial tokens: "Monaco", "Nice", etc. — covers "via Monaco" / longer headsigns
-  return tokens.some((t) => text.includes(t));
+  if (tokens.some((t) => text.includes(t))) return true;
+
+  // Failover G&C / boards terminus-only : Menton au-delà de Monaco, etc.
+  return matchesCorridorAllowlist(journey, directionText);
 }

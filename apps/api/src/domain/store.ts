@@ -546,10 +546,12 @@ export class PgStore {
     const prim = body.primApiKey?.trim() ?? "";
     if (prim) await this.setMeta(META_PRIM_API_KEY, prim);
     if (body.activeProvider !== undefined) {
-      await this.setMeta(
-        META_INGEST_PROVIDER,
-        parseIngestProvider(body.activeProvider),
-      );
+      const next = parseIngestProvider(body.activeProvider);
+      await this.setMeta(META_INGEST_PROVIDER, next);
+      // Board « prochain train » : jamais de stub affiché hors provider stub
+      if (next !== "stub") {
+        await this.clearStubBoardSnapshots();
+      }
     }
     if (body.gcFailoverEnabled !== undefined) {
       await this.setMeta(
@@ -1336,6 +1338,13 @@ export class PgStore {
     return { emails };
   }
 
+  async clearStubBoardSnapshots(): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `DELETE FROM journey_board_snapshots WHERE source = 'stub'`,
+    );
+  }
+
   async upsertJourneyBoardSnapshot(input: {
     journeyId: string;
     trainNumber: string | null;
@@ -1348,6 +1357,9 @@ export class PgStore {
     source: string;
     fetchedAt?: string;
   }): Promise<void> {
+    // Ne jamais persister un board stub (prochain train = APIs réelles uniquement)
+    if (input.source === "stub") return;
+
     const pool = getPool();
     const fetchedAt = input.fetchedAt ?? new Date().toISOString();
     await pool.query(
@@ -1391,6 +1403,10 @@ export class PgStore {
       [journeyIds],
     );
     for (const row of res.rows) {
+      const source = String(row.source);
+      // Prochain train = Navitia / G&C uniquement (jamais stub)
+      if (source === "stub") continue;
+
       const scheduledAt = row.scheduled_at
         ? new Date(String(row.scheduled_at)).toISOString()
         : null;
@@ -1411,7 +1427,7 @@ export class PgStore {
         status: row.status as NextDepartureInfo["status"],
         statusLabel: String(row.status_label),
         fetchedAt: new Date(String(row.fetched_at)).toISOString(),
-        source: row.source as NextDepartureInfo["source"],
+        source: source as NextDepartureInfo["source"],
       });
     }
     return map;

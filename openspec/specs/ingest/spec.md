@@ -86,7 +86,27 @@ Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents d
 - **WHEN** un départ affiche une direction contenant « Monaco »
 - **THEN** le départ est éligible même si le terminus textuel est plus loin
 
-### Requirement: Workloads séparés
+#### Scenario: Terminus Menton (corridor / G&C)
+
+- **GIVEN** filtre Nice → Monaco
+- **WHEN** le board (ex. failover G&C) n’affiche que « Menton »
+- **THEN** le départ est éligible via allowlist corridor
+
+#### Scenario: Enrichissement Navitia vehicle_journey
+
+- **GIVEN** filtre Monaco et un départ dont le texte de direction ne mentionne pas Monaco
+- **WHEN** le `vehicle_journey` Navitia liste `stop_area` Monaco
+- **THEN** le départ est éligible
+
+### Requirement: Board prochain train sans stub
+
+Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir de sources réelles (`navitia` | `garesetconnexions`). Le provider stub MUST NOT écrire ni exposer de prochain train sur le board.
+
+#### Scenario: Stub désactivé
+
+- **GIVEN** des snapshots `source=stub` en base et provider actif ≠ stub
+- **WHEN** le dashboard charge l’overview
+- **THEN** `nextDeparture` est absent pour ces journeys (stub ignoré / purgé)
 
 Le poll ingest SHALL pouvoir tourner hors du process API (`INGEST_IN_PROCESS=false` + worker dédié). Des unités systemd SHALL être fournies en exemple (`deploy/systemd/`).
 
