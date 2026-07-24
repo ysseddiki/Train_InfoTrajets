@@ -31,4 +31,4 @@ alwaysApply: true
 
 - Lire `openspec/specs/` et `specs/system/baseline-v1.md` avant d’étendre le périmètre
 - Changements structurants → delta dans `openspec/changes/`
-- Ne pas réintroduire push, multi-users voyageurs, SSO sans change OpenSpec
+- Ne pas réintroduire push, multi-users voyageurs, SSO, scrape G&C sans change OpenSpec

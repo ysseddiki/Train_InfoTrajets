@@ -35,7 +35,6 @@ import {
   clampWatchLeadHours,
   DEFAULT_WATCH_LEAD_HOURS,
   ingestTokenPreview,
-  normalizeTerminusAliases,
   resolveLiaisonDisplayName,
 } from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
@@ -51,8 +50,6 @@ const META_PRIM_API_KEY = "ingest_prim_api_key";
 const META_NAVITIA_CHECK = "ingest_navitia_check";
 const META_PRIM_CHECK = "ingest_prim_check";
 const META_STUB_CHECK = "ingest_stub_check";
-/** TEMP — failover scrape Gares & Connexions */
-const META_GC_FAILOVER = "ingest_gc_failover_enabled";
 
 function parseIngestProvider(value: string | null | undefined): IngestProviderId {
   if (value === "navitia" || value === "prim" || value === "stub") return value;
@@ -82,7 +79,6 @@ const NICE_VILLE = {
   label: "Nice-Ville",
   displayUrl:
     "https://www.garesetconnexions.sncf/fr/gares-services/nice-ville",
-  terminusAliases: ["Nice", "Nice-Ville", "Nice Ville"],
 } as const;
 
 const MONACO_MONTE_CARLO = {
@@ -90,12 +86,6 @@ const MONACO_MONTE_CARLO = {
   label: "Monaco - Monte-Carlo",
   displayUrl:
     "https://www.garesetconnexions.sncf/fr/gares-services/monaco-monte-carlo",
-  terminusAliases: [
-    "Monaco",
-    "Monte-Carlo",
-    "Monaco-Monte-Carlo",
-    "Monaco Monte-Carlo",
-  ],
 } as const;
 
 /** Station-board model: origin = gare surveillée, destination = filtre de sens. */
@@ -156,7 +146,6 @@ function mapStation(row: Record<string, unknown>): Station {
     externalId: String(row.external_id),
     label: String(row.label),
     displayUrl,
-    terminusAliases: normalizeTerminusAliases(row.terminus_aliases),
     updatedAt: new Date(String(row.updated_at)).toISOString(),
   };
 }
@@ -202,7 +191,7 @@ function mapEvent(row: Record<string, unknown>): DisruptionEventDto {
     delayMinutes: row.delay_minutes === null ? null : Number(row.delay_minutes),
     startsAt: new Date(String(row.starts_at)).toISOString(),
     endsAt: row.ends_at ? new Date(String(row.ends_at)).toISOString() : null,
-    source: row.source as "stub" | "prim" | "navitia" | "garesetconnexions",
+    source: row.source as "stub" | "prim" | "navitia",
     detectedAt: new Date(String(row.detected_at)).toISOString(),
   };
 }
@@ -244,7 +233,7 @@ function resolveBoardStatus(input: {
       boardStatus: "no_data",
       boardStatusLabel:
         lastIngestStatus === "error"
-          ? "Mode dégradé"
+          ? "Ingest en erreur"
           : "Pas de données (pas encore de poll)",
     };
   }
@@ -417,17 +406,13 @@ export class PgStore {
     const pool = getPool();
     for (const s of defaults) {
       await pool.query(
-        `INSERT INTO stations (external_id, label, display_url, terminus_aliases, updated_at)
-         VALUES ($1, $2, $3, $4::text[], now())
+        `INSERT INTO stations (external_id, label, display_url, updated_at)
+         VALUES ($1, $2, $3, now())
          ON CONFLICT (external_id) DO UPDATE SET
            display_url = COALESCE(NULLIF(stations.display_url, ''), EXCLUDED.display_url),
            label = EXCLUDED.label,
-           terminus_aliases = CASE
-             WHEN cardinality(stations.terminus_aliases) = 0 THEN EXCLUDED.terminus_aliases
-             ELSE stations.terminus_aliases
-           END,
            updated_at = now()`,
-        [s.id, s.label, s.displayUrl, [...s.terminusAliases]],
+        [s.id, s.label, s.displayUrl],
       );
     }
   }
@@ -538,13 +523,7 @@ export class PgStore {
     return {
       activeProvider,
       providers: { stub, navitia, prim },
-      gcFailoverEnabled: await this.isGcFailoverEnabled(),
     };
-  }
-
-  async isGcFailoverEnabled(): Promise<boolean> {
-    const v = await this.getMeta(META_GC_FAILOVER);
-    return v === "1" || v === "true";
   }
 
   /**
@@ -565,12 +544,6 @@ export class PgStore {
       if (next !== "stub") {
         await this.clearStubBoardSnapshots();
       }
-    }
-    if (body.gcFailoverEnabled !== undefined) {
-      await this.setMeta(
-        META_GC_FAILOVER,
-        body.gcFailoverEnabled ? "1" : "0",
-      );
     }
     return this.getIngestConfigPublic();
   }
@@ -1178,7 +1151,7 @@ export class PgStore {
 
       const nextDeparture = boardByJourney.get(j.id) ?? null;
       const ingestDegraded = lastIngestStatus === "error";
-      // Affiner le board avec le prochain train (y compris en mode dégradé si snapshot connu)
+      // Affiner le board avec le prochain train (snapshot connu)
       if (
         nextDeparture &&
         boardStatus !== "paused" &&
@@ -1197,10 +1170,10 @@ export class PgStore {
           boardStatusLabel = nextDeparture.statusLabel;
         }
         if (ingestDegraded) {
-          boardStatusLabel = `Dégradé · ${boardStatusLabel}`;
+          boardStatusLabel = `Ingest KO · ${boardStatusLabel}`;
         }
       } else if (ingestDegraded && boardStatus === "no_data") {
-        boardStatusLabel = "Mode dégradé";
+        boardStatusLabel = "Ingest en erreur";
       }
 
       const originStation = stationByExt.get(j.originId);
@@ -1417,8 +1390,8 @@ export class PgStore {
     );
     for (const row of res.rows) {
       const source = String(row.source);
-      // Prochain train = Navitia / G&C uniquement (jamais stub)
-      if (source === "stub") continue;
+      // Prochain train = Navitia uniquement (jamais stub ni ancien failover G&C)
+      if (source === "stub" || source === "garesetconnexions") continue;
 
       const scheduledAt = row.scheduled_at
         ? new Date(String(row.scheduled_at)).toISOString()
@@ -1604,10 +1577,7 @@ export class PgStore {
   }): Promise<{ deletedEvents: number; deletedDeliveries: number }> {
     const sources = [...new Set(input.eventSources ?? [])].filter(
       (s): s is IngestEventSource =>
-        s === "stub" ||
-        s === "prim" ||
-        s === "navitia" ||
-        s === "garesetconnexions",
+        s === "stub" || s === "prim" || s === "navitia",
     );
     const clearDeliveries = input.deliveries === true;
     if (sources.length === 0 && !clearDeliveries) {
@@ -1677,7 +1647,6 @@ export class PgStore {
     const externalId = String(body.externalId ?? "").trim();
     const label = String(body.label ?? "").trim();
     const displayUrl = normalizeDisplayUrl(body.displayUrl);
-    const terminusAliases = normalizeTerminusAliases(body.terminusAliases);
     if (!externalId || !label) {
       throw Object.assign(new Error("label and externalId are required"), {
         statusCode: 400,
@@ -1686,10 +1655,10 @@ export class PgStore {
     const pool = getPool();
     try {
       const res = await pool.query(
-        `INSERT INTO stations (external_id, label, display_url, terminus_aliases, updated_at)
-         VALUES ($1, $2, $3, $4::text[], now())
+        `INSERT INTO stations (external_id, label, display_url, updated_at)
+         VALUES ($1, $2, $3, now())
          RETURNING *`,
-        [externalId, label, displayUrl, terminusAliases],
+        [externalId, label, displayUrl],
       );
       return mapStation(res.rows[0]);
     } catch (err) {
@@ -1718,10 +1687,6 @@ export class PgStore {
       body.displayUrl !== undefined
         ? normalizeDisplayUrl(body.displayUrl)
         : current.displayUrl;
-    const terminusAliases =
-      body.terminusAliases !== undefined
-        ? normalizeTerminusAliases(body.terminusAliases)
-        : current.terminusAliases;
     if (!externalId || !label) {
       throw Object.assign(new Error("label and externalId are required"), {
         statusCode: 400,
@@ -1731,11 +1696,10 @@ export class PgStore {
     try {
       const res = await pool.query(
         `UPDATE stations
-         SET external_id = $2, label = $3, display_url = $4,
-             terminus_aliases = $5::text[], updated_at = now()
+         SET external_id = $2, label = $3, display_url = $4, updated_at = now()
          WHERE id = $1
          RETURNING *`,
-        [id, externalId, label, displayUrl, terminusAliases],
+        [id, externalId, label, displayUrl],
       );
       return mapStation(res.rows[0]);
     } catch (err) {

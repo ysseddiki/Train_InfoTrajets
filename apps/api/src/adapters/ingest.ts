@@ -1,18 +1,8 @@
 import type { JourneyConfig, JourneyDirection } from "@sncf-alerts/shared";
-import {
-  isWithinWatchWindow,
-  matchesDestinationFilter,
-} from "../domain/matching.js";
-import {
-  buildNextDepartureStatus,
-  hmTodayToIso,
-} from "../domain/next-departure.js";
+import { isWithinWatchWindow } from "../domain/matching.js";
+import { buildNextDepartureStatus } from "../domain/next-departure.js";
 import { notifyForEvent, processNotifyJobs } from "../domain/notify.js";
 import { store } from "../domain/store.js";
-import {
-  fetchGcDeparturesForJourney,
-  type GcBoardDeparture,
-} from "./departures-garesetconnexions.js";
 import {
   NavitiaDeparturesPort,
   navitiaDepartureMatchesFilter,
@@ -75,7 +65,7 @@ export async function injectStubEvent(input?: {
     detail: `Stub injecté (${direction})`,
   });
 
-  // Pas de snapshot board stub — le prochain train vient uniquement de Navitia / G&C
+  // Pas de snapshot board stub — le prochain train vient uniquement de Navitia
 
   if (created) {
     await notifyForEvent(event);
@@ -301,60 +291,13 @@ async function saveNextFromNavitia(
   });
 }
 
-async function saveNextFromGc(
-  journey: JourneyConfig,
-  departures: GcBoardDeparture[],
-  terminusAliases: string[],
-): Promise<void> {
-  const matched = departures.filter((dep) =>
-    matchesDestinationFilter(journey, dep.directionText, null, terminusAliases),
-  );
-  const next =
-    matched.find((d) => !d.cancelled) ?? matched[0] ?? null;
-  if (!next) return;
-
-  const scheduledAt = hmTodayToIso(next.baseDepartureHm);
-  let realtimeAt: string | null = scheduledAt;
-  if (
-    scheduledAt &&
-    next.delayMinutes != null &&
-    next.delayMinutes > 0 &&
-    !next.cancelled
-  ) {
-    realtimeAt = new Date(
-      new Date(scheduledAt).getTime() + next.delayMinutes * 60_000,
-    ).toISOString();
-  }
-  const trainMatch = next.identity.match(/\b([A-Z]?\d{3,5})\b/i);
-  const trainNumber = trainMatch ? trainMatch[1].toUpperCase() : null;
-  const { status, statusLabel } = buildNextDepartureStatus({
-    cancelled: next.cancelled,
-    delayMinutes: next.delayMinutes,
-    delayedUnknown: next.delayedUnknown,
-  });
-  const fetchedAt = new Date().toISOString();
-  await store.upsertJourneyBoardSnapshot({
-    journeyId: journey.id,
-    trainNumber,
-    scheduledAt,
-    realtimeAt: next.cancelled ? null : realtimeAt,
-    delayMinutes: next.cancelled ? null : next.delayMinutes,
-    cancelled: next.cancelled,
-    status,
-    statusLabel,
-    source: "garesetconnexions",
-    fetchedAt,
-  });
-}
-
 export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
   constructor(private readonly token: string) {}
 
   async poll(): Promise<void> {
     const token = this.token;
-    const gcFailover = await store.isGcFailoverEnabled();
 
-    if (!token && !gcFailover) {
+    if (!token) {
       await store.setIngestResult({
         status: "error",
         detail: "Token Navitia manquant (config admin)",
@@ -362,10 +305,8 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       throw new Error("Navitia token is required");
     }
 
-    const quota = token
-      ? await store.getApiQuota("navitia")
-      : { exhausted: true, used: 0, limit: 0, day: "" };
-    if (token && quota.exhausted && !gcFailover) {
+    const quota = await store.getApiQuota("navitia");
+    if (quota.exhausted) {
       await store.setIngestResult({
         status: "skipped",
         detail: `Quota Navitia épuisé (${quota.used}/${quota.limit}) — jour ${quota.day}`,
@@ -385,51 +326,20 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
 
     let checked = 0;
     let alerts = 0;
-    let usedGc = 0;
-    const notes: string[] = [];
 
     try {
       for (const journey of open) {
-        let n = 0;
-        let viaGc = false;
-
-        const tryNavitia =
-          Boolean(token) &&
-          !(await store.getApiQuota("navitia")).exhausted;
-
-        if (tryNavitia) {
-          try {
-            n = await this.pollJourneyNavitia(journey, token);
-          } catch (err) {
-            if (!gcFailover) throw err;
-            const msg = err instanceof Error ? err.message : "erreur Navitia";
-            notes.push(`${journey.direction}: Navitia KO → G&C (${msg.slice(0, 80)})`);
-            n = await this.pollJourneyGc(journey);
-            viaGc = true;
-          }
-        } else if (gcFailover) {
-          notes.push(
-            `${journey.direction}: ${token ? "quota" : "sans token"} → G&C`,
-          );
-          n = await this.pollJourneyGc(journey);
-          viaGc = true;
-        } else {
-          throw new Error("Navitia indisponible et failover G&C désactivé");
-        }
-
+        const n = await this.pollJourneyNavitia(journey, token);
         checked += 1;
         alerts += n;
-        if (viaGc) usedGc += 1;
       }
       await processNotifyJobs();
-      const detailParts = [
-        `Navitia/G&C — ${checked} gare(s), ${alerts} alerte(s)`,
-        usedGc > 0 ? `failover G&C: ${usedGc}` : null,
-        ...notes.slice(0, 3),
-      ].filter(Boolean);
       await store.setIngestResult({
         status: "ok",
-        detail: detailParts.join(" · ").slice(0, 500),
+        detail: `Navitia — ${checked} gare(s), ${alerts} alerte(s)`.slice(
+          0,
+          500,
+        ),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur ingest";
@@ -504,80 +414,6 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
 
     return createdCount;
   }
-
-  /** TEMP — failover scrape Gares & Connexions (display_url / UIC). */
-  private async pollJourneyGc(journey: JourneyConfig): Promise<number> {
-    const { departures } = await fetchGcDeparturesForJourney(journey);
-    return upsertFromGcBoard(journey, departures);
-  }
-}
-
-async function upsertFromGcBoard(
-  journey: JourneyConfig,
-  departures: GcBoardDeparture[],
-): Promise<number> {
-  const stations = await store.listStations();
-  const dest = stations.find((s) => s.externalId === journey.destinationId);
-  const terminusAliases = dest?.terminusAliases ?? [];
-
-  await saveNextFromGc(journey, departures, terminusAliases);
-  let createdCount = 0;
-  for (const dep of departures) {
-    if (
-      !matchesDestinationFilter(
-        journey,
-        dep.directionText,
-        null,
-        terminusAliases,
-      )
-    ) {
-      continue;
-    }
-
-    const cancelled = dep.cancelled;
-    const delay = dep.delayMinutes;
-
-    if (!cancelled) {
-      if (dep.delayedUnknown) {
-        // keep — retard unknown
-      } else if (delay === null) {
-        continue;
-      } else {
-        if (delay < journey.minDelayMinutes) continue;
-        if (delay <= 0) continue;
-      }
-    }
-
-    const kind = cancelled ? "cancellation" : "delay";
-    if (!journey.severities.includes(kind)) continue;
-
-    const externalEventId = `gc-${journey.id}-${dep.identity}`.slice(0, 200);
-    const delayLabel =
-      delay == null || dep.delayedUnknown ? "unknown" : `${delay} min`;
-    const { event, created } = await store.upsertEvent({
-      externalEventId,
-      journeyId: journey.id,
-      liaisonId: journey.liaisonId,
-      direction: journey.direction,
-      kind,
-      severity:
-        cancelled || (delay != null && delay >= 20) ? "critical" : "warning",
-      title: cancelled
-        ? `Suppression — ${journey.originLabel} → ${dep.directionText || journey.destinationLabel}`
-        : `Retard ${delayLabel} — ${journey.originLabel} → ${dep.directionText || journey.destinationLabel}`,
-      description: `Failover Gares & Connexions — gare ${journey.originLabel}, sens ${dep.directionText || journey.destinationLabel}.`,
-      delayMinutes: cancelled || dep.delayedUnknown ? null : delay,
-      startsAt: new Date().toISOString(),
-      endsAt: null,
-      source: "garesetconnexions",
-    });
-
-    if (created) {
-      createdCount += 1;
-      await notifyForEvent(event);
-    }
-  }
-  return createdCount;
 }
 
 export class ConfiguredIngestAdapter implements DisruptionIngestPort {
@@ -589,15 +425,9 @@ export class ConfiguredIngestAdapter implements DisruptionIngestPort {
       return;
     }
     if (provider === "prim") {
-      const gcFailover = await store.isGcFailoverEnabled();
-      if (gcFailover) {
-        // PRIM non implémenté : failover G&C direct
-        await new NavitiaDeparturesAdapter("").poll();
-        return;
-      }
       await store.setIngestResult({
         status: "error",
-        detail: "Provider PRIM non implémenté — choisir stub/navitia ou activer failover G&C",
+        detail: "Provider PRIM non implémenté — choisir stub ou navitia",
       });
       return;
     }

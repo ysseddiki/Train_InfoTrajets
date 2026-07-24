@@ -140,7 +140,7 @@ export interface NextDepartureInfo {
   status: NextDepartureStatus;
   statusLabel: string;
   fetchedAt: string;
-  source: "navitia" | "garesetconnexions" | "stub";
+  source: "navitia" | "stub";
 }
 
 export type IngestRunStatus = "ok" | "error" | "skipped";
@@ -265,7 +265,7 @@ export interface DisruptionEventDto {
   delayMinutes: number | null;
   startsAt: string;
   endsAt: string | null;
-  source: "stub" | "prim" | "navitia" | "garesetconnexions";
+  source: "stub" | "prim" | "navitia";
   detectedAt: string;
 }
 
@@ -329,11 +329,6 @@ export interface IngestProviderSlotPublic {
 export interface IngestConfigPublic {
   activeProvider: IngestProviderId;
   providers: Record<IngestProviderId, IngestProviderSlotPublic>;
-  /**
-   * TEMP — failover scrape Gares & Connexions si l’API active échoue.
-   * Rollback : désactiver + supprimer adapters `*garesetconnexions*`.
-   */
-  gcFailoverEnabled: boolean;
 }
 
 export interface IngestConfigUpdate {
@@ -343,8 +338,6 @@ export interface IngestConfigUpdate {
   navitiaToken?: string;
   /** Remplace la clé PRIM si non vide */
   primApiKey?: string;
-  /** TEMP — active le failover scrape G&C */
-  gcFailoverEnabled?: boolean;
 }
 
 export interface IngestProbeRequest {
@@ -393,11 +386,6 @@ export interface Station {
    * null si non renseigné.
    */
   displayUrl: string | null;
-  /**
-   * Noms « terminus » (tags) pour le matching dégradé G&C :
-   * libellés tels qu’ils apparaissent sur le board (ex. Menton, Monaco Monte-Carlo).
-   */
-  terminusAliases: string[];
   updatedAt: string;
 }
 
@@ -406,27 +394,6 @@ export interface StationUpsertBody {
   label: string;
   /** URL affichage gare ; `""` ou omis → null */
   displayUrl?: string | null;
-  /** Tags terminus G&C ; omis → inchangé à l’update, [] à la création */
-  terminusAliases?: string[];
-}
-
-/** Normalise une liste de tags terminus (trim, dédoublonne, max 40). */
-export function normalizeTerminusAliases(
-  input: unknown,
-): string[] {
-  if (!Array.isArray(input)) return [];
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of input) {
-    const t = String(raw ?? "").trim();
-    if (t.length < 2) continue;
-    const key = t.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(t.slice(0, 80));
-    if (out.length >= 40) break;
-  }
-  return out;
 }
 
 /** Compteur journalier d’appels API externes (Navitia / PRIM). */
@@ -446,7 +413,7 @@ export interface ApiQuotaStatus {
   exhausted: boolean;
 }
 
-export type IngestEventSource = "stub" | "prim" | "navitia" | "garesetconnexions";
+export type IngestEventSource = "stub" | "prim" | "navitia";
 
 /** Sources décorrélées pour vider les stats dashboard (retards, etc.). */
 export interface ClearStatsRequest {

@@ -78,7 +78,7 @@ La `time_window` d’un `JourneyConfig` MUST représenter la fenêtre **trajet**
 
 ### Requirement: Filtre gare desservie
 
-Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents dans la direction affichée des départs), pas uniquement le terminus commercial.
+Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents dans la direction affichée des départs), pas uniquement le terminus commercial. L’allowlist corridor (ex. Menton au-delà de Monaco) MAY compléter le matching Navitia lorsque le headsign n’expose que le terminus.
 
 #### Scenario: Direction Menton via Monaco
 
@@ -86,10 +86,10 @@ Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents d
 - **WHEN** un départ affiche une direction contenant « Monaco »
 - **THEN** le départ est éligible même si le terminus textuel est plus loin
 
-#### Scenario: Terminus Menton (corridor / G&C)
+#### Scenario: Terminus Menton (corridor)
 
 - **GIVEN** filtre Nice → Monaco
-- **WHEN** le board (ex. failover G&C) n’affiche que « Menton »
+- **WHEN** le board Navitia n’affiche que « Menton »
 - **THEN** le départ est éligible via allowlist corridor
 
 #### Scenario: Enrichissement Navitia vehicle_journey
@@ -98,15 +98,32 @@ Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents d
 - **WHEN** le `vehicle_journey` Navitia liste `stop_area` Monaco
 - **THEN** le départ est éligible
 
+### Requirement: Pas de failover scrape Gares & Connexions
+
+Le pipeline d’ingest MUST NOT scraper Gares & Connexions ni exposer une source `garesetconnexions`. En cas d’échec Navitia (token manquant, quota, erreur API), le poll MUST enregistrer un statut `error` ou `skipped` et MUST NOT basculer vers un board HTML tiers.
+
+#### Scenario: Navitia KO
+
+- **GIVEN** provider actif `navitia` et token invalide ou API en erreur
+- **WHEN** le poll tourne
+- **THEN** `last_ingest_status` est `error` (ou `skipped` si hors fenêtre / quota)
+- **AND** aucun appel HTTP vers `garesetconnexions.sncf` n’est effectué
+
 ### Requirement: Board prochain train sans stub
 
-Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir de sources réelles (`navitia` | `garesetconnexions`). Le provider stub MUST NOT écrire ni exposer de prochain train sur le board.
+Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir de `navitia`. Le provider stub MUST NOT écrire ni exposer de prochain train sur le board. Les snapshots historiques `source=garesetconnexions` MUST être ignorés (comme le stub).
 
 #### Scenario: Stub désactivé
 
 - **GIVEN** des snapshots `source=stub` en base et provider actif ≠ stub
 - **WHEN** le dashboard charge l’overview
 - **THEN** `nextDeparture` est absent pour ces journeys (stub ignoré / purgé)
+
+#### Scenario: Ancien snapshot G&C
+
+- **GIVEN** un snapshot `source=garesetconnexions` en base
+- **WHEN** le dashboard charge l’overview
+- **THEN** `nextDeparture` est absent pour ce journey
 
 Le poll ingest SHALL pouvoir tourner hors du process API (`INGEST_IN_PROCESS=false` + worker dédié). Des unités systemd SHALL être fournies en exemple (`deploy/systemd/`).
 

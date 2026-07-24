@@ -3,8 +3,8 @@ import type { JourneyConfig } from "@sncf-alerts/shared";
 /**
  * Corridor TER côtier Nice ↔ Vintimille (sens Est).
  * Permet d’accepter un terminus *au-delà* de la gare filtre (ex. Menton
- * quand on surveille Nice → Monaco) — utile surtout en failover G&C
- * où le board n’expose souvent que le terminus.
+ * quand on surveille Nice → Monaco) — les boards n’exposent parfois
+ * que le terminus commercial.
  */
 export type CorridorStop = {
   /** Identifiants Navitia connus (optionnel) */

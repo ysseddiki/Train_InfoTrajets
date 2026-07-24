@@ -22,11 +22,6 @@ const EVENT_SOURCES: { id: IngestEventSource; label: string; hint: string }[] =
       label: "Événements PRIM",
       hint: "Source Île-de-France Mobilités (si utilisée)",
     },
-    {
-      id: "garesetconnexions",
-      label: "Événements G&C (failover)",
-      hint: "Scrape temporaire Gares & Connexions",
-    },
   ];
 
 export function ClearStatsPanel() {
@@ -34,7 +29,6 @@ export function ClearStatsPanel() {
     stub: false,
     navitia: false,
     prim: false,
-    garesetconnexions: false,
   });
   const [deliveries, setDeliveries] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -78,7 +72,6 @@ export function ClearStatsPanel() {
         stub: false,
         navitia: false,
         prim: false,
-        garesetconnexions: false,
       });
       setDeliveries(false);
     } catch {

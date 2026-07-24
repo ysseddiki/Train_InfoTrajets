@@ -60,24 +60,4 @@ describe("matchesDestinationFilter (gare desservie)", () => {
     const j = journey({});
     assert.equal(matchesDestinationFilter(j, "Menton"), true);
   });
-
-  it("matches via station terminusAliases (G&C spelling)", () => {
-    const j = journey({ destinationLabel: "Monaco - Monte-Carlo" });
-    assert.equal(
-      matchesDestinationFilter(j, "Monte Carlo", null, ["Monte Carlo"]),
-      true,
-    );
-  });
-
-  it("rejects when neither label nor aliases match", () => {
-    const j = journey({
-      originId: "a",
-      destinationId: "b",
-      destinationLabel: "Somewhere",
-    });
-    assert.equal(
-      matchesDestinationFilter(j, "Cannes", null, ["Antibes"]),
-      false,
-    );
-  });
 });

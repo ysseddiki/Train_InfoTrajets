@@ -19,6 +19,10 @@ Le système SHALL être un outil ops interne qui surveille une ou plusieurs liai
 - **THEN** seules les surfaces Dashboard et Admin sont disponibles
 - **AND** aucun compte voyageur ni canal push n’existe
 - **AND** au moins une liaison est configurée (seed par défaut)
+- **AND** aucune source d’ingest scrape Gares & Connexions n’est disponible
+
+Hors scope v1 explicite : scrape / failover G&C (Datadome) ; `displayUrl` catalogue = lien UI seulement.
+
 ### Requirement: Séparation client/serveur
 
 Le client web MUST n’appeler que l’API HTTP `/v1` ; les intégrations PRIM/Navitia, SMTP et Teams MUST s’exécuter uniquement côté serveur.

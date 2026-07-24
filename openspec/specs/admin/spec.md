@@ -59,7 +59,7 @@ Si **Veille continue** est cochée, la liste MUST être désactivée (grisée) ;
 
 ### Requirement: Clear stats par source
 
-Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `prim`, et/ou livraisons email/Teams.
+Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `prim`, et/ou livraisons email/Teams. MUST NOT proposer une source `garesetconnexions`.
 
 #### Scenario: Clear événements stub seulement
 
@@ -70,13 +70,22 @@ Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboa
 
 ### Requirement: Catalogue de gares
 
-Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (label + id Navitia). La configuration d’une liaison SHALL sélectionner les gares via une liste déroulante et MUST proposer un accès « Créer » vers le catalogue si la gare n’existe pas.
+Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`label`, `externalId` Navitia, `displayUrl` optionnel). La configuration d’une liaison SHALL sélectionner les gares via une liste déroulante et MUST proposer un accès « Créer » vers le catalogue si la gare n’existe pas.
+
+`displayUrl` SHALL servir uniquement de lien UI (fiche publique) ; le système MUST NOT l’utiliser pour un scrape. Aucun champ d’alias terminus scrape MUST être exposé.
 
 #### Scenario: Création depuis la liaison
 
 - **GIVEN** un admin édite une liaison
 - **WHEN** il clique Créer à côté du sélecteur de gare
 - **THEN** il accède à la section Gares pour ajouter une entrée au catalogue
+
+#### Scenario: Lien fiche sans scrape
+
+- **GIVEN** une gare avec `displayUrl` renseignée
+- **WHEN** l’admin enregistre la gare
+- **THEN** l’URL est persistée pour l’UI
+- **AND** aucun job d’ingest ne lit cette URL comme source de départs
 
 ### Requirement: Destinataires email saisis par l’admin
 
@@ -95,6 +104,7 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 - Secrets Navitia / PRIM : **write-only** ; `tokenPreview` = 5 premiers caractères
 - `POST /v1/admin/ingest/probe` : test API sans forcément activer
 - À l’enregistrement d’un token (ou à l’activation d’un provider distant), le serveur MUST appeler l’API cible et MUST persister le résultat du check (`lastCheckOk` / détail). MUST NOT bloquer la sauvegarde ni l’activation si le check échoue ; les données MAY rester absentes tant que l’API cible échoue
+- MUST NOT exposer de toggle `gcFailoverEnabled` ni d’option scrape G&C
 
 #### Scenario: Trois slots indépendants
 

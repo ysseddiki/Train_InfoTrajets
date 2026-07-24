@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.3.0`  
+> **Version** : `1.4.0`  
 > **Date** : 2026-07-24  
-> **Change** : `openspec/changes/ops-room-workloads`  
+> **Change** : `openspec/changes/remove-gc-failover`  
 > **Format** : OpenSpec
 
 ---
@@ -25,7 +25,7 @@ Le client (`apps/web`) et le serveur (`apps/api`) sont séparés. Specs détaill
 - SSO / OIDC / 2FA
 - Push, SMS
 - Billetterie, itinéraires alternatifs
-- Scrape Gares & Connexions (lien fiche UI seulement)
+- Scrape / failover Gares & Connexions (Datadome ; lien fiche UI seulement via `displayUrl`)
 - Prometheus / Grafana (pas de stack monitoring pour l’instant)
 
 ---
@@ -116,10 +116,22 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `description` | string | |
 | `delay_minutes` | int \| null | `null` = durée **unknown** (jamais coercée en `0`) |
 | `starts_at` / `ends_at` | datetime | |
-| `source` | `stub` \| `prim` \| `navitia` | |
+| `source` | `stub` \| `prim` \| `navitia` | Pas de `garesetconnexions` |
 | `detected_at` | datetime | |
 
 `raw_payload` : optionnel, rétention courte ; **pas de secrets**.
+
+### 1.4b Station (catalogue)
+
+| Champ | Type | Notes |
+|-------|------|-------|
+| `id` | UUID | PK |
+| `external_id` | string | ID Navitia `stop_area` (unique) |
+| `label` | string | Affichage |
+| `display_url` | string \| null | Lien UI fiche publique (ex. G&C) — **jamais** scrapé |
+| `updated_at` | datetime | UTC |
+
+Pas d’alias terminus scrape. Les liaisons référencent les gares via `external_id`.
 
 ### 1.5 NotificationSettings & canaux
 
@@ -188,13 +200,13 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 
 | Port | Rôle |
 |------|------|
-| `DisruptionIngestPort` | stub \| prim \| navitia |
+| `DisruptionIngestPort` | stub \| prim \| navitia (pas de scrape G&C) |
 | `DeparturesPort` | départs gare (Navitia + cache TTL) |
 | `EmailNotifierPort` | SMTP |
 | `TeamsNotifierPort` | Incoming webhook |
 | `ClockPort` | Testabilité fenêtres horaires |
 
-Pas de scrape Gares & Connexions : URL `displayUrl` catalogue → lien UI seulement.
+Pas de scrape / failover Gares & Connexions (bloqué Datadome). URL `displayUrl` catalogue → lien UI seulement. Snapshots board : `navitia` uniquement.
 
 ---
 

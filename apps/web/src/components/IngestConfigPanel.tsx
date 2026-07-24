@@ -221,27 +221,6 @@ export function IngestConfigPanel() {
     }
   }
 
-  async function setGcFailover(enabled: boolean) {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const next = await apiSend<IngestConfigPublic>("/v1/admin/ingest", "PUT", {
-        gcFailoverEnabled: enabled,
-      });
-      setConfig(next);
-      setMsg({
-        text: enabled
-          ? "Failover G&C activé"
-          : "Failover G&C désactivé (rollback)",
-        ok: true,
-      });
-    } catch (err) {
-      setMsg({ text: errorMessage(err), ok: false });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function probe(provider: IngestProviderId, token?: string) {
     setBusy(true);
     setMsg(null);
@@ -285,28 +264,6 @@ export function IngestConfigPanel() {
         </p>
         <p>
           Actif : <strong>{LABELS[config.activeProvider]}</strong>
-        </p>
-      </div>
-
-      <div className="card ingest-failover-card">
-        <h3>Failover temporaire — Gares &amp; Connexions</h3>
-        <p className="muted">
-          Si Navitia (ou PRIM) échoue / quota / token manquant, scrape le board
-          public via l’UIC et le lien fiche gare (<code>display_url</code> du
-          catalogue Stations). Désactiver = rollback comportement normal.
-        </p>
-        <label className="check-inline">
-          <input
-            type="checkbox"
-            checked={config.gcFailoverEnabled}
-            disabled={busy}
-            onChange={(e) => void setGcFailover(e.target.checked)}
-          />{" "}
-          Activer le failover scrape G&amp;C
-        </label>
-        <p className="muted field-hint">
-          Attention : le site peut renvoyer un captcha (Datadome) selon l’IP —
-          le détail d’ingest affichera alors l’erreur.
         </p>
       </div>
 
