@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.2.0`  
+> **Version** : `1.2.1`  
 > **Date** : 2026-07-24  
-> **Change** : `openspec/changes/multi-liaisons`  
+> **Change** : `openspec/changes/watch-lead-window`  
 > **Format** : OpenSpec
 
 ---
@@ -91,7 +91,9 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `destination_label` | string | Affichage |
 | `network` | string | `ter` (implicite UI) |
 | `days_of_week` | int[1..7] | 1=lundi |
-| `time_window` | `{ start, end }` | HH:mm, TZ `Europe/Paris` |
+| `time_window` | `{ start, end }` | HH:mm, TZ `Europe/Paris` — **fenêtre trajet** |
+| `watch_always` | bool | Si true : veille continue sur les `days_of_week` (ignore les heures) |
+| `watch_lead_hours` | int 0..12 | Heures avant `time_window.start` pour démarrer la veille (défaut 4 ; ignoré si `watch_always`) |
 | `min_delay_minutes` | int | Seuil retard |
 | `severities` | string[] | `delay`, `cancellation`, … |
 | `active` | bool | Surveillance on/off |
@@ -197,10 +199,11 @@ Notifier seulement si :
 
 1. `JourneyConfig.active` pour le sens
 2. Événement match origine/destination (ou ligne associée)
-3. Jour + fenêtre horaire (TZ Paris)
+3. Jour + **fenêtre de veille** (TZ Paris) : `watch_always` ou `[start − watch_lead_hours, end]`
 4. Sévérité dans la liste configurée
 5. Si retard avec durée connue : `delay_minutes >= min_delay_minutes` ; si `delay_minutes` null (unknown), le seuil numérique ne s’applique pas
 
+Le poll ingest et le board (`outside_window`) utilisent la même fenêtre de veille. `time_window` reste l’ancre **trajet** configurée en admin.
 ### Dédoublonnage
 
 - Idempotence ingest sur `external_event_id`
@@ -275,3 +278,5 @@ specs/system/     # Baseline narrative
 | `1.1.0` | 2026-07-23 | Pivot ops A/R, admin, SMTP+Teams, client/serveur |
 | `1.1.1` | 2026-07-24 | `delay_minutes` null = unknown (spec ingest + UI/notif) |
 | `1.1.2` | 2026-07-24 | Client web : Vite + React + TypeScript |
+| `1.2.0` | 2026-07-24 | Multi-liaisons |
+| `1.2.1` | 2026-07-24 | Fenêtre de veille (`watch_always` / `watch_lead_hours` 0–12) |

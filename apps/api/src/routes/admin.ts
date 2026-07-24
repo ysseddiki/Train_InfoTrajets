@@ -172,6 +172,11 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return store.getRecipients();
   });
 
+  app.get("/v1/admin/quota", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return store.getApiQuota("navitia");
+  });
+
   app.put<{ Body: RecipientsConfig }>(
     "/v1/admin/channels/recipients",
     async (req, reply) => {

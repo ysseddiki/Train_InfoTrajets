@@ -31,3 +31,13 @@ Pour un événement de type retard (`delay`), si `delay_minutes` est `null`, le 
 - **GIVEN** le dernier événement Aller est un `delay` avec `delay_minutes = null`
 - **WHEN** le dashboard charge
 - **THEN** le retard est libellé `unknown`
+
+### Requirement: Libellé hors fenêtre de veille
+
+Hors fenêtre de veille (et trajet actif), le board MUST indiquer un statut `outside_window` (ex. « Hors fenêtre de veille »), distinct de la pause (`active = false`).
+
+#### Scenario: Avant le lead
+
+- **GIVEN** Aller actif, trajet 07:00–09:30, lead 4 h, pas de veille continue
+- **WHEN** il est 02:00 Europe/Paris un jour surveillé
+- **THEN** le board Aller est `outside_window`

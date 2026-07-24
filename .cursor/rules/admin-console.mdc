@@ -8,8 +8,9 @@ alwaysApply: false
 
 - Login simple obligatoire avant toute mutation
 - Layout : **nav gauche** par catégorie (`ADMIN_SECTIONS`) + panneau contenu
-- Catégories v1 : Liaisons, Destinataires, Canaux, Debug
+- Catégories v1 : Liaisons, Destinataires, Canaux, Quota API, Debug
 - Liaisons : plusieurs paires A/R possibles ; nom custom ou auto `départ <-> arrivée` ; au moins une
+- Quota API : compteur journalier Navitia (réussi/échoué), barre 0–`NAVITIA_DAILY_QUOTA` (défaut 5000)
 - Destinataires = liste saisie par l’admin (pas d’auto-inscription)
 - Champs secrets : write-only / masked après sauvegarde
 - Boutons test d’envoi par canal

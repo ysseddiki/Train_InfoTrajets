@@ -7,15 +7,7 @@ import { DeliveriesTable } from "../components/DeliveriesTable";
 import { EventsTable } from "../components/EventsTable";
 import { JourneyCard } from "../components/JourneyCard";
 import { PeriodStats } from "../components/PeriodStats";
-import { ingestClass } from "../lib/boardStatus";
-import { errorMessage, formatRelative, formatWhen } from "../lib/format";
-
-function ingestLabel(status: string | null): string {
-  if (status === "ok") return "Ingest OK";
-  if (status === "error") return "Ingest en erreur";
-  if (status === "skipped") return "Ingest ignoré (hors fenêtre)";
-  return "Aucun ingest encore";
-}
+import { errorMessage } from "../lib/format";
 
 export function DashboardPage() {
   const [data, setData] = useState<DashboardOverview | null>(null);
@@ -59,7 +51,6 @@ export function DashboardPage() {
     return <p className="muted page-enter">Chargement…</p>;
   }
 
-  const ingestStatus = data.lastIngest?.status ?? null;
   const periods = data.stats.periods;
 
   return (
@@ -86,17 +77,6 @@ export function DashboardPage() {
 
       <section className="dash-section">
         <h2 className="dash-section-title">Statut en cours</h2>
-        <div className={ingestClass(ingestStatus)}>
-          <div>
-            <strong>{ingestLabel(ingestStatus)}</strong>
-            <p>
-              Provider <code>{data.stats.ingestProvider}</code> ·{" "}
-              {formatWhen(data.lastIngest?.at ?? null)} (
-              {formatRelative(data.lastIngest?.at ?? null)})
-            </p>
-          </div>
-          <p className="ingest-detail">{data.lastIngest?.detail ?? "—"}</p>
-        </div>
         <div className="liaison-dash-list">
           {data.liaisons.map((liaison) => (
             <div key={liaison.id} className="liaison-dash-block">

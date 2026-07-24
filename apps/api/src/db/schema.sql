@@ -37,6 +37,8 @@ CREATE TABLE IF NOT EXISTS journeys (
   days_of_week INT[] NOT NULL DEFAULT '{1,2,3,4,5}',
   window_start TEXT NOT NULL DEFAULT '07:00',
   window_end TEXT NOT NULL DEFAULT '09:30',
+  watch_always BOOLEAN NOT NULL DEFAULT false,
+  watch_lead_hours INT NOT NULL DEFAULT 4,
   min_delay_minutes INT NOT NULL DEFAULT 10,
   severities TEXT[] NOT NULL DEFAULT '{delay,cancellation}',
   active BOOLEAN NOT NULL DEFAULT false,
@@ -83,4 +85,13 @@ CREATE INDEX IF NOT EXISTS alert_deliveries_created_idx ON alert_deliveries (cre
 CREATE TABLE IF NOT EXISTS app_meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS api_quota_daily (
+  day DATE NOT NULL,
+  provider TEXT NOT NULL,
+  success INT NOT NULL DEFAULT 0,
+  failed INT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (day, provider)
 );

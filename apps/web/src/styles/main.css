@@ -40,7 +40,8 @@ h3,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 1rem;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
   padding: 0.75rem 1.5rem;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
   background: var(--header-bg);
@@ -55,6 +56,58 @@ h3,
   align-items: center;
   gap: 0.65rem;
   min-width: 0;
+}
+
+.api-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  margin-right: auto;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  border-radius: 999px;
+  background: transparent;
+}
+
+.api-status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: #9aa5b1;
+  flex-shrink: 0;
+}
+
+.api-status-connected {
+  color: var(--accent);
+}
+
+.api-status-connected .api-status-dot {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.api-status-disconnected {
+  color: var(--danger);
+}
+
+.api-status-disconnected .api-status-dot {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px #fde8e8;
+}
+
+.api-status-unknown .api-status-dot {
+  background: #9aa5b1;
+}
+
+@media (max-width: 640px) {
+  .api-status {
+    order: 3;
+    margin-right: 0;
+    flex: 1 1 100%;
+  }
 }
 
 .brand-mark {
@@ -304,6 +357,86 @@ button.danger-ghost {
 
 .liaison-dash-block .journey-grid {
   margin-top: 0;
+}
+
+.quota-panel h3 {
+  margin: 0 0 0.25rem;
+}
+
+.quota-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.quota-head p {
+  margin: 0;
+}
+
+.quota-used {
+  margin: 0;
+  font-size: 1.35rem;
+  white-space: nowrap;
+}
+
+.quota-bar {
+  height: 0.85rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 65%, white);
+  overflow: hidden;
+}
+
+.quota-bar-fill {
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.45s ease;
+}
+
+.quota-fill-ok {
+  background: linear-gradient(90deg, #1a9a6e, var(--accent));
+}
+
+.quota-fill-mid {
+  background: linear-gradient(90deg, #c98512, #e0a020);
+}
+
+.quota-fill-high {
+  background: linear-gradient(90deg, #b43333, var(--danger));
+}
+
+.quota-bar-caption {
+  margin: 0.45rem 0 1rem;
+  font-size: 0.9rem;
+}
+
+.quota-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.quota-stat {
+  display: grid;
+  gap: 0.2rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--card) 88%, var(--bg));
+}
+
+.quota-stat-label {
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.quota-note {
+  margin: 0;
+  font-size: 0.9rem;
 }
 
 @media (max-width: 800px) {

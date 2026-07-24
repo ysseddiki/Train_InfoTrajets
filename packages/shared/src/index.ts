@@ -19,6 +19,20 @@ export interface TimeWindow {
   end: string; // HH:mm
 }
 
+/** Lead veille avant time_window.start (heures entières). */
+export const WATCH_LEAD_HOURS_MIN = 0;
+export const WATCH_LEAD_HOURS_MAX = 12;
+export const DEFAULT_WATCH_LEAD_HOURS = 4;
+
+export function clampWatchLeadHours(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_WATCH_LEAD_HOURS;
+  return Math.min(
+    WATCH_LEAD_HOURS_MAX,
+    Math.max(WATCH_LEAD_HOURS_MIN, Math.round(n)),
+  );
+}
+
 export interface JourneyConfig {
   id: string;
   liaisonId: string;
@@ -32,7 +46,15 @@ export interface JourneyConfig {
   destinationLabel: string;
   network: string;
   daysOfWeek: number[]; // 1=Mon .. 7=Sun
+  /** Fenêtre trajet (prise de train) */
   timeWindow: TimeWindow;
+  /**
+   * Veille continue sur les jours configurés (ignore les bornes horaires).
+   * Si true, `watchLeadHours` est ignoré pour le calcul de veille.
+   */
+  watchAlways: boolean;
+  /** Heures avant time_window.start pour démarrer la veille (0–12). */
+  watchLeadHours: number;
   minDelayMinutes: number;
   severities: DisruptionKind[];
   active: boolean;
@@ -153,6 +175,8 @@ export interface JourneyStatusCard {
   network: string;
   timeWindow: TimeWindow;
   daysOfWeek: number[];
+  watchAlways: boolean;
+  watchLeadHours: number;
   minDelayMinutes: number;
   /** Synthèse trafic pour le dashboard */
   boardStatus: BoardTrafficStatus;
@@ -228,6 +252,23 @@ export interface TeamsConfigPublic {
 
 export interface RecipientsConfig {
   emails: string[];
+}
+
+/** Compteur journalier d’appels API externes (Navitia / PRIM). */
+export interface ApiQuotaStatus {
+  provider: string;
+  /** Jour civil Europe/Paris (YYYY-MM-DD) */
+  day: string;
+  limit: number;
+  success: number;
+  failed: number;
+  /** success + failed */
+  used: number;
+  remaining: number;
+  /** 0–100 */
+  percent: number;
+  /** true si used >= limit */
+  exhausted: boolean;
 }
 
 export interface HealthResponse {

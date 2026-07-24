@@ -1,4 +1,5 @@
 import type { JourneyConfig, DisruptionEventDto } from "@sncf-alerts/shared";
+import { clampWatchLeadHours } from "@sncf-alerts/shared";
 
 /** Europe/Paris weekday: 1=Mon .. 7=Sun */
 export function parisParts(date: Date): { weekday: number; hm: string } {
@@ -30,15 +31,65 @@ export function inWindow(hm: string, start: string, end: string): boolean {
   return hm >= start || hm <= end;
 }
 
-/** True if now is inside the journey watch window (days + hours, Europe/Paris). */
+/** Soustrait N heures à un HH:mm (wrap 24 h). */
+export function subtractHoursHm(hm: string, hours: number): string {
+  const [hs, ms] = hm.split(":");
+  const h = Number(hs) || 0;
+  const m = Number(ms) || 0;
+  let total = h * 60 + m - Math.round(hours) * 60;
+  total = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
+  const nh = Math.floor(total / 60);
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
+type WatchSchedule = Pick<
+  JourneyConfig,
+  "daysOfWeek" | "timeWindow" | "watchAlways" | "watchLeadHours"
+>;
+
+/**
+ * Jour + heures de veille (sans tester `active`).
+ * Veille continue → jours seulement ; sinon [start − lead, end].
+ */
+export function isInWatchSchedule(
+  journey: WatchSchedule,
+  at = new Date(),
+): boolean {
+  const { weekday, hm } = parisParts(at);
+
+  if (journey.watchAlways) {
+    return journey.daysOfWeek.includes(weekday);
+  }
+
+  const lead = clampWatchLeadHours(journey.watchLeadHours);
+  const travelStart = journey.timeWindow.start;
+  const watchStart = subtractHoursHm(travelStart, lead);
+  const watchEnd = journey.timeWindow.end;
+  const crossedMidnight = watchStart > travelStart;
+
+  if (journey.daysOfWeek.includes(weekday) && inWindow(hm, watchStart, watchEnd)) {
+    return true;
+  }
+
+  // Lead qui traverse minuit : veille en fin de journée si demain = jour trajet
+  if (crossedMidnight) {
+    const yesterday = weekday === 1 ? 7 : weekday - 1;
+    if (journey.daysOfWeek.includes(yesterday) && hm >= watchStart) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/** True if now is inside the journey watch window (days + veille, Europe/Paris). */
 export function isWithinWatchWindow(
   journey: JourneyConfig,
   now = new Date(),
 ): boolean {
   if (!journey.active) return false;
-  const { weekday, hm } = parisParts(now);
-  if (!journey.daysOfWeek.includes(weekday)) return false;
-  return inWindow(hm, journey.timeWindow.start, journey.timeWindow.end);
+  return isInWatchSchedule(journey, now);
 }
 
 export function matchesJourney(
@@ -54,11 +105,7 @@ export function matchesJourney(
   if (!journey.severities.includes(event.kind)) return false;
 
   const at = new Date(event.startsAt || now);
-  const { weekday, hm } = parisParts(at);
-  if (!journey.daysOfWeek.includes(weekday)) return false;
-  if (!inWindow(hm, journey.timeWindow.start, journey.timeWindow.end)) {
-    return false;
-  }
+  if (!isInWatchSchedule(journey, at)) return false;
 
   if (event.kind === "delay") {
     // Seuil numérique seulement si la durée est connue ; null = unknown (éligible)

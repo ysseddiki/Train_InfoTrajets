@@ -18,10 +18,3 @@ export function boardClass(status: BoardTrafficStatus): string {
       return "status-box";
   }
 }
-
-export function ingestClass(status: string | null): string {
-  if (status === "ok") return "ingest-banner status-ok";
-  if (status === "error") return "ingest-banner status-delay";
-  if (status === "skipped") return "ingest-banner status-window";
-  return "ingest-banner status-nodata";
-}

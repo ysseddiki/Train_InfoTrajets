@@ -1,11 +1,21 @@
 import type {
+  ApiQuotaStatus,
   JourneyDirection,
   LiaisonConfig,
   RecipientsConfig,
   SmtpConfigPublic,
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
-import { Bug, LogOut, Mail, Plus, Radio, Route, Trash2 } from "lucide-react";
+import {
+  Bug,
+  Gauge,
+  LogOut,
+  Mail,
+  Plus,
+  Radio,
+  Route,
+  Trash2,
+} from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -15,11 +25,17 @@ import {
 } from "react";
 import { apiGet, apiSend } from "../api/client";
 import { LiaisonForm } from "../components/LiaisonForm";
+import { QuotaPanel } from "../components/QuotaPanel";
 import { errorMessage } from "../lib/format";
 
 type AdminMe = { username: string };
 
-type AdminSectionId = "liaisons" | "recipients" | "channels" | "debug";
+type AdminSectionId =
+  | "liaisons"
+  | "recipients"
+  | "channels"
+  | "quota"
+  | "debug";
 
 const ADMIN_SECTIONS: {
   id: AdminSectionId;
@@ -46,6 +62,12 @@ const ADMIN_SECTIONS: {
     icon: Radio,
   },
   {
+    id: "quota",
+    label: "Quota API",
+    description: "Consommation journalière des appels Navitia (limite 5000).",
+    icon: Gauge,
+  },
+  {
     id: "debug",
     label: "Debug",
     description: "Injection d’événements stub pour valider le matching.",
@@ -66,6 +88,7 @@ function AdminConsole({
   const [recipients, setRecipients] = useState<RecipientsConfig | null>(null);
   const [smtp, setSmtp] = useState<SmtpConfigPublic | null>(null);
   const [teams, setTeams] = useState<TeamsConfigPublic | null>(null);
+  const [quota, setQuota] = useState<ApiQuotaStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const [recipientsMsg, setRecipientsMsg] = useState<{
@@ -97,11 +120,12 @@ function AdminConsole({
     let cancelled = false;
     void (async () => {
       try {
-        const [list, r, s, t] = await Promise.all([
+        const [list, r, s, t, q] = await Promise.all([
           apiGet<LiaisonConfig[]>("/v1/admin/liaisons"),
           apiGet<RecipientsConfig>("/v1/admin/channels/recipients"),
           apiGet<SmtpConfigPublic>("/v1/admin/channels/smtp"),
           apiGet<TeamsConfigPublic>("/v1/admin/channels/teams"),
+          apiGet<ApiQuotaStatus>("/v1/admin/quota"),
         ]);
         if (cancelled) return;
         setLiaisons(list);
@@ -110,6 +134,7 @@ function AdminConsole({
         setRecipients(r);
         setSmtp(s);
         setTeams(t);
+        setQuota(q);
       } catch (err) {
         if (!cancelled) setLoadError(errorMessage(err));
       }
@@ -118,6 +143,22 @@ function AdminConsole({
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (section !== "quota") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const q = await apiGet<ApiQuotaStatus>("/v1/admin/quota");
+        if (!cancelled) setQuota(q);
+      } catch {
+        /* keep last known */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [section]);
 
   async function saveRecipients(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -220,7 +261,14 @@ function AdminConsole({
     );
   }
 
-  if (!recipients || !smtp || !teams || liaisons.length === 0 || !selected) {
+  if (
+    !recipients ||
+    !smtp ||
+    !teams ||
+    !quota ||
+    liaisons.length === 0 ||
+    !selected
+  ) {
     return <p className="muted page-enter">Chargement…</p>;
   }
 
@@ -348,6 +396,9 @@ function AdminConsole({
           </article>
         </div>
       );
+      break;
+    case "quota":
+      panelBody = <QuotaPanel quota={quota} />;
       break;
     case "debug":
       panelBody = (

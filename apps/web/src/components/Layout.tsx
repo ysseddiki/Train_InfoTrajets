@@ -1,5 +1,6 @@
 import { Bell, LayoutDashboard, Settings2 } from "lucide-react";
 import { NavLink, Outlet } from "react-router-dom";
+import { ApiStatusLine } from "./ApiStatusLine";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -15,6 +16,7 @@ export function Layout() {
           <span className="brand-mark" aria-hidden />
           <span className="brand-name">SNCF-Alerts</span>
         </div>
+        <ApiStatusLine />
         <nav className="top-nav" aria-label="Navigation principale">
           {NAV.map(({ to, label, icon: Icon, end }) => (
             <NavLink

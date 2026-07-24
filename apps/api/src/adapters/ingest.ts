@@ -137,6 +137,15 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       throw new Error("NAVITIA_TOKEN is required for INGEST_PROVIDER=navitia");
     }
 
+    const quota = await store.getApiQuota("navitia");
+    if (quota.exhausted) {
+      await store.setIngestResult({
+        status: "skipped",
+        detail: `Quota Navitia épuisé (${quota.used}/${quota.limit}) — jour ${quota.day}`,
+      });
+      return;
+    }
+
     const journeys = await store.listJourneys();
     const open = journeys.filter((j) => isWithinWatchWindow(j));
     if (open.length === 0) {
@@ -151,6 +160,14 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
     let alerts = 0;
     try {
       for (const journey of open) {
+        const current = await store.getApiQuota("navitia");
+        if (current.exhausted) {
+          await store.setIngestResult({
+            status: "ok",
+            detail: `Quota atteint en cours de poll — ${checked} gare(s), ${alerts} alerte(s)`,
+          });
+          return;
+        }
         const n = await this.pollJourney(journey, token);
         checked += 1;
         alerts += n;
@@ -176,15 +193,24 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
     const stopId = encodeURIComponent(journey.originId);
     const url = `https://api.sncf.com/v1/coverage/sncf/stop_areas/${stopId}/departures?count=20&data_freshness=realtime`;
 
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}`,
-      },
-    });
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        headers: {
+          Authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}`,
+        },
+      });
+    } catch (err) {
+      await store.recordApiRequest({ provider: "navitia", ok: false });
+      throw err;
+    }
 
     if (!res.ok) {
+      await store.recordApiRequest({ provider: "navitia", ok: false });
       throw new Error(`Navitia HTTP ${res.status} (${journey.direction})`);
     }
+
+    await store.recordApiRequest({ provider: "navitia", ok: true });
 
     const body = (await res.json()) as { departures?: NavitiaDeparture[] };
     const departures = body.departures ?? [];
@@ -205,7 +231,6 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       const cancelled = isCancelled(dep);
       const delay = delayMinutesFromDeparture(dep);
 
-      // Sans horaires exploitables : pas d’assertion de retard depuis le board départs
       if (!cancelled) {
         if (delay === null) continue;
         if (delay < journey.minDelayMinutes) continue;

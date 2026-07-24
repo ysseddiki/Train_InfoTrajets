@@ -108,6 +108,33 @@ async function ensureEventLiaisonColumns(p: pg.Pool): Promise<void> {
   }
 }
 
+async function ensureApiQuotaTable(p: pg.Pool): Promise<void> {
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS api_quota_daily (
+      day DATE NOT NULL,
+      provider TEXT NOT NULL,
+      success INT NOT NULL DEFAULT 0,
+      failed INT NOT NULL DEFAULT 0,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      PRIMARY KEY (day, provider)
+    )
+  `);
+}
+
+async function ensureWatchColumns(p: pg.Pool): Promise<void> {
+  if (!(await tableExists(p, "journeys"))) return;
+  if (!(await columnExists(p, "journeys", "watch_always"))) {
+    await p.query(
+      `ALTER TABLE journeys ADD COLUMN watch_always BOOLEAN NOT NULL DEFAULT false`,
+    );
+  }
+  if (!(await columnExists(p, "journeys", "watch_lead_hours"))) {
+    await p.query(
+      `ALTER TABLE journeys ADD COLUMN watch_lead_hours INT NOT NULL DEFAULT 4`,
+    );
+  }
+}
+
 export async function migrate(): Promise<void> {
   const p = getPool();
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -115,6 +142,8 @@ export async function migrate(): Promise<void> {
   await p.query(sql);
   await migrateLegacyJourneys(p);
   await ensureEventLiaisonColumns(p);
+  await ensureApiQuotaTable(p);
+  await ensureWatchColumns(p);
 }
 
 export async function closePool(): Promise<void> {

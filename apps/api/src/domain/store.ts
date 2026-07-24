@@ -1,6 +1,7 @@
 import bcrypt from "bcryptjs";
 import type {
   AlertDeliveryDto,
+  ApiQuotaStatus,
   BoardTrafficStatus,
   DashboardOverview,
   DashboardPeriodStats,
@@ -20,7 +21,8 @@ import type {
   SmtpConfigPublic,
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
-import { resolveLiaisonDisplayName } from "@sncf-alerts/shared";
+import { clampWatchLeadHours, resolveLiaisonDisplayName } from "@sncf-alerts/shared";
+import { DEFAULT_WATCH_LEAD_HOURS } from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
 import { isWithinWatchWindow } from "./matching.js";
 
@@ -70,6 +72,8 @@ function emptyLeg(
     timeWindow: isOutbound
       ? { start: "07:00", end: "09:30" }
       : { start: "16:00", end: "19:00" },
+    watchAlways: false,
+    watchLeadHours: DEFAULT_WATCH_LEAD_HOURS,
     minDelayMinutes: 10,
     severities: ["delay", "cancellation"],
     active: opts?.active ?? !blank,
@@ -92,6 +96,10 @@ function mapJourney(row: Record<string, unknown>): JourneyConfig {
       start: String(row.window_start),
       end: String(row.window_end),
     },
+    watchAlways: Boolean(row.watch_always),
+    watchLeadHours: clampWatchLeadHours(
+      row.watch_lead_hours ?? DEFAULT_WATCH_LEAD_HOURS,
+    ),
     minDelayMinutes: Number(row.min_delay_minutes),
     severities: (row.severities as DisruptionKind[]) ?? [],
     active: Boolean(row.active),
@@ -146,7 +154,7 @@ function resolveBoardStatus(input: {
   if (!isWithinWatchWindow(journey)) {
     return {
       boardStatus: "outside_window",
-      boardStatusLabel: "Hors fenêtre horaire",
+      boardStatusLabel: "Hors fenêtre de veille",
     };
   }
   if (!lastIngestAt || lastIngestStatus === "error") {
@@ -965,6 +973,65 @@ export class PgStore {
       ],
     );
     return mapDelivery(res.rows[0]);
+  }
+
+  /** Jour civil Europe/Paris (YYYY-MM-DD) pour le reset quotidien du quota. */
+  parisDay(now = new Date()): string {
+    return new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Paris",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now);
+  }
+
+  async recordApiRequest(input: {
+    provider?: string;
+    ok: boolean;
+  }): Promise<ApiQuotaStatus> {
+    const provider = input.provider ?? "navitia";
+    const day = this.parisDay();
+    const successInc = input.ok ? 1 : 0;
+    const failedInc = input.ok ? 0 : 1;
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO api_quota_daily (day, provider, success, failed, updated_at)
+       VALUES ($1::date, $2, $3, $4, now())
+       ON CONFLICT (day, provider) DO UPDATE SET
+         success = api_quota_daily.success + EXCLUDED.success,
+         failed = api_quota_daily.failed + EXCLUDED.failed,
+         updated_at = now()`,
+      [day, provider, successInc, failedInc],
+    );
+    return this.getApiQuota(provider);
+  }
+
+  async getApiQuota(provider = "navitia"): Promise<ApiQuotaStatus> {
+    const day = this.parisDay();
+    const limit = Number(process.env.NAVITIA_DAILY_QUOTA ?? 5000);
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT success, failed FROM api_quota_daily
+       WHERE day = $1::date AND provider = $2`,
+      [day, provider],
+    );
+    const success = Number(res.rows[0]?.success ?? 0);
+    const failed = Number(res.rows[0]?.failed ?? 0);
+    const used = success + failed;
+    const remaining = Math.max(0, limit - used);
+    const percent =
+      limit <= 0 ? 100 : Math.min(100, Math.round((used / limit) * 1000) / 10);
+    return {
+      provider,
+      day,
+      limit,
+      success,
+      failed,
+      used,
+      remaining,
+      percent,
+      exhausted: used >= limit,
+    };
   }
 }
 
