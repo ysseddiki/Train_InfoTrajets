@@ -1689,23 +1689,23 @@ button.danger-action:disabled {
 }
 
 .heatmap-cell.level-0 {
-  background: #ebedf0;
+  background: #3dd68c;
 }
 
 .heatmap-cell.level-1 {
-  background: #9be9a8;
+  background: #f6e05e;
 }
 
 .heatmap-cell.level-2 {
-  background: #d4e157;
+  background: #f6ad55;
 }
 
 .heatmap-cell.level-3 {
-  background: #fb8c00;
+  background: #ed8936;
 }
 
 .heatmap-cell.level-4 {
-  background: #e53935;
+  background: #e53e3e;
 }
 
 .heatmap-cell.level-empty {

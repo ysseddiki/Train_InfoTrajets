@@ -47,14 +47,13 @@ function parisToday(): { y: number; m: number; day: number; dow: number } {
   };
 }
 
-function levelForCount(count: number, max: number): 0 | 1 | 2 | 3 | 4 {
+/** 0 = aucun retard (vert) ; 1–4 = jaune → rouge selon score minutes. */
+function levelForCount(count: number): 0 | 1 | 2 | 3 | 4 {
   if (count <= 0) return 0;
-  if (max <= 1) return 4;
-  const t = count / max;
-  if (t <= 0.25) return 1;
-  if (t <= 0.5) return 2;
-  if (t <= 0.75) return 3;
-  return 4;
+  if (count <= 15) return 1; // léger
+  if (count <= 40) return 2; // modéré
+  if (count <= 90) return 3; // important
+  return 4; // très important
 }
 
 type Cell = {
@@ -93,7 +92,7 @@ function buildWeeks(days: DashboardHeatmapDay[]): { weeks: WeekCol[]; max: numbe
 
   const max = Math.max(0, ...cells.map((c) => c.count));
   for (const c of cells) {
-    c.level = c.future ? 0 : levelForCount(c.count, max);
+    c.level = c.future ? 0 : levelForCount(c.count);
   }
 
   const weeks: WeekCol[] = [];
@@ -169,13 +168,13 @@ export function ActivityHeatmap({
           </div>
         </div>
         <div className="heatmap-legend">
-          <span className="muted">OK</span>
-          <span className="heatmap-cell level-0" />
-          <span className="heatmap-cell level-1" />
-          <span className="heatmap-cell level-2" />
-          <span className="heatmap-cell level-3" />
-          <span className="heatmap-cell level-4" />
-          <span className="muted">Retards</span>
+          <span className="muted">Aucun</span>
+          <span className="heatmap-cell level-0" title="Aucun retard" />
+          <span className="heatmap-cell level-1" title="Léger" />
+          <span className="heatmap-cell level-2" title="Modéré" />
+          <span className="heatmap-cell level-3" title="Important" />
+          <span className="heatmap-cell level-4" title="Très important" />
+          <span className="muted">Fort retard</span>
         </div>
       </div>
     </div>
