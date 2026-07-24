@@ -6,8 +6,11 @@ alwaysApply: false
 
 # Web client
 
-- UI only : Dashboard + Admin ; pas de logique d’ingest ni d’envoi mail/Teams
+- Stack : **Vite + React + TypeScript** (`pages/`, `components/`, `api/`)
+- UI only : Dashboard + Admin + Notifications ; pas de logique d’ingest ni d’envoi mail/Teams
 - Tous les appels passent par `src/api/client.ts` vers `/v1`
+- Router : `HashRouter` (`#/`, `#/notifications`, `#/admin`)
 - Si l’API est down : afficher une erreur claire, pas de faux résultats en prod
 - Ne jamais hardcoder secrets ou webhooks
-- Auth admin : viser cookie httpOnly (sessionStorage Bearer = temporaire squelette)
+- Auth admin : cookie httpOnly (`credentials: "include"`)
+- Évolutions UI = composants React réutilisables ; pas de templates HTML string globaux

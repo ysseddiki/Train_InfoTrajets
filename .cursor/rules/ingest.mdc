@@ -9,4 +9,5 @@ alwaysApply: false
 - Une source active : `stub` | `prim` | `navitia` (`INGEST_PROVIDER`)
 - Idempotence sur `external_event_id`
 - Matching strict Aller/Retour (fenêtre, jours, seuil retard)
+- `delay_minutes` null = **unknown** : ne jamais coercer en `0` ; UI/notif affichent `unknown`
 - Documenter l’obtention des clés dans le README, jamais committer les clés

@@ -1,4 +1,8 @@
-import type { DisruptionEventDto, JourneyDirection } from "@sncf-alerts/shared";
+import {
+  formatDelayMinutes,
+  type DisruptionEventDto,
+  type JourneyDirection,
+} from "@sncf-alerts/shared";
 import { emailNotifier, teamsNotifier } from "../adapters/notifiers.js";
 import { resolveDirection } from "../domain/matching.js";
 import { store } from "../domain/store.js";
@@ -23,9 +27,13 @@ export async function notifyForEvent(
   const direction: JourneyDirection | null =
     matched?.direction ?? event.direction ?? null;
   const title = `[SNCF-Alerts] ${matched?.label ?? "Alerte"} — ${event.title}`;
+  const delayLine =
+    event.kind === "delay"
+      ? `Retard: ${formatDelayMinutes(event.delayMinutes, event.kind)}`
+      : null;
   const body = [
     event.description,
-    event.delayMinutes != null ? `Retard: ${event.delayMinutes} min` : null,
+    delayLine,
     `Sévérité: ${event.severity}`,
     `Sens: ${direction ?? "n/a"}`,
     `Détecté: ${event.detectedAt}`,

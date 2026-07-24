@@ -124,11 +124,27 @@ export interface DisruptionEventDto {
   severity: DisruptionSeverity;
   title: string;
   description: string;
+  /** null = durée unknown (jamais coercée en 0) */
   delayMinutes: number | null;
   startsAt: string;
   endsAt: string | null;
   source: "stub" | "prim" | "navitia";
   detectedAt: string;
+}
+
+/**
+ * Libellé retard pour UI / notifs.
+ * - durée connue → `"N min"`
+ * - `kind = delay` (ou disruption) sans durée → `"unknown"`
+ * - suppression / quai sans durée → `"—"` (N/A)
+ */
+export function formatDelayMinutes(
+  delayMinutes: number | null | undefined,
+  kind?: DisruptionKind,
+): string {
+  if (delayMinutes != null) return `${delayMinutes} min`;
+  if (kind === "cancellation" || kind === "platform_change") return "—";
+  return "unknown";
 }
 
 export interface AlertDeliveryDto {

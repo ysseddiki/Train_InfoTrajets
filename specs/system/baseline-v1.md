@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.1.0`  
-> **Date** : 2026-07-23  
-> **Change** : `openspec/changes/refine-ops-platform-v1`  
+> **Version** : `1.1.2`  
+> **Date** : 2026-07-24  
+> **Change** : `openspec/changes/adopt-react-web`  
 > **Format** : OpenSpec
 
 ---
@@ -99,7 +99,7 @@ Un enregistrement par sens (`direction`).
 | `severity` | enum | info, warning, critical |
 | `title` | string | |
 | `description` | string | |
-| `delay_minutes` | int \| null | |
+| `delay_minutes` | int \| null | `null` = durée **unknown** (jamais coercée en `0`) |
 | `starts_at` / `ends_at` | datetime | |
 | `source` | `stub` \| `prim` \| `navitia` | |
 | `detected_at` | datetime | |
@@ -185,7 +185,7 @@ Notifier seulement si :
 2. Événement match origine/destination (ou ligne associée)
 3. Jour + fenêtre horaire (TZ Paris)
 4. Sévérité dans la liste configurée
-5. Si retard : `delay_minutes >= min_delay_minutes`
+5. Si retard avec durée connue : `delay_minutes >= min_delay_minutes` ; si `delay_minutes` null (unknown), le seuil numérique ne s’applique pas
 
 ### Dédoublonnage
 
@@ -212,7 +212,7 @@ Notifier seulement si :
 |--------|-------|
 | Monorepo | npm/pnpm workspaces |
 | API | Node.js 22 + TypeScript (Fastify) |
-| Web | Vite + TypeScript (UI simple) |
+| Web | Vite + React + TypeScript |
 | Shared | `packages/shared` types |
 | DB | PostgreSQL 16 (phase suivante ; mémoire/sqlite OK pour stub initial) |
 | Queue | optionnel Redis plus tard ; worker in-process OK MVP |
@@ -259,3 +259,5 @@ specs/system/     # Baseline narrative
 |---------|------|-------------|
 | `1.0.0` | 2026-07-23 | Baseline B2C initiale |
 | `1.1.0` | 2026-07-23 | Pivot ops A/R, admin, SMTP+Teams, client/serveur |
+| `1.1.1` | 2026-07-24 | `delay_minutes` null = unknown (spec ingest + UI/notif) |
+| `1.1.2` | 2026-07-24 | Client web : Vite + React + TypeScript |

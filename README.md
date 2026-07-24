@@ -2,12 +2,12 @@
 
 Outil **ops interne** : surveillance de deux trajets SNCF (**Aller** / **Retour**), dashboard de lecture, console admin, notifications **Email (SMTP)** et **Microsoft Teams**.
 
-> Specs : `openspec/specs/` · Baseline : `specs/system/baseline-v1.md` · Change en cours : `openspec/changes/refine-ops-platform-v1/`
+> Specs : `openspec/specs/` · Baseline : `specs/system/baseline-v1.md` · Change : `openspec/changes/adopt-react-web/`
 
 ## Architecture
 
 ```text
-apps/web       → Client (Dashboard + Admin) — aucun secret métier
+apps/web       → Client React (Dashboard + Admin + Notifications) — aucun secret métier
 apps/api       → Serveur REST + adapters ingest/notify
 packages/shared → Types partagés
 ```
@@ -155,19 +155,29 @@ PRIM_API_KEY=votre_cle
 
 Respecter les quotas et conditions d’usage du portail.
 
-### Navitia / open data SNCF
+### Navitia / API SNCF (`api.sncf.com`)
 
-Utile pour référentiel gares/lignes et perturbations hors ou en complément PRIM.
+L’ingest `navitia` appelle **`https://api.sncf.com/v1`** (moteur Navitia SNCF : horaires / temps réel trains).
 
-1. Documentation et accès : [Navitia](https://www.navitia.io/) et/ou [Open Data SNCF](https://data.sncf.com/)
-2. Créer un compte / token selon le fournisseur choisi
+1. Demander un token développeur : [Formulaire clé API SNCF](https://numerique.sncf.com/startup/api/token-developpeur/)
+2. FAQ auth : [numerique.sncf.com/faq/api](https://numerique.sncf.com/faq/api/) — Basic auth, username = token, password vide
 3. Renseigner :
 
 ```env
 INGEST_PROVIDER=navitia
-NAVITIA_TOKEN=votre_token
+NAVITIA_TOKEN=votre_token_recu_par_email
 INGEST_INTERVAL_MS=300000
 ```
+
+Test :
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -u "$NAVITIA_TOKEN:" \
+  "https://api.sncf.com/v1/coverage/sncf"
+# attendu : 200
+```
+
+> **Pas** la clé du compte [data.sncf.com/account](https://data.sncf.com/account/) (portail jeux de données Open Data) — elle ne fonctionne pas sur `api.sncf.com` (401).
 
 L’adapter interroge les **départs** de la gare surveillée (`/stop_areas/.../departures`), filtre le sens (ex. Monaco / Nice), et crée une alerte si retard ≥ seuil ou suppression.
 

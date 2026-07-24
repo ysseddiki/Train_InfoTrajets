@@ -184,10 +184,14 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       }
 
       const cancelled = isCancelled(dep);
-      const delay = delayMinutesFromDeparture(dep) ?? 0;
+      const delay = delayMinutesFromDeparture(dep);
 
-      if (!cancelled && delay < journey.minDelayMinutes) continue;
-      if (!cancelled && delay <= 0) continue;
+      // Sans horaires exploitables : pas d’assertion de retard depuis le board départs
+      if (!cancelled) {
+        if (delay === null) continue;
+        if (delay < journey.minDelayMinutes) continue;
+        if (delay <= 0) continue;
+      }
 
       const base = dep.stop_date_time?.base_departure_date_time ?? "unknown";
       const externalEventId =
@@ -199,14 +203,17 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       const kind = cancelled ? "cancellation" : "delay";
       if (!journey.severities.includes(kind)) continue;
 
+      const delayLabel =
+        delay == null ? "unknown" : `${delay} min`;
       const { event, created } = await store.upsertEvent({
         externalEventId,
         direction: journey.direction,
         kind,
-        severity: cancelled || delay >= 20 ? "critical" : "warning",
+        severity:
+          cancelled || (delay != null && delay >= 20) ? "critical" : "warning",
         title: cancelled
           ? `Suppression — ${journey.originLabel} → ${directionText || journey.destinationLabel}`
-          : `Retard ${delay} min — ${journey.originLabel} → ${directionText || journey.destinationLabel}`,
+          : `Retard ${delayLabel} — ${journey.originLabel} → ${directionText || journey.destinationLabel}`,
         description: `Départ gare ${journey.originLabel}, sens ${directionText || journey.destinationLabel}.`,
         delayMinutes: cancelled ? null : delay,
         startsAt: new Date().toISOString(),

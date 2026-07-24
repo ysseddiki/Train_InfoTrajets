@@ -26,3 +26,13 @@ Pour un événement matché, le système MUST tenter chaque canal actif et MUST 
 - **GIVEN** email et Teams actifs
 - **WHEN** Teams renvoie une erreur et SMTP réussit
 - **THEN** l’email est `sent` et Teams est `failed`
+
+### Requirement: Retard unknown dans le corps de notif
+
+Pour un événement `kind = delay`, le corps Email/Teams MUST inclure la durée : `Retard: N min` si connue, sinon `Retard: unknown` (`delay_minutes` null). MUST NOT omettre la ligne ni écrire `0 min` pour un retard inconnu.
+
+#### Scenario: Retard sans durée
+
+- **GIVEN** un événement `delay` avec `delay_minutes = null`
+- **WHEN** une notification est envoyée
+- **THEN** le corps contient `Retard: unknown`

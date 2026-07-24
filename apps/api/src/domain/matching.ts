@@ -61,8 +61,13 @@ export function matchesJourney(
   }
 
   if (event.kind === "delay") {
-    const delay = event.delayMinutes ?? 0;
-    if (delay < journey.minDelayMinutes) return false;
+    // Seuil numérique seulement si la durée est connue ; null = unknown (éligible)
+    if (
+      event.delayMinutes != null &&
+      event.delayMinutes < journey.minDelayMinutes
+    ) {
+      return false;
+    }
   }
 
   return true;

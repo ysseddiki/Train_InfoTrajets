@@ -144,10 +144,11 @@ function resolveBoardStatus(input: {
     return { boardStatus: "cancelled", boardStatusLabel: "Suppression détectée" };
   }
   if (recent?.kind === "delay") {
-    const d = recent.delayMinutes ?? 0;
+    const d = recent.delayMinutes;
     return {
       boardStatus: "delayed",
-      boardStatusLabel: d > 0 ? `Retard ${d} min` : "Retard détecté",
+      boardStatusLabel:
+        d != null ? `Retard ${d} min` : "Retard unknown",
     };
   }
   if (lastIngestStatus === "ok" || lastIngestStatus === "skipped") {

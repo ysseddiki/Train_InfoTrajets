@@ -21,3 +21,13 @@ Le dashboard SHALL afficher l’état des trajets Aller (`outbound`) et Retour (
 - **GIVEN** l’API serveur est down
 - **WHEN** le dashboard charge
 - **THEN** une erreur claire est affichée (pas de données inventées en prod)
+
+### Requirement: Affichage retard unknown
+
+Pour un événement de type retard (`delay`), si `delay_minutes` est `null`, le dashboard MUST afficher `unknown` (cartes, tableaux, libellé board). MUST NOT afficher `0`, `—` ou « Retard détecté » à la place.
+
+#### Scenario: Carte trajet avec retard sans durée
+
+- **GIVEN** le dernier événement Aller est un `delay` avec `delay_minutes = null`
+- **WHEN** le dashboard charge
+- **THEN** le retard est libellé `unknown`

@@ -35,3 +35,22 @@ L’ingest MUST être idempotent sur `external_event_id` (pas de doublon d’év
 - **GIVEN** un événement déjà stocké pour `external_event_id = X`
 - **WHEN** la source renvoie `X`
 - **THEN** l’enregistrement existant est mis à jour, pas dupliqué
+
+### Requirement: Retard inconnu (`delay_minutes` null)
+
+Quand la durée de retard n’est pas connue côté source, l’ingest MUST persister `delay_minutes = null` et MUST NOT la coercer en `0`. La valeur sémantique est **unknown** : UI et notifications MUST l’afficher comme `unknown` (jamais comme `0 min`, `—` ou une omission ambiguë pour un événement de type `delay`).
+
+Le seuil `min_delay_minutes` MUST s’appliquer uniquement lorsque `delay_minutes` est un entier connu. Un événement `kind = delay` avec `delay_minutes` null MUST rester éligible au matching (le retard est affirmé, sa durée non).
+
+#### Scenario: Durée absente
+
+- **GIVEN** une perturbation de type retard sans durée exploitable
+- **WHEN** l’ingest normalise l’événement
+- **THEN** `delay_minutes` est `null`
+- **AND** le dashboard / les notifs affichent un retard `unknown`
+
+#### Scenario: Seuil avec durée connue
+
+- **GIVEN** un trajet avec `min_delay_minutes = 10`
+- **WHEN** un retard de 5 min est ingéré
+- **THEN** l’événement ne passe pas le matching (sous seuil)
