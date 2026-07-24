@@ -17,6 +17,11 @@ import {
   sanitizeForLog,
   setSessionCookie,
 } from "../domain/auth.js";
+import {
+  clearIngestApiLogs,
+  isIngestApiLogSource,
+  listIngestApiLogs,
+} from "../domain/ingest-api-logs.js";
 import { sendTestNotification } from "../domain/notify.js";
 import {
   checkLoginRateLimit,
@@ -431,5 +436,43 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (!(await requireAdmin(req, reply))) return;
     const result = await seedStubHistory(req.body ?? {});
     return { ok: true, ...result };
+  });
+
+  app.get<{
+    Querystring: { source?: string };
+  }>("/v1/admin/debug/ingest-logs", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const raw = req.query?.source;
+    if (raw && raw !== "all" && !isIngestApiLogSource(raw)) {
+      return reply.code(400).send({
+        type: "/errors/validation",
+        title: "source must be navitia | zou | stub | prim | all",
+        status: 400,
+      });
+    }
+    const source =
+      raw && isIngestApiLogSource(raw) ? raw : null;
+    return {
+      source: source ?? "all",
+      entries: listIngestApiLogs(source),
+    };
+  });
+
+  app.delete<{
+    Querystring: { source?: string };
+  }>("/v1/admin/debug/ingest-logs", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const raw = req.query?.source;
+    if (raw && raw !== "all" && !isIngestApiLogSource(raw)) {
+      return reply.code(400).send({
+        type: "/errors/validation",
+        title: "source must be navitia | zou | stub | prim | all",
+        status: 400,
+      });
+    }
+    const source =
+      raw && isIngestApiLogSource(raw) ? raw : null;
+    const deleted = clearIngestApiLogs(source);
+    return { ok: true, deleted };
   });
 }

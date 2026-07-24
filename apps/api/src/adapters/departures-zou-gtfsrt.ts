@@ -1,7 +1,8 @@
 import type { JourneyConfig } from "@sncf-alerts/shared";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
-import { matchesDestinationFilter } from "../domain/matching.js";
 import { matchesCorridorAllowlist } from "../domain/corridor.js";
+import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
+import { matchesDestinationFilter } from "../domain/matching.js";
 import {
   getZouStaticIndex,
   resolveTripMeta,
@@ -27,6 +28,17 @@ const TRIP_CANCELED = 3;
 const STOP_SKIPPED = 1;
 /** Alert effect: NO_SERVICE */
 const EFFECT_NO_SERVICE = 1;
+
+const FEED_CACHE_TTL_MS = 45_000;
+
+type CachedFeed = {
+  at: number;
+  feed: InstanceType<typeof FeedMessage>;
+  httpStatus: number;
+};
+
+let tripsFeedCache: CachedFeed | null = null;
+let saFeedCache: CachedFeed | null = null;
 
 export type ZouRtDeparture = {
   tripId: string;
@@ -54,16 +66,185 @@ function saUrl(): string {
   return process.env.ZOU_GTFSRT_SA_URL?.trim() || DEFAULT_SA_URL;
 }
 
-async function fetchFeed(url: string): Promise<InstanceType<typeof FeedMessage>> {
+async function fetchFeedRaw(
+  url: string,
+): Promise<{ feed: InstanceType<typeof FeedMessage>; httpStatus: number }> {
   const res = await fetch(url, {
     headers: { Accept: "application/x-protobuf,*/*" },
     signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) {
-    throw new Error(`GTFS-RT ZOU HTTP ${res.status} (${url.split("/").pop()})`);
+    throw Object.assign(
+      new Error(`GTFS-RT ZOU HTTP ${res.status} (${url.split("/").pop()})`),
+      { httpStatus: res.status },
+    );
   }
   const buf = new Uint8Array(await res.arrayBuffer());
-  return FeedMessage.decode(buf);
+  return { feed: FeedMessage.decode(buf), httpStatus: res.status };
+}
+
+function alertText(alert: {
+  headerText?: { translation?: Array<{ text?: string | null }> | null } | null;
+  descriptionText?: {
+    translation?: Array<{ text?: string | null }> | null;
+  } | null;
+}): { header: string; description: string } {
+  const header =
+    alert.headerText?.translation?.map((t) => t.text ?? "").join(" ").trim() ??
+    "";
+  const description =
+    alert.descriptionText?.translation
+      ?.map((t) => t.text ?? "")
+      .join(" ")
+      .trim() ?? "";
+  return { header, description };
+}
+
+function formatTripUpdateLines(
+  feed: InstanceType<typeof FeedMessage>,
+): string[] {
+  const entities = feed.entity ?? [];
+  if (entities.length === 0) return ["0 entité TripUpdate"];
+  const lines: string[] = [
+    `header.timestamp=${feed.header?.timestamp ?? "—"} · ${entities.length} entité(s)`,
+  ];
+  let i = 0;
+  for (const entity of entities) {
+    const tu = entity.tripUpdate;
+    if (!tu) {
+      lines.push(`#${++i} id=${entity.id ?? "?"} (pas de tripUpdate)`);
+      continue;
+    }
+    const tripId = tu.trip?.tripId ?? "—";
+    const startDate = tu.trip?.startDate ?? "";
+    const canceled =
+      tu.trip?.scheduleRelationship === TRIP_CANCELED ||
+      String(tu.trip?.scheduleRelationship ?? "") === "CANCELED";
+    const stops = (tu.stopTimeUpdate ?? []).map((s) => {
+      const delay =
+        longToNumber(s.departure?.delay) ?? longToNumber(s.arrival?.delay);
+      const time =
+        longToNumber(s.departure?.time) ?? longToNumber(s.arrival?.time);
+      return `${s.stopId ?? "?"}[d=${delay ?? "—"}s t=${time ?? "—"}]`;
+    });
+    lines.push(
+      [
+        `#${++i}`,
+        `trip=${tripId}`,
+        startDate ? `date=${startDate}` : null,
+        canceled ? "CANCELED" : null,
+        `stops=${stops.join(" → ") || "—"}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
+  }
+  return lines;
+}
+
+function formatServiceAlertLines(
+  feed: InstanceType<typeof FeedMessage>,
+): string[] {
+  const entities = feed.entity ?? [];
+  if (entities.length === 0) return ["0 Service Alert"];
+  const lines: string[] = [`${entities.length} alerte(s)`];
+  let i = 0;
+  for (const entity of entities) {
+    const alert = entity.alert;
+    if (!alert) {
+      lines.push(`#${++i} id=${entity.id ?? "?"} (pas d’alert)`);
+      continue;
+    }
+    const { header, description } = alertText(alert);
+    const effect = alert.effect ?? "—";
+    const stops = (alert.informedEntity ?? [])
+      .map((e) => e.stopId)
+      .filter(Boolean)
+      .slice(0, 8);
+    const routes = (alert.informedEntity ?? [])
+      .map((e) => e.routeId)
+      .filter(Boolean)
+      .slice(0, 4);
+    lines.push(
+      [
+        `#${++i}`,
+        `id=${entity.id ?? "—"}`,
+        `effect=${effect}`,
+        `header=${header || "—"}`,
+        description ? `desc=${description.slice(0, 240)}` : null,
+        stops.length ? `stops=${stops.join(",")}` : null,
+        routes.length ? `routes=${routes.join(",")}` : null,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
+  }
+  return lines;
+}
+
+async function getTripsFeed(): Promise<CachedFeed> {
+  if (
+    tripsFeedCache &&
+    Date.now() - tripsFeedCache.at < FEED_CACHE_TTL_MS
+  ) {
+    return tripsFeedCache;
+  }
+  try {
+    const { feed, httpStatus } = await fetchFeedRaw(tripsUrl());
+    tripsFeedCache = { at: Date.now(), feed, httpStatus };
+    appendIngestApiLog({
+      source: "zou",
+      title: "GTFS-RT TripUpdates (feed brut)",
+      httpStatus,
+      ok: true,
+      lines: formatTripUpdateLines(feed),
+    });
+    return tripsFeedCache;
+  } catch (err) {
+    const httpStatus =
+      err && typeof err === "object" && "httpStatus" in err
+        ? Number((err as { httpStatus: number }).httpStatus)
+        : null;
+    appendIngestApiLog({
+      source: "zou",
+      title: "GTFS-RT TripUpdates (feed brut)",
+      httpStatus,
+      ok: false,
+      lines: [err instanceof Error ? err.message : String(err)],
+    });
+    throw err;
+  }
+}
+
+async function getSaFeed(): Promise<CachedFeed> {
+  if (saFeedCache && Date.now() - saFeedCache.at < FEED_CACHE_TTL_MS) {
+    return saFeedCache;
+  }
+  try {
+    const { feed, httpStatus } = await fetchFeedRaw(saUrl());
+    saFeedCache = { at: Date.now(), feed, httpStatus };
+    appendIngestApiLog({
+      source: "zou",
+      title: "GTFS-RT Service Alerts (feed brut)",
+      httpStatus,
+      ok: true,
+      lines: formatServiceAlertLines(feed),
+    });
+    return saFeedCache;
+  } catch (err) {
+    const httpStatus =
+      err && typeof err === "object" && "httpStatus" in err
+        ? Number((err as { httpStatus: number }).httpStatus)
+        : null;
+    appendIngestApiLog({
+      source: "zou",
+      title: "GTFS-RT Service Alerts (feed brut)",
+      httpStatus,
+      ok: false,
+      lines: [err instanceof Error ? err.message : String(err)],
+    });
+    throw err;
+  }
 }
 
 function delayMinutesFromSeconds(sec: number | null | undefined): number | null {
@@ -78,7 +259,6 @@ function directionTextForTrip(
 ): string {
   const meta = resolveTripMeta(index, tripId);
   if (meta?.headsign) return meta.headsign;
-  // Fallback: last stop name in the update
   for (let i = stopIds.length - 1; i >= 0; i--) {
     const name = stopNameForId(index, stopIds[i]!);
     if (name) return name;
@@ -97,7 +277,6 @@ function tripServesDestination(
     const originIdx = stopIds.findIndex((id) => stopIdMatchesUic(id, originUic));
     const destIdx = stopIds.findIndex((id) => stopIdMatchesUic(id, destUic));
     if (originIdx >= 0 && destIdx >= 0) {
-      // Sens du trajet : la destination doit être après l’origine
       return destIdx > originIdx;
     }
   }
@@ -118,13 +297,15 @@ export async function fetchZouDeparturesForJourney(
     );
   }
 
-  const [index, feed] = await Promise.all([
+  const [index, cached] = await Promise.all([
     getZouStaticIndex(),
-    fetchFeed(tripsUrl()),
+    getTripsFeed(),
   ]);
+  const feed = cached.feed;
 
   const out: ZouRtDeparture[] = [];
   const nowSec = Math.floor(Date.now() / 1000);
+  const matchLines: string[] = [];
 
   for (const entity of feed.entity ?? []) {
     const tu = entity.tripUpdate;
@@ -176,6 +357,9 @@ export async function fetchZouDeparturesForJourney(
         delayMinutes: null,
         cancelled: true,
       });
+      matchLines.push(
+        `MATCH trip=${tripId} train=${trainNumber ?? "—"} CANCELED dir=${directionText}`,
+      );
       continue;
     }
 
@@ -194,20 +378,34 @@ export async function fetchZouDeparturesForJourney(
         ? realtimeEpoch - delaySec
         : realtimeEpoch;
 
-    // Ignore departures already far in the past (> 2 h)
     if (realtimeEpoch != null && realtimeEpoch < nowSec - 2 * 3600) {
       continue;
     }
 
+    const delayMinutes = stopSkipped
+      ? null
+      : delayMinutesFromSeconds(delaySec);
     out.push({
       tripId,
       trainNumber,
       directionText,
       scheduledEpoch,
       realtimeEpoch,
-      delayMinutes: stopSkipped ? null : delayMinutesFromSeconds(delaySec),
+      delayMinutes,
       cancelled: stopSkipped,
     });
+    matchLines.push(
+      [
+        `MATCH trip=${tripId}`,
+        `train=${trainNumber ?? "—"}`,
+        `dir=${directionText || "—"}`,
+        stopSkipped ? "SKIPPED" : null,
+        `delayMin=${delayMinutes ?? "—"}`,
+        `realEpoch=${realtimeEpoch ?? "—"}`,
+      ]
+        .filter(Boolean)
+        .join(" · "),
+    );
   }
 
   out.sort(
@@ -215,24 +413,21 @@ export async function fetchZouDeparturesForJourney(
       (a.realtimeEpoch ?? a.scheduledEpoch ?? Number.MAX_SAFE_INTEGER) -
       (b.realtimeEpoch ?? b.scheduledEpoch ?? Number.MAX_SAFE_INTEGER),
   );
-  return out;
-}
 
-function alertText(alert: {
-  headerText?: { translation?: Array<{ text?: string | null }> | null } | null;
-  descriptionText?: {
-    translation?: Array<{ text?: string | null }> | null;
-  } | null;
-}): { header: string; description: string } {
-  const header =
-    alert.headerText?.translation?.map((t) => t.text ?? "").join(" ").trim() ??
-    "";
-  const description =
-    alert.descriptionText?.translation
-      ?.map((t) => t.text ?? "")
-      .join(" ")
-      .trim() ?? "";
-  return { header, description };
+  appendIngestApiLog({
+    source: "zou",
+    title: `Match TripUpdates — ${journey.originLabel} → ${journey.destinationLabel} [${journey.direction}]`,
+    ok: true,
+    lines:
+      matchLines.length > 0
+        ? matchLines
+        : [
+            `0 match — UIC origine ${originUic}` +
+              (destUic ? ` / dest ${destUic}` : ""),
+          ],
+  });
+
+  return out;
 }
 
 function escapeRegExp(s: string): string {
@@ -271,8 +466,9 @@ export async function fetchZouAlertsForJourney(
 ): Promise<ZouServiceAlertHit[]> {
   const originUic = extractUic(journey.originId);
   const destUic = extractUic(journey.destinationId);
-  const feed = await fetchFeed(saUrl());
+  const { feed } = await getSaFeed();
   const hits: ZouServiceAlertHit[] = [];
+  const matchLines: string[] = [];
 
   for (const entity of feed.entity ?? []) {
     const alert = entity.alert;
@@ -303,7 +499,20 @@ export async function fetchZouAlertsForJourney(
       description: description.slice(0, 500),
       kind,
     });
+    matchLines.push(
+      `MATCH kind=${kind} · ${header || "—"} · ${description.slice(0, 200)}`,
+    );
   }
+
+  appendIngestApiLog({
+    source: "zou",
+    title: `Match Service Alerts — ${journey.originLabel} → ${journey.destinationLabel} [${journey.direction}]`,
+    ok: true,
+    lines:
+      matchLines.length > 0
+        ? matchLines
+        : ["0 alerte matchée pour ce trajet"],
+  });
 
   return hits;
 }
@@ -314,7 +523,7 @@ export async function probeZouGtfsRt(): Promise<{
   detail: string;
 }> {
   try {
-    const feed = await fetchFeed(tripsUrl());
+    const { feed } = await getTripsFeed();
     const n = feed.entity?.length ?? 0;
     return {
       ok: true,

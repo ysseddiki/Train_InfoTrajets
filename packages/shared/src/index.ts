@@ -422,6 +422,25 @@ export interface ApiQuotaStatus {
 
 export type IngestEventSource = "stub" | "prim" | "navitia" | "zou";
 
+/** Source de log debug API ingest (onglets Admin → Debug). */
+export type IngestApiLogSource = "stub" | "prim" | "navitia" | "zou";
+
+export interface IngestApiLogEntry {
+  id: string;
+  at: string;
+  source: IngestApiLogSource;
+  title: string;
+  httpStatus: number | null;
+  ok: boolean;
+  /** Une ligne = un élément reçu (départ, trip update, alerte, …) */
+  lines: string[];
+}
+
+export interface IngestApiLogsResponse {
+  source: IngestApiLogSource | "all";
+  entries: IngestApiLogEntry[];
+}
+
 /** Sources décorrélées pour vider les stats dashboard (retards, etc.). */
 export interface ClearStatsRequest {
   /** Supprime les événements ingest de ces sources (et livraisons liées). */

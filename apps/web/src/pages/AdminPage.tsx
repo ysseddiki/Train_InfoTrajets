@@ -1,6 +1,5 @@
 import type {
   ApiQuotaStatus,
-  JourneyDirection,
   LiaisonConfig,
   RecipientsConfig,
   SmtpConfigPublic,
@@ -28,8 +27,8 @@ import {
   type ReactNode,
 } from "react";
 import { apiGet, apiSend } from "../api/client";
-import { Link } from "react-router-dom";
 import { ClearStatsPanel } from "../components/ClearStatsPanel";
+import { DebugPanel } from "../components/DebugPanel";
 import { IngestConfigPanel } from "../components/IngestConfigPanel";
 import { LiaisonForm } from "../components/LiaisonForm";
 import { QuotaPanel } from "../components/QuotaPanel";
@@ -100,7 +99,8 @@ const ADMIN_SECTIONS: {
   {
     id: "debug",
     label: "Debug",
-    description: "Injection d’événements stub pour valider le matching.",
+    description:
+      "Logs API ingest (onglet par source) et injection d’événements stub.",
     icon: Bug,
   },
 ];
@@ -132,17 +132,10 @@ function AdminConsole({
   const [teamsMsg, setTeamsMsg] = useState<{ text: string; ok: boolean } | null>(
     null,
   );
-  const [stubMsg, setStubMsg] = useState<{ text: string; ok: boolean } | null>(
-    null,
-  );
   const [liaisonActionMsg, setLiaisonActionMsg] = useState<{
     text: string;
     ok: boolean;
   } | null>(null);
-  const [stubDirection, setStubDirection] =
-    useState<JourneyDirection>("outbound");
-  const [stubLiaisonId, setStubLiaisonId] = useState<string>("");
-  const [stubDelay, setStubDelay] = useState(15);
 
   const selected =
     liaisons.find((l) => l.id === selectedId) ?? liaisons[0] ?? null;
@@ -163,7 +156,6 @@ function AdminConsole({
         setLiaisons(list);
         setStations(st);
         setSelectedId((prev) => prev ?? list[0]?.id ?? null);
-        setStubLiaisonId((prev) => prev || list[0]?.id || "");
         setRecipients(r);
         setSmtp(s);
         setTeams(t);
@@ -238,49 +230,12 @@ function AdminConsole({
     }
   }
 
-  async function injectStub() {
-    try {
-      await apiSend("/v1/admin/debug/stub-event", "POST", {
-        direction: stubDirection,
-        liaisonId: stubLiaisonId || undefined,
-        delayMinutes: stubDelay,
-        kind: "delay",
-      });
-      setStubMsg({
-        text: "Événement injecté — ouvre le Dashboard et actualise",
-        ok: true,
-      });
-    } catch {
-      setStubMsg({ text: "Échec injection", ok: false });
-    }
-  }
-
-  async function seedStubHistory() {
-    try {
-      const res = await apiSend<{ ok: boolean; created: number; months: number }>(
-        "/v1/admin/debug/stub-history",
-        "POST",
-        {
-          months: 6,
-          liaisonId: stubLiaisonId || undefined,
-        },
-      );
-      setStubMsg({
-        text: `Historique stub : ${res.created} événements sur ${res.months} mois (sans notifs)`,
-        ok: true,
-      });
-    } catch {
-      setStubMsg({ text: "Échec simulation historique", ok: false });
-    }
-  }
-
   async function addLiaison() {
     setLiaisonActionMsg(null);
     try {
       const created = await apiSend<LiaisonConfig>("/v1/admin/liaisons", "POST");
       setLiaisons((prev) => [...prev, created]);
       setSelectedId(created.id);
-      setStubLiaisonId(created.id);
       setLiaisonActionMsg({ text: "Liaison ajoutée", ok: true });
     } catch {
       setLiaisonActionMsg({ text: "Impossible d’ajouter", ok: false });
@@ -296,7 +251,6 @@ function AdminConsole({
       const next = await apiGet<LiaisonConfig[]>("/v1/admin/liaisons");
       setLiaisons(next);
       setSelectedId(next[0]?.id ?? null);
-      setStubLiaisonId(next[0]?.id ?? "");
       setLiaisonActionMsg({ text: "Liaison supprimée", ok: true });
     } catch {
       setLiaisonActionMsg({
@@ -509,67 +463,7 @@ function AdminConsole({
       panelBody = <ClearStatsPanel />;
       break;
     case "debug":
-      panelBody = (
-        <section className="card debug">
-          <p className="muted">
-            Injecte un événement stub (matching + file notifs). Puis ouvre le{" "}
-            <Link to="/">Dashboard</Link> et actualise pour voir le statut
-            Aller/Retour.
-          </p>
-          <label>
-            Liaison
-            <select
-              value={stubLiaisonId}
-              onChange={(e) => setStubLiaisonId(e.target.value)}
-            >
-              {liaisons.map((l) => (
-                <option key={l.id} value={l.id}>
-                  {l.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            Sens
-            <select
-              value={stubDirection}
-              onChange={(e) =>
-                setStubDirection(e.target.value as JourneyDirection)
-              }
-            >
-              <option value="outbound">Aller</option>
-              <option value="inbound">Retour</option>
-            </select>
-          </label>
-          <label>
-            Retard (min)
-            <input
-              type="number"
-              value={stubDelay}
-              onChange={(e) => setStubDelay(Number(e.target.value))}
-            />
-          </label>
-          <button type="button" onClick={() => void injectStub()}>
-            Injecter événement stub
-          </button>
-          <hr className="admin-sep" />
-          <p className="muted">
-            Remplit ~6 mois d’événements stub (retards / suppressions) pour la
-            heatmap et les stats. <strong>Sans notifications</strong>. Idempotent
-            si relancé.
-          </p>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => void seedStubHistory()}
-          >
-            Simuler 6 mois d’historique stub
-          </button>
-          {stubMsg && (
-            <p className={stubMsg.ok ? "ok" : "error"}>{stubMsg.text}</p>
-          )}
-        </section>
-      );
+      panelBody = <DebugPanel liaisons={liaisons} />;
       break;
   }
 

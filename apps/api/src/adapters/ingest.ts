@@ -1,4 +1,5 @@
 import type { JourneyConfig, JourneyDirection } from "@sncf-alerts/shared";
+import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
 import { isWithinWatchWindow } from "../domain/matching.js";
 import { buildNextDepartureStatus } from "../domain/next-departure.js";
 import { notifyForEvent, processNotifyJobs } from "../domain/notify.js";
@@ -68,6 +69,22 @@ export async function injectStubEvent(input?: {
   await store.setIngestResult({
     status: "ok",
     detail: `Stub injecté (${direction})`,
+  });
+
+  appendIngestApiLog({
+    source: "stub",
+    title: `Injection debug — ${direction}`,
+    ok: true,
+    lines: [
+      `created=${created}`,
+      `externalEventId=${externalEventId}`,
+      `journeyId=${journey?.id ?? "—"}`,
+      `liaisonId=${journey?.liaisonId ?? "—"}`,
+      `kind=${kind}`,
+      `delayMinutes=${kind === "delay" ? delayMinutes : "—"}`,
+      `title=${event.title}`,
+      `description=${event.description}`,
+    ],
   });
 
   // Pas de snapshot board stub — le prochain train vient uniquement de Navitia
@@ -170,6 +187,18 @@ export async function seedStubHistory(input?: {
     }
   }
 
+  appendIngestApiLog({
+    source: "stub",
+    title: `Historique stub — ${months} mois`,
+    ok: true,
+    lines: [
+      `created=${created}`,
+      `months=${months}`,
+      `liaisonId=${input?.liaisonId ?? "toutes"}`,
+      `legs=${legs.length}`,
+    ],
+  });
+
   await store.setIngestResult({
     status: "ok",
     detail: `Stub historique : ${created} événements sur ${months} mois`,
@@ -194,6 +223,18 @@ export class StubIngestAdapter implements DisruptionIngestPort {
     await store.setIngestResult({
       status: "ok",
       detail: `Stub OK — ${open.length} sens (pas de snapshot board — provider démo)`,
+    });
+    appendIngestApiLog({
+      source: "stub",
+      title: "Poll stub",
+      ok: true,
+      lines: [
+        `openJourneys=${open.length}`,
+        ...open.map(
+          (j) =>
+            `${j.direction} · ${j.originLabel} → ${j.destinationLabel} · active=${j.active}`,
+        ),
+      ],
     });
   }
 }
@@ -590,6 +631,12 @@ export class ConfiguredIngestAdapter implements DisruptionIngestPort {
       await store.setIngestResult({
         status: "error",
         detail: "Provider PRIM non implémenté — choisir stub ou navitia",
+      });
+      appendIngestApiLog({
+        source: "prim",
+        title: "Poll PRIM",
+        ok: false,
+        lines: ["Provider PRIM non implémenté — aucun appel API"],
       });
       return;
     }

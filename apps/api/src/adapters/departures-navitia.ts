@@ -1,5 +1,6 @@
 import type { JourneyConfig } from "@sncf-alerts/shared";
 import { departuresCache, TtlCache } from "../domain/departures-cache.js";
+import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
 import { matchesDestinationFilter } from "../domain/matching.js";
 import type { DeparturesPort } from "../ports/departures.js";
 import { store } from "../domain/store.js";
@@ -134,7 +135,14 @@ export class NavitiaDeparturesPort implements DeparturesPort {
       | { departures?: NavitiaDeparture[] }
       | undefined;
     if (cached) {
-      return { departures: cached.departures ?? [] };
+      const departures = cached.departures ?? [];
+      appendIngestApiLog({
+        source: "navitia",
+        title: `Départs (cache) — ${journey.originLabel || journey.originId} [${journey.direction}]`,
+        ok: true,
+        lines: formatNavitiaDepartureLines(departures, journey),
+      });
+      return { departures };
     }
 
     const stopId = encodeURIComponent(journey.originId);
@@ -149,17 +157,85 @@ export class NavitiaDeparturesPort implements DeparturesPort {
       });
     } catch (err) {
       await store.recordApiRequest({ provider: "navitia", ok: false });
+      appendIngestApiLog({
+        source: "navitia",
+        title: `Départs — ${journey.originLabel || journey.originId} [${journey.direction}]`,
+        ok: false,
+        lines: [
+          `URL ${url.replace(/stop_areas\/[^/]+/, "stop_areas/…")}`,
+          `Erreur réseau: ${err instanceof Error ? err.message : String(err)}`,
+        ],
+      });
       throw err;
     }
 
     if (!res.ok) {
       await store.recordApiRequest({ provider: "navitia", ok: false });
+      const errBody = (await res.text().catch(() => "")).slice(0, 500);
+      appendIngestApiLog({
+        source: "navitia",
+        title: `Départs — ${journey.originLabel || journey.originId} [${journey.direction}]`,
+        httpStatus: res.status,
+        ok: false,
+        lines: [
+          `HTTP ${res.status}`,
+          errBody || "(corps vide)",
+        ],
+      });
       throw new Error(`Navitia HTTP ${res.status} (${journey.direction})`);
     }
 
     await store.recordApiRequest({ provider: "navitia", ok: true });
     const body = (await res.json()) as { departures?: NavitiaDeparture[] };
     departuresCache.set(cacheKey, body);
-    return { departures: body.departures ?? [] };
+    const departures = body.departures ?? [];
+    appendIngestApiLog({
+      source: "navitia",
+      title: `Départs — ${journey.originLabel || journey.originId} [${journey.direction}]`,
+      httpStatus: res.status,
+      ok: true,
+      lines: formatNavitiaDepartureLines(departures, journey),
+    });
+    return { departures };
   }
+}
+
+function formatNavitiaDepartureLines(
+  departures: NavitiaDeparture[],
+  journey: JourneyConfig,
+): string[] {
+  if (departures.length === 0) {
+    return [
+      `0 départ(s) — gare ${journey.originLabel || journey.originId}`,
+    ];
+  }
+  return departures.map((dep, i) => {
+    const info = dep.display_informations;
+    const dir =
+      info?.direction ??
+      dep.route?.direction?.name ??
+      info?.headsign ??
+      "—";
+    const train =
+      info?.trip_short_name ??
+      info?.headsign ??
+      info?.number ??
+      info?.name ??
+      "—";
+    const base = dep.stop_date_time?.base_departure_date_time ?? "—";
+    const real = dep.stop_date_time?.departure_date_time ?? "—";
+    const mode = info?.commercial_mode?.name ?? "";
+    const destId = dep.route?.direction?.id ?? "";
+    return [
+      `#${i + 1}`,
+      `train=${train}`,
+      mode ? `mode=${mode}` : null,
+      `dir=${dir}`,
+      destId ? `destId=${destId}` : null,
+      `base=${base}`,
+      `real=${real}`,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  });
 }

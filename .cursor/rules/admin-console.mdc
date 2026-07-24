@@ -14,6 +14,7 @@ alwaysApply: false
 - Liaisons : plusieurs paires A/R possibles ; nom custom ou auto `départ <-> arrivée` ; au moins une
 - Quota API : compteur journalier Navitia (réussi/échoué), barre 0–`NAVITIA_DAILY_QUOTA` (défaut 5000)
 - Clear stats : sources décorrélées (événements stub / navitia / prim / zou, livraisons)
+- Debug : logs API ingest (onglet par source, lignes reçues) + injection stub
 - Destinataires = liste saisie par l’admin (pas d’auto-inscription)
 - Champs secrets : write-only / masked après sauvegarde
 - Boutons test d’envoi par canal
