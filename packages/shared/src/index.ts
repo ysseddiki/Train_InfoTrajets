@@ -140,7 +140,7 @@ export interface NextDepartureInfo {
   status: NextDepartureStatus;
   statusLabel: string;
   fetchedAt: string;
-  source: "navitia" | "stub";
+  source: "navitia" | "stub" | "zou";
 }
 
 export type IngestRunStatus = "ok" | "error" | "skipped";
@@ -265,7 +265,7 @@ export interface DisruptionEventDto {
   delayMinutes: number | null;
   startsAt: string;
   endsAt: string | null;
-  source: "stub" | "prim" | "navitia";
+  source: "stub" | "prim" | "navitia" | "zou";
   detectedAt: string;
 }
 
@@ -329,6 +329,11 @@ export interface IngestProviderSlotPublic {
 export interface IngestConfigPublic {
   activeProvider: IngestProviderId;
   providers: Record<IngestProviderId, IngestProviderSlotPublic>;
+  /**
+   * Failover open data ZOU PACA (GTFS-RT) si Navitia KO / quota / token manquant.
+   * Défaut : false.
+   */
+  zouFailoverEnabled: boolean;
 }
 
 export interface IngestConfigUpdate {
@@ -338,6 +343,8 @@ export interface IngestConfigUpdate {
   navitiaToken?: string;
   /** Remplace la clé PRIM si non vide */
   primApiKey?: string;
+  /** Active / désactive le failover GTFS-RT ZOU */
+  zouFailoverEnabled?: boolean;
 }
 
 export interface IngestProbeRequest {
@@ -413,7 +420,7 @@ export interface ApiQuotaStatus {
   exhausted: boolean;
 }
 
-export type IngestEventSource = "stub" | "prim" | "navitia";
+export type IngestEventSource = "stub" | "prim" | "navitia" | "zou";
 
 /** Sources décorrélées pour vider les stats dashboard (retards, etc.). */
 export interface ClearStatsRequest {

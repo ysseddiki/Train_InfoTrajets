@@ -22,6 +22,11 @@ const EVENT_SOURCES: { id: IngestEventSource; label: string; hint: string }[] =
       label: "Événements PRIM",
       hint: "Source Île-de-France Mobilités (si utilisée)",
     },
+    {
+      id: "zou",
+      label: "Événements ZOU (failover)",
+      hint: "GTFS-RT open data Région Sud — failover Navitia",
+    },
   ];
 
 export function ClearStatsPanel() {
@@ -29,6 +34,7 @@ export function ClearStatsPanel() {
     stub: false,
     navitia: false,
     prim: false,
+    zou: false,
   });
   const [deliveries, setDeliveries] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -72,6 +78,7 @@ export function ClearStatsPanel() {
         stub: false,
         navitia: false,
         prim: false,
+        zou: false,
       });
       setDeliveries(false);
     } catch {

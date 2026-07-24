@@ -191,6 +191,15 @@ curl -s -o /dev/null -w "%{http_code}\n" -u "TOKEN:" \
 
 L’adapter interroge les **départs** de la gare surveillée (`/stop_areas/.../departures`), filtre le sens (ex. Monaco / Nice), et crée une alerte si retard ≥ seuil ou suppression.
 
+### Failover ZOU (GTFS-RT open data)
+
+Filet de secours si Navitia est KO / quota / sans token. Activable dans **Admin → Ingest** (`zouFailoverEnabled`).
+
+- Dataset : [Trains régionaux ZOU !](https://transport.data.gouv.fr/datasets/trains-zou-en-provence-alpes-cote-dazur)
+- Flux : TripUpdates + Service Alerts (+ cache GTFS static stops/trips)
+- Source événements / board : `zou` (pas un provider primaire)
+- URLs surchargeables : `ZOU_GTFS_URL`, `ZOU_GTFSRT_TRIPS_URL`, `ZOU_GTFSRT_SA_URL`
+
 > Ne pas lancer `npm audit fix --force` (casse le lockfile).
 
 ## Email (SMTP custom)

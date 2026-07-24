@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.4.0`  
+> **Version** : `1.5.0`  
 > **Date** : 2026-07-24  
-> **Change** : `openspec/changes/remove-gc-failover`  
+> **Change** : `openspec/changes/zou-gtfsrt-failover`  
 > **Format** : OpenSpec
 
 ---
@@ -116,7 +116,7 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `description` | string | |
 | `delay_minutes` | int \| null | `null` = durée **unknown** (jamais coercée en `0`) |
 | `starts_at` / `ends_at` | datetime | |
-| `source` | `stub` \| `prim` \| `navitia` | Pas de `garesetconnexions` |
+| `source` | `stub` \| `prim` \| `navitia` \| `zou` | `zou` = failover GTFS-RT ; pas de `garesetconnexions` |
 | `detected_at` | datetime | |
 
 `raw_payload` : optionnel, rétention courte ; **pas de secrets**.
@@ -206,7 +206,7 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 | `TeamsNotifierPort` | Incoming webhook |
 | `ClockPort` | Testabilité fenêtres horaires |
 
-Pas de scrape / failover Gares & Connexions (bloqué Datadome). URL `displayUrl` catalogue → lien UI seulement. Snapshots board : `navitia` uniquement.
+Pas de scrape / failover Gares & Connexions (bloqué Datadome). URL `displayUrl` catalogue → lien UI seulement. Failover optionnel : GTFS-RT ZOU (`zouFailoverEnabled`). Snapshots board : `navitia` ou `zou`.
 
 ---
 

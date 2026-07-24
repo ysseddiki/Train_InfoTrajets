@@ -100,18 +100,29 @@ Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents d
 
 ### Requirement: Pas de failover scrape Gares & Connexions
 
-Le pipeline d’ingest MUST NOT scraper Gares & Connexions ni exposer une source `garesetconnexions`. En cas d’échec Navitia (token manquant, quota, erreur API), le poll MUST enregistrer un statut `error` ou `skipped` et MUST NOT basculer vers un board HTML tiers.
+Le pipeline d’ingest MUST NOT scraper Gares & Connexions ni exposer une source `garesetconnexions`. Un failover open data **ZOU GTFS-RT** MAY être activé via `zouFailoverEnabled` (voir requirement dédié). Sans ce toggle, en cas d’échec Navitia (token manquant, quota, erreur API), le poll MUST enregistrer un statut `error` ou `skipped` et MUST NOT basculer vers un board HTML tiers.
 
-#### Scenario: Navitia KO
+#### Scenario: Navitia KO sans failover ZOU
 
-- **GIVEN** provider actif `navitia` et token invalide ou API en erreur
+- **GIVEN** provider actif `navitia`, token invalide ou API en erreur, `zouFailoverEnabled = false`
 - **WHEN** le poll tourne
 - **THEN** `last_ingest_status` est `error` (ou `skipped` si hors fenêtre / quota)
 - **AND** aucun appel HTTP vers `garesetconnexions.sncf` n’est effectué
 
+### Requirement: Failover GTFS-RT ZOU (open data)
+
+Quand `zouFailoverEnabled` est vrai, le poll Navitia SHALL basculer vers les flux open data ZOU PACA (GTFS-RT TripUpdates + Service Alerts) si le token Navitia est absent, le quota journalier est épuisé, ou un appel Navitia échoue. Les événements / snapshots SHALL utiliser `source = zou`. ZOU MUST NOT être un `IngestProviderId` primaire sélectionnable.
+
+#### Scenario: Quota épuisé + failover ON
+
+- **GIVEN** provider `navitia`, quota épuisé, `zouFailoverEnabled = true`, trajet en fenêtre de veille
+- **WHEN** le poll tourne
+- **THEN** le système interroge le GTFS-RT ZOU
+- **AND** MAY écrire des événements ou un board `source = zou`
+
 ### Requirement: Board prochain train sans stub
 
-Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir de `navitia`. Le provider stub MUST NOT écrire ni exposer de prochain train sur le board. Les snapshots historiques `source=garesetconnexions` MUST être ignorés (comme le stub).
+Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir de `navitia` ou `zou` (failover). Le provider stub MUST NOT écrire ni exposer de prochain train sur le board. Les snapshots historiques `source=garesetconnexions` MUST être ignorés (comme le stub).
 
 #### Scenario: Stub désactivé
 
@@ -124,6 +135,12 @@ Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir
 - **GIVEN** un snapshot `source=garesetconnexions` en base
 - **WHEN** le dashboard charge l’overview
 - **THEN** `nextDeparture` est absent pour ce journey
+
+#### Scenario: Snapshot ZOU failover
+
+- **GIVEN** un snapshot `source=zou` en base
+- **WHEN** le dashboard charge l’overview
+- **THEN** `nextDeparture` est exposé pour ce journey
 
 Le poll ingest SHALL pouvoir tourner hors du process API (`INGEST_IN_PROCESS=false` + worker dédié). Des unités systemd SHALL être fournies en exemple (`deploy/systemd/`).
 

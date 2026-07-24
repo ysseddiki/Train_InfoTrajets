@@ -187,6 +187,27 @@ export function IngestConfigPanel() {
     }
   }
 
+  async function setZouFailover(enabled: boolean) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const next = await apiSend<IngestConfigPublic>("/v1/admin/ingest", "PUT", {
+        zouFailoverEnabled: enabled,
+      });
+      setConfig(next);
+      setMsg({
+        text: enabled
+          ? "Failover ZOU (GTFS-RT) activé"
+          : "Failover ZOU désactivé",
+        ok: true,
+      });
+    } catch (err) {
+      setMsg({ text: errorMessage(err), ok: false });
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveToken(provider: "navitia" | "prim", token: string) {
     setBusy(true);
     setMsg(null);
@@ -264,6 +285,37 @@ export function IngestConfigPanel() {
         </p>
         <p>
           Actif : <strong>{LABELS[config.activeProvider]}</strong>
+        </p>
+      </div>
+
+      <div className="card ingest-failover-card">
+        <h3>Failover — ZOU open data (GTFS-RT)</h3>
+        <p className="muted">
+          Si Navitia échoue, quota épuisé ou token manquant, bascule sur les
+          flux open data Région Sud (TripUpdates + Service Alerts), matching
+          par UIC Navitia. Pas un provider primaire : désactiver = comportement
+          Navitia seul.
+        </p>
+        <label className="check-inline">
+          <input
+            type="checkbox"
+            checked={config.zouFailoverEnabled}
+            disabled={busy}
+            onChange={(e) => void setZouFailover(e.target.checked)}
+          />{" "}
+          Activer le failover GTFS-RT ZOU
+        </label>
+        <p className="muted field-hint">
+          Dataset{" "}
+          <a
+            href="https://transport.data.gouv.fr/datasets/trains-zou-en-provence-alpes-cote-dazur"
+            target="_blank"
+            rel="noreferrer"
+          >
+            Trains régionaux ZOU !
+          </a>
+          . Couverture TripUpdates variable selon les lignes (ex. MCN / CFP plus
+          présentes que le côtier SNC) ; les Service Alerts complètent.
         </p>
       </div>
 

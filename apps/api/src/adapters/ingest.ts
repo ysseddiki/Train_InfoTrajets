@@ -8,6 +8,11 @@ import {
   navitiaDepartureMatchesFilter,
   type NavitiaDeparture,
 } from "./departures-navitia.js";
+import {
+  fetchZouAlertsForJourney,
+  fetchZouDeparturesForJourney,
+  type ZouRtDeparture,
+} from "./departures-zou-gtfsrt.js";
 
 export interface DisruptionIngestPort {
   poll(): Promise<void>;
@@ -291,13 +296,46 @@ async function saveNextFromNavitia(
   });
 }
 
+function epochToIso(epoch: number | null): string | null {
+  if (epoch == null || !Number.isFinite(epoch)) return null;
+  return new Date(epoch * 1000).toISOString();
+}
+
+async function saveNextFromZou(
+  journey: JourneyConfig,
+  departures: ZouRtDeparture[],
+): Promise<void> {
+  const next =
+    departures.find((d) => !d.cancelled) ?? departures[0] ?? null;
+  if (!next) return;
+
+  const { status, statusLabel } = buildNextDepartureStatus({
+    cancelled: next.cancelled,
+    delayMinutes: next.delayMinutes,
+  });
+  const fetchedAt = new Date().toISOString();
+  await store.upsertJourneyBoardSnapshot({
+    journeyId: journey.id,
+    trainNumber: next.trainNumber,
+    scheduledAt: epochToIso(next.scheduledEpoch),
+    realtimeAt: next.cancelled ? null : epochToIso(next.realtimeEpoch),
+    delayMinutes: next.cancelled ? null : next.delayMinutes,
+    cancelled: next.cancelled,
+    status,
+    statusLabel,
+    source: "zou",
+    fetchedAt,
+  });
+}
+
 export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
   constructor(private readonly token: string) {}
 
   async poll(): Promise<void> {
     const token = this.token;
+    const zouFailover = await store.isZouFailoverEnabled();
 
-    if (!token) {
+    if (!token && !zouFailover) {
       await store.setIngestResult({
         status: "error",
         detail: "Token Navitia manquant (config admin)",
@@ -305,8 +343,10 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       throw new Error("Navitia token is required");
     }
 
-    const quota = await store.getApiQuota("navitia");
-    if (quota.exhausted) {
+    const quota = token
+      ? await store.getApiQuota("navitia")
+      : { exhausted: true, used: 0, limit: 0, day: "" };
+    if (token && quota.exhausted && !zouFailover) {
       await store.setIngestResult({
         status: "skipped",
         detail: `Quota Navitia épuisé (${quota.used}/${quota.limit}) — jour ${quota.day}`,
@@ -326,20 +366,53 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
 
     let checked = 0;
     let alerts = 0;
+    let usedZou = 0;
+    const notes: string[] = [];
 
     try {
       for (const journey of open) {
-        const n = await this.pollJourneyNavitia(journey, token);
+        let n = 0;
+        let viaZou = false;
+
+        const tryNavitia =
+          Boolean(token) &&
+          !(await store.getApiQuota("navitia")).exhausted;
+
+        if (tryNavitia) {
+          try {
+            n = await this.pollJourneyNavitia(journey, token);
+          } catch (err) {
+            if (!zouFailover) throw err;
+            const msg = err instanceof Error ? err.message : "erreur Navitia";
+            notes.push(
+              `${journey.direction}: Navitia KO → ZOU (${msg.slice(0, 80)})`,
+            );
+            n = await this.pollJourneyZou(journey);
+            viaZou = true;
+          }
+        } else if (zouFailover) {
+          notes.push(
+            `${journey.direction}: ${token ? "quota" : "sans token"} → ZOU`,
+          );
+          n = await this.pollJourneyZou(journey);
+          viaZou = true;
+        } else {
+          throw new Error("Navitia indisponible et failover ZOU désactivé");
+        }
+
         checked += 1;
         alerts += n;
+        if (viaZou) usedZou += 1;
       }
       await processNotifyJobs();
+      const detailParts = [
+        `Navitia/ZOU — ${checked} gare(s), ${alerts} alerte(s)`,
+        usedZou > 0 ? `failover ZOU: ${usedZou}` : null,
+        ...notes.slice(0, 3),
+      ].filter(Boolean);
       await store.setIngestResult({
         status: "ok",
-        detail: `Navitia — ${checked} gare(s), ${alerts} alerte(s)`.slice(
-          0,
-          500,
-        ),
+        detail: detailParts.join(" · ").slice(0, 500),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Erreur ingest";
@@ -414,6 +487,89 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
 
     return createdCount;
   }
+
+  private async pollJourneyZou(journey: JourneyConfig): Promise<number> {
+    const departures = await fetchZouDeparturesForJourney(journey);
+    await saveNextFromZou(journey, departures);
+    let createdCount = 0;
+
+    for (const dep of departures) {
+      const cancelled = dep.cancelled;
+      const delay = dep.delayMinutes;
+
+      if (!cancelled) {
+        if (delay === null) continue;
+        if (delay < journey.minDelayMinutes) continue;
+        if (delay <= 0) continue;
+      }
+
+      const kind = cancelled ? "cancellation" : "delay";
+      if (!journey.severities.includes(kind)) continue;
+
+      const base =
+        dep.scheduledEpoch != null
+          ? String(dep.scheduledEpoch)
+          : dep.tripId;
+      const externalEventId =
+        `zou-${journey.id}-${base}-${dep.directionText}`.slice(0, 200);
+
+      const delayLabel = delay == null ? "unknown" : `${delay} min`;
+      const { event, created } = await store.upsertEvent({
+        externalEventId,
+        journeyId: journey.id,
+        liaisonId: journey.liaisonId,
+        direction: journey.direction,
+        kind,
+        severity:
+          cancelled || (delay != null && delay >= 20) ? "critical" : "warning",
+        title: cancelled
+          ? `Suppression — ${journey.originLabel} → ${dep.directionText || journey.destinationLabel}`
+          : `Retard ${delayLabel} — ${journey.originLabel} → ${dep.directionText || journey.destinationLabel}`,
+        description: `Failover ZOU GTFS-RT — départ ${journey.originLabel}, sens ${dep.directionText || journey.destinationLabel}.`,
+        delayMinutes: cancelled ? null : delay,
+        startsAt: new Date().toISOString(),
+        endsAt: null,
+        source: "zou",
+      });
+
+      if (created) {
+        createdCount += 1;
+        await notifyForEvent(event);
+      }
+    }
+
+    // Service Alerts (retards / coupures corridor) — durée often unknown
+    try {
+      const saHits = await fetchZouAlertsForJourney(journey);
+      for (const hit of saHits) {
+        if (!journey.severities.includes(hit.kind)) continue;
+        const externalEventId =
+          `zou-sa-${journey.id}-${hit.alertId}`.slice(0, 200);
+        const { event, created } = await store.upsertEvent({
+          externalEventId,
+          journeyId: journey.id,
+          liaisonId: journey.liaisonId,
+          direction: journey.direction,
+          kind: hit.kind,
+          severity: hit.kind === "cancellation" ? "critical" : "warning",
+          title: hit.header.slice(0, 200),
+          description: `Failover ZOU Service Alert — ${hit.description || hit.header}`,
+          delayMinutes: null,
+          startsAt: new Date().toISOString(),
+          endsAt: null,
+          source: "zou",
+        });
+        if (created) {
+          createdCount += 1;
+          await notifyForEvent(event);
+        }
+      }
+    } catch {
+      // TripUpdates already applied; SA optional
+    }
+
+    return createdCount;
+  }
 }
 
 export class ConfiguredIngestAdapter implements DisruptionIngestPort {
@@ -425,6 +581,12 @@ export class ConfiguredIngestAdapter implements DisruptionIngestPort {
       return;
     }
     if (provider === "prim") {
+      const zouFailover = await store.isZouFailoverEnabled();
+      if (zouFailover) {
+        // PRIM non implémenté : failover ZOU si activé (token Navitia vide)
+        await new NavitiaDeparturesAdapter("").poll();
+        return;
+      }
       await store.setIngestResult({
         status: "error",
         detail: "Provider PRIM non implémenté — choisir stub ou navitia",

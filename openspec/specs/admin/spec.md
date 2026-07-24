@@ -59,7 +59,7 @@ Si **Veille continue** est cochée, la liste MUST être désactivée (grisée) ;
 
 ### Requirement: Clear stats par source
 
-Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `prim`, et/ou livraisons email/Teams. MUST NOT proposer une source `garesetconnexions`.
+Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `prim`, `zou`, et/ou livraisons email/Teams. MUST NOT proposer une source `garesetconnexions`.
 
 #### Scenario: Clear événements stub seulement
 
@@ -104,6 +104,7 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 - Secrets Navitia / PRIM : **write-only** ; `tokenPreview` = 5 premiers caractères
 - `POST /v1/admin/ingest/probe` : test API sans forcément activer
 - À l’enregistrement d’un token (ou à l’activation d’un provider distant), le serveur MUST appeler l’API cible et MUST persister le résultat du check (`lastCheckOk` / détail). MUST NOT bloquer la sauvegarde ni l’activation si le check échoue ; les données MAY rester absentes tant que l’API cible échoue
+- MAY exposer un toggle `zouFailoverEnabled` (failover GTFS-RT ZOU open data)
 - MUST NOT exposer de toggle `gcFailoverEnabled` ni d’option scrape G&C
 
 #### Scenario: Trois slots indépendants
@@ -111,6 +112,12 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 - **GIVEN** un token Navitia et une clé PRIM déjà saisis
 - **WHEN** l’admin active `stub`
 - **THEN** les secrets Navitia et PRIM restent configurés (slots indépendants)
+
+#### Scenario: Toggle failover ZOU
+
+- **GIVEN** un admin connecté
+- **WHEN** il active le failover ZOU via `PUT /v1/admin/ingest` `{ zouFailoverEnabled: true }`
+- **THEN** `GET /v1/admin/ingest` renvoie `zouFailoverEnabled: true`
 
 #### Scenario: Token Navitia invalide
 
