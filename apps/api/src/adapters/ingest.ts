@@ -6,6 +6,10 @@ import {
 import { notifyForEvent, processNotifyJobs } from "../domain/notify.js";
 import { store } from "../domain/store.js";
 import {
+  fetchGcDeparturesForJourney,
+  type GcBoardDeparture,
+} from "./departures-garesetconnexions.js";
+import {
   NavitiaDeparturesPort,
   type NavitiaDeparture,
 } from "./departures-navitia.js";
@@ -220,7 +224,9 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
 
   async poll(): Promise<void> {
     const token = this.token;
-    if (!token) {
+    const gcFailover = await store.isGcFailoverEnabled();
+
+    if (!token && !gcFailover) {
       await store.setIngestResult({
         status: "error",
         detail: "Token Navitia manquant (config admin)",
@@ -228,8 +234,10 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       throw new Error("Navitia token is required");
     }
 
-    const quota = await store.getApiQuota("navitia");
-    if (quota.exhausted) {
+    const quota = token
+      ? await store.getApiQuota("navitia")
+      : { exhausted: true, used: 0, limit: 0, day: "" };
+    if (token && quota.exhausted && !gcFailover) {
       await store.setIngestResult({
         status: "skipped",
         detail: `Quota Navitia épuisé (${quota.used}/${quota.limit}) — jour ${quota.day}`,
@@ -242,34 +250,61 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
     if (open.length === 0) {
       await store.setIngestResult({
         status: "skipped",
-        detail: "Hors fenêtre — 0 requête Navitia",
+        detail: "Hors fenêtre — 0 requête",
       });
       return;
     }
 
     let checked = 0;
     let alerts = 0;
+    let usedGc = 0;
+    const notes: string[] = [];
+
     try {
       for (const journey of open) {
-        const current = await store.getApiQuota("navitia");
-        if (current.exhausted) {
-          await store.setIngestResult({
-            status: "ok",
-            detail: `Quota atteint en cours de poll — ${checked} gare(s), ${alerts} alerte(s)`,
-          });
-          return;
+        let n = 0;
+        let viaGc = false;
+
+        const tryNavitia =
+          Boolean(token) &&
+          !(await store.getApiQuota("navitia")).exhausted;
+
+        if (tryNavitia) {
+          try {
+            n = await this.pollJourneyNavitia(journey, token);
+          } catch (err) {
+            if (!gcFailover) throw err;
+            const msg = err instanceof Error ? err.message : "erreur Navitia";
+            notes.push(`${journey.direction}: Navitia KO → G&C (${msg.slice(0, 80)})`);
+            n = await this.pollJourneyGc(journey);
+            viaGc = true;
+          }
+        } else if (gcFailover) {
+          notes.push(
+            `${journey.direction}: ${token ? "quota" : "sans token"} → G&C`,
+          );
+          n = await this.pollJourneyGc(journey);
+          viaGc = true;
+        } else {
+          throw new Error("Navitia indisponible et failover G&C désactivé");
         }
-        const n = await this.pollJourney(journey, token);
+
         checked += 1;
         alerts += n;
+        if (viaGc) usedGc += 1;
       }
       await processNotifyJobs();
+      const detailParts = [
+        `Navitia/G&C — ${checked} gare(s), ${alerts} alerte(s)`,
+        usedGc > 0 ? `failover G&C: ${usedGc}` : null,
+        ...notes.slice(0, 3),
+      ].filter(Boolean);
       await store.setIngestResult({
         status: "ok",
-        detail: `Navitia OK — ${checked} gare(s), ${alerts} alerte(s)`,
+        detail: detailParts.join(" · ").slice(0, 500),
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Erreur Navitia";
+      const message = err instanceof Error ? err.message : "Erreur ingest";
       await store.setIngestResult({
         status: "error",
         detail: message.slice(0, 400),
@@ -278,7 +313,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
     }
   }
 
-  private async pollJourney(
+  private async pollJourneyNavitia(
     journey: JourneyConfig,
     token: string,
   ): Promise<number> {
@@ -314,8 +349,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       const kind = cancelled ? "cancellation" : "delay";
       if (!journey.severities.includes(kind)) continue;
 
-      const delayLabel =
-        delay == null ? "unknown" : `${delay} min`;
+      const delayLabel = delay == null ? "unknown" : `${delay} min`;
       const { event, created } = await store.upsertEvent({
         externalEventId,
         journeyId: journey.id,
@@ -342,6 +376,68 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
 
     return createdCount;
   }
+
+  /** TEMP — failover scrape Gares & Connexions (display_url / UIC). */
+  private async pollJourneyGc(journey: JourneyConfig): Promise<number> {
+    const { departures } = await fetchGcDeparturesForJourney(journey);
+    return upsertFromGcBoard(journey, departures);
+  }
+}
+
+async function upsertFromGcBoard(
+  journey: JourneyConfig,
+  departures: GcBoardDeparture[],
+): Promise<number> {
+  let createdCount = 0;
+  for (const dep of departures) {
+    if (!matchesDestinationFilter(journey, dep.directionText, null)) {
+      continue;
+    }
+
+    const cancelled = dep.cancelled;
+    const delay = dep.delayMinutes;
+
+    if (!cancelled) {
+      if (dep.delayedUnknown) {
+        // keep — retard unknown
+      } else if (delay === null) {
+        continue;
+      } else {
+        if (delay < journey.minDelayMinutes) continue;
+        if (delay <= 0) continue;
+      }
+    }
+
+    const kind = cancelled ? "cancellation" : "delay";
+    if (!journey.severities.includes(kind)) continue;
+
+    const externalEventId = `gc-${journey.id}-${dep.identity}`.slice(0, 200);
+    const delayLabel =
+      delay == null || dep.delayedUnknown ? "unknown" : `${delay} min`;
+    const { event, created } = await store.upsertEvent({
+      externalEventId,
+      journeyId: journey.id,
+      liaisonId: journey.liaisonId,
+      direction: journey.direction,
+      kind,
+      severity:
+        cancelled || (delay != null && delay >= 20) ? "critical" : "warning",
+      title: cancelled
+        ? `Suppression — ${journey.originLabel} → ${dep.directionText || journey.destinationLabel}`
+        : `Retard ${delayLabel} — ${journey.originLabel} → ${dep.directionText || journey.destinationLabel}`,
+      description: `Failover Gares & Connexions — gare ${journey.originLabel}, sens ${dep.directionText || journey.destinationLabel}.`,
+      delayMinutes: cancelled || dep.delayedUnknown ? null : delay,
+      startsAt: new Date().toISOString(),
+      endsAt: null,
+      source: "garesetconnexions",
+    });
+
+    if (created) {
+      createdCount += 1;
+      await notifyForEvent(event);
+    }
+  }
+  return createdCount;
 }
 
 export class ConfiguredIngestAdapter implements DisruptionIngestPort {
@@ -353,9 +449,15 @@ export class ConfiguredIngestAdapter implements DisruptionIngestPort {
       return;
     }
     if (provider === "prim") {
+      const gcFailover = await store.isGcFailoverEnabled();
+      if (gcFailover) {
+        // PRIM non implémenté : failover G&C direct
+        await new NavitiaDeparturesAdapter("").poll();
+        return;
+      }
       await store.setIngestResult({
         status: "error",
-        detail: "Provider PRIM non implémenté — choisir stub ou navitia",
+        detail: "Provider PRIM non implémenté — choisir stub/navitia ou activer failover G&C",
       });
       return;
     }

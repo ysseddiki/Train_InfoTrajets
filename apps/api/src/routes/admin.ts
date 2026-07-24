@@ -375,6 +375,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
         activeProvider: body.activeProvider,
         navitiaToken,
         primApiKey,
+        gcFailoverEnabled: body.gcFailoverEnabled,
       });
     },
   );
@@ -391,7 +392,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.post<{
     Body?: {
-      eventSources?: Array<"stub" | "prim" | "navitia">;
+      eventSources?: Array<"stub" | "prim" | "navitia" | "garesetconnexions">;
       deliveries?: boolean;
     };
   }>("/v1/admin/stats/clear", async (req, reply) => {

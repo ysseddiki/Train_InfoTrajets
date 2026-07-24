@@ -22,6 +22,11 @@ const EVENT_SOURCES: { id: IngestEventSource; label: string; hint: string }[] =
       label: "Événements PRIM",
       hint: "Source Île-de-France Mobilités (si utilisée)",
     },
+    {
+      id: "garesetconnexions",
+      label: "Événements G&C (failover)",
+      hint: "Scrape temporaire Gares & Connexions",
+    },
   ];
 
 export function ClearStatsPanel() {
@@ -29,6 +34,7 @@ export function ClearStatsPanel() {
     stub: false,
     navitia: false,
     prim: false,
+    garesetconnexions: false,
   });
   const [deliveries, setDeliveries] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -68,7 +74,12 @@ export function ClearStatsPanel() {
         text: `Effacé : ${res.deletedEvents} événement(s), ${res.deletedDeliveries} livraison(s).`,
         ok: true,
       });
-      setSources({ stub: false, navitia: false, prim: false });
+      setSources({
+        stub: false,
+        navitia: false,
+        prim: false,
+        garesetconnexions: false,
+      });
       setDeliveries(false);
     } catch {
       setMsg({ text: "Échec de l’effacement", ok: false });

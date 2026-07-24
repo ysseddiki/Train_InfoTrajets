@@ -941,6 +941,10 @@ button.danger-action:disabled {
   gap: 1rem;
 }
 
+.ingest-failover-card h3 {
+  margin-top: 0;
+}
+
 .ingest-provider-grid {
   display: grid;
   gap: 1rem;

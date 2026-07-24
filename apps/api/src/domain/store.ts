@@ -13,6 +13,7 @@ import type {
   DisruptionSeverity,
   IngestConfigPublic,
   IngestConfigUpdate,
+  IngestEventSource,
   IngestProviderId,
   IngestProviderSlotPublic,
   IngestRunStatus,
@@ -47,6 +48,8 @@ const META_PRIM_API_KEY = "ingest_prim_api_key";
 const META_NAVITIA_CHECK = "ingest_navitia_check";
 const META_PRIM_CHECK = "ingest_prim_check";
 const META_STUB_CHECK = "ingest_stub_check";
+/** TEMP — failover scrape Gares & Connexions */
+const META_GC_FAILOVER = "ingest_gc_failover_enabled";
 
 function parseIngestProvider(value: string | null | undefined): IngestProviderId {
   if (value === "navitia" || value === "prim" || value === "stub") return value;
@@ -188,7 +191,7 @@ function mapEvent(row: Record<string, unknown>): DisruptionEventDto {
     delayMinutes: row.delay_minutes === null ? null : Number(row.delay_minutes),
     startsAt: new Date(String(row.starts_at)).toISOString(),
     endsAt: row.ends_at ? new Date(String(row.ends_at)).toISOString() : null,
-    source: row.source as "stub" | "prim" | "navitia",
+    source: row.source as "stub" | "prim" | "navitia" | "garesetconnexions",
     detectedAt: new Date(String(row.detected_at)).toISOString(),
   };
 }
@@ -520,7 +523,13 @@ export class PgStore {
     return {
       activeProvider,
       providers: { stub, navitia, prim },
+      gcFailoverEnabled: await this.isGcFailoverEnabled(),
     };
+  }
+
+  async isGcFailoverEnabled(): Promise<boolean> {
+    const v = await this.getMeta(META_GC_FAILOVER);
+    return v === "1" || v === "true";
   }
 
   /**
@@ -538,6 +547,12 @@ export class PgStore {
       await this.setMeta(
         META_INGEST_PROVIDER,
         parseIngestProvider(body.activeProvider),
+      );
+    }
+    if (body.gcFailoverEnabled !== undefined) {
+      await this.setMeta(
+        META_GC_FAILOVER,
+        body.gcFailoverEnabled ? "1" : "0",
       );
     }
     return this.getIngestConfigPublic();
@@ -1438,12 +1453,15 @@ export class PgStore {
   }
 
   async clearStats(input: {
-    eventSources?: Array<"stub" | "prim" | "navitia">;
+    eventSources?: IngestEventSource[];
     deliveries?: boolean;
   }): Promise<{ deletedEvents: number; deletedDeliveries: number }> {
     const sources = [...new Set(input.eventSources ?? [])].filter(
-      (s): s is "stub" | "prim" | "navitia" =>
-        s === "stub" || s === "prim" || s === "navitia",
+      (s): s is IngestEventSource =>
+        s === "stub" ||
+        s === "prim" ||
+        s === "navitia" ||
+        s === "garesetconnexions",
     );
     const clearDeliveries = input.deliveries === true;
     if (sources.length === 0 && !clearDeliveries) {

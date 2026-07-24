@@ -240,7 +240,7 @@ export interface DisruptionEventDto {
   delayMinutes: number | null;
   startsAt: string;
   endsAt: string | null;
-  source: "stub" | "prim" | "navitia";
+  source: "stub" | "prim" | "navitia" | "garesetconnexions";
   detectedAt: string;
 }
 
@@ -304,6 +304,11 @@ export interface IngestProviderSlotPublic {
 export interface IngestConfigPublic {
   activeProvider: IngestProviderId;
   providers: Record<IngestProviderId, IngestProviderSlotPublic>;
+  /**
+   * TEMP — failover scrape Gares & Connexions si l’API active échoue.
+   * Rollback : désactiver + supprimer adapters `*garesetconnexions*`.
+   */
+  gcFailoverEnabled: boolean;
 }
 
 export interface IngestConfigUpdate {
@@ -313,6 +318,8 @@ export interface IngestConfigUpdate {
   navitiaToken?: string;
   /** Remplace la clé PRIM si non vide */
   primApiKey?: string;
+  /** TEMP — active le failover scrape G&C */
+  gcFailoverEnabled?: boolean;
 }
 
 export interface IngestProbeRequest {
@@ -388,7 +395,7 @@ export interface ApiQuotaStatus {
   exhausted: boolean;
 }
 
-export type IngestEventSource = "stub" | "prim" | "navitia";
+export type IngestEventSource = "stub" | "prim" | "navitia" | "garesetconnexions";
 
 /** Sources décorrélées pour vider les stats dashboard (retards, etc.). */
 export interface ClearStatsRequest {

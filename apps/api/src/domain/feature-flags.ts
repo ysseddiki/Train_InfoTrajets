@@ -12,6 +12,8 @@ export interface FeatureFlags {
   ingestInProcess: boolean;
   /** Prometheus / métriques scrape — hors scope pour l’instant */
   prometheusEnabled: boolean;
+  /** TEMP — failover scrape Gares & Connexions */
+  gcFailoverEnabled: boolean;
 }
 
 export async function getFeatureFlags(): Promise<FeatureFlags> {
@@ -19,5 +21,6 @@ export async function getFeatureFlags(): Promise<FeatureFlags> {
     ingestProvider: await store.getIngestProvider(),
     ingestInProcess: process.env.INGEST_IN_PROCESS !== "false",
     prometheusEnabled: false,
+    gcFailoverEnabled: await store.isGcFailoverEnabled(),
   };
 }
