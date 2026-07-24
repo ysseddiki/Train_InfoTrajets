@@ -1183,12 +1183,43 @@ button.danger-action:disabled {
 .journey-card {
   background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 1.2rem 1.25rem;
+  border-radius: var(--radius-xl, 1.25rem);
+  padding: 1.25rem 1.35rem;
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
   box-shadow: var(--shadow-soft);
+  overflow: hidden;
+  position: relative;
+}
+
+.journey-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: var(--line);
+}
+
+.journey-tone-on_time::before {
+  background: linear-gradient(90deg, #12a076, #34d399);
+}
+
+.journey-tone-delayed::before {
+  background: linear-gradient(90deg, #e07a3d, #f0a06a);
+}
+
+.journey-tone-cancelled::before {
+  background: linear-gradient(90deg, #9b1d1d, #e07a7a);
+}
+
+.journey-tone-outside_window::before {
+  background: linear-gradient(90deg, #3b82a8, #7eb6d4);
+}
+
+.journey-tone-paused::before,
+.journey-tone-no_data::before {
+  background: linear-gradient(90deg, #94a3b8, #cbd5e1);
 }
 
 .journey-card-head {
@@ -1216,10 +1247,23 @@ button.danger-action:disabled {
 
 .board-hero {
   margin: 0.65rem 0 0.4rem;
-  padding: 1.15rem 1.2rem;
-  font-size: 1.35rem;
+  padding: 1.25rem 1.2rem;
+  font-size: 1.4rem;
   font-family: var(--font-display);
   letter-spacing: -0.02em;
+  border-radius: 14px;
+}
+
+.journey-tone-on_time .board-hero.status-ok {
+  background: linear-gradient(135deg, #0a6b52 0%, #12a076 55%, #34d399 120%);
+  border-color: transparent;
+  color: #fff;
+}
+
+.journey-tone-delayed .board-hero.status-delay {
+  background: linear-gradient(135deg, #9b4d1d 0%, #c96b2f 60%, #e07a3d 120%);
+  border-color: transparent;
+  color: #fff;
 }
 
 .watch-badge {
@@ -1304,6 +1348,78 @@ button.danger-action:disabled {
   color: #9b1d1d;
 }
 
+.pill-muted {
+  background: #eef1f4;
+  color: var(--muted);
+}
+
+.stat-card-grid {
+  display: grid;
+  gap: 0.9rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.stat-card-grid-secondary {
+  margin-top: 0.9rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 960px) {
+  .stat-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .stat-card-grid-secondary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stat-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl, 1.25rem);
+  padding: 1.1rem 1.15rem;
+  box-shadow: var(--shadow-soft);
+  min-height: 6.5rem;
+}
+
+.stat-card-label {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.stat-card-value {
+  margin: 0.45rem 0 0;
+  font-family: var(--font-display);
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.03em;
+}
+
+.stat-card-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.stat-card-accent .stat-card-value {
+  color: var(--accent);
+}
+
+.stat-card-warn .stat-card-value {
+  color: #c96b2f;
+}
+
+.stat-card-danger .stat-card-value {
+  color: var(--danger);
+}
+
 .stats-grid {
   display: grid;
   gap: 1rem;
@@ -1365,16 +1481,84 @@ button.danger-action:disabled {
   margin: 0.25rem 0;
 }
 
-.activity-grid {
+.activity-grid,
+.activity-bento {
   display: grid;
   gap: 1rem;
   grid-template-columns: 1fr;
 }
 
 @media (min-width: 900px) {
-  .activity-grid {
-    grid-template-columns: 1.2fr 1fr;
+  .activity-grid,
+  .activity-bento {
+    grid-template-columns: 1.15fr 1fr;
   }
+}
+
+.activity-panel {
+  border-radius: var(--radius-xl, 1.25rem);
+  box-shadow: var(--shadow-soft);
+}
+
+.activity-panel h3 {
+  margin: 0 0 0.85rem;
+  font-size: 1rem;
+}
+
+.activity-feed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.activity-feed-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  padding: 0.75rem 0.15rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+}
+
+.activity-feed-item:last-child {
+  border-bottom: 0;
+}
+
+.activity-feed-main {
+  min-width: 0;
+}
+
+.activity-feed-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-bottom: 0.3rem;
+}
+
+.activity-feed-tags .pill {
+  margin-right: 0;
+}
+
+.activity-feed-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.activity-feed-time {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  white-space: nowrap;
+  padding-top: 0.15rem;
+}
+
+.dash-hero-grid {
+  gap: 1.1rem;
 }
 
 .status-chip {

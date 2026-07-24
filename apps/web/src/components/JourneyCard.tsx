@@ -27,7 +27,7 @@ export function JourneyCard({
   const ev = card.latestEvent;
 
   return (
-    <article className="journey-card">
+    <article className={`journey-card journey-tone-${card.boardStatus}`}>
       <div className="journey-card-head">
         <h2>{title}</h2>
         <span className={`watch-badge ${card.active ? "watch-on" : "watch-off"}`}>

@@ -3,14 +3,16 @@ import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiGet } from "../api/client";
-import { DeliveriesTable } from "../components/DeliveriesTable";
-import { EventsTable } from "../components/EventsTable";
+import {
+  DeliveriesActivityFeed,
+  EventsActivityFeed,
+} from "../components/ActivityFeed";
 import { JourneyCard } from "../components/JourneyCard";
 import {
   LiaisonScopePicker,
   type LiaisonScopeValue,
 } from "../components/LiaisonScopePicker";
-import { PeriodStats } from "../components/PeriodStats";
+import { StatCard } from "../components/StatCard";
 import { errorMessage } from "../lib/format";
 
 const STORAGE_KEY = "sncf.dashboard.liaisonScope";
@@ -61,7 +63,6 @@ export function DashboardPage() {
       setScope(resolved);
       writeStoredScope(resolved);
     } catch (err) {
-      // Liaison stockée introuvable → retomber sur le défaut serveur
       if (nextScope && nextScope !== "all") {
         try {
           const overview = await apiGet<DashboardOverview>(
@@ -115,17 +116,20 @@ export function DashboardPage() {
     return <p className="muted page-enter">Chargement…</p>;
   }
 
-  const periods = data.stats.periods;
+  const p24 = data.stats.periods.last24h;
+  const p7 = data.stats.periods.last7d;
+  const p30 = data.stats.periods.last30d;
+  const scopeHint =
+    data.scope === "all" ? "toutes les liaisons" : "liaison sélectionnée";
 
   return (
-    <div className="page-enter">
+    <div className="page-enter dash-page">
       <div className="dash-head">
         <div>
           <p className="eyebrow">Ops · lecture</p>
           <h1>Dashboard</h1>
           <p className="lede">
-            État en cours des liaisons Aller / Retour, puis historique issu de
-            l’ingest.
+            Statut trafic Aller / Retour, puis indicateurs et activité récente.
           </p>
         </div>
         <div className="dash-head-actions">
@@ -154,7 +158,7 @@ export function DashboardPage() {
               {data.scope === "all" && (
                 <h2 className="liaison-dash-title">{liaison.displayName}</h2>
               )}
-              <div className="grid journey-grid">
+              <div className="grid journey-grid dash-hero-grid">
                 <JourneyCard title="Aller" card={liaison.outbound} />
                 <JourneyCard title="Retour" card={liaison.inbound} />
               </div>
@@ -167,18 +171,51 @@ export function DashboardPage() {
       </section>
 
       <section className="dash-section">
-        <h2 className="dash-section-title">Statistiques</h2>
-        <p className="muted section-hint">
-          Agrégats
-          {data.scope === "all"
-            ? " (toutes les liaisons)"
-            : " (liaison sélectionnée)"}{" "}
-          sur les événements détectés et les notifications envoyées.
-        </p>
-        <div className="stats-grid">
-          <PeriodStats label="24 heures" stats={periods.last24h} />
-          <PeriodStats label="7 jours" stats={periods.last7d} />
-          <PeriodStats label="30 jours" stats={periods.last30d} />
+        <h2 className="dash-section-title">Indicateurs 24 h</h2>
+        <p className="muted section-hint">Vue rapide · {scopeHint}</p>
+        <div className="stat-card-grid">
+          <StatCard label="Événements" value={p24.events} hint="détectés" />
+          <StatCard
+            label="Retards"
+            value={p24.delays}
+            hint={
+              p24.avgDelayMinutes != null
+                ? `moy. ${p24.avgDelayMinutes} min`
+                : undefined
+            }
+            tone={p24.delays > 0 ? "warn" : "default"}
+          />
+          <StatCard
+            label="Suppressions"
+            value={p24.cancellations}
+            tone={p24.cancellations > 0 ? "danger" : "default"}
+          />
+          <StatCard
+            label="Notifs envoyées"
+            value={p24.deliveriesSent}
+            hint={
+              p24.deliveriesFailed > 0
+                ? `${p24.deliveriesFailed} échec${p24.deliveriesFailed > 1 ? "s" : ""}`
+                : "0 échec"
+            }
+            tone={p24.deliveriesFailed > 0 ? "danger" : "accent"}
+          />
+        </div>
+        <div className="stat-card-grid stat-card-grid-secondary">
+          <StatCard
+            label="7 jours"
+            value={p7.events}
+            hint={`${p7.delays} retards · ${p7.deliveriesSent} notifs`}
+          />
+          <StatCard
+            label="30 jours"
+            value={p30.events}
+            hint={`${p30.delays} retards · ${p30.deliveriesSent} notifs`}
+          />
+          <StatCard
+            label="Retard max 24 h"
+            value={p24.maxDelayMinutes != null ? `${p24.maxDelayMinutes} min` : "—"}
+          />
         </div>
       </section>
 
@@ -187,14 +224,14 @@ export function DashboardPage() {
           <h2 className="dash-section-title">Activité récente</h2>
           <Link to="/notifications">Historique complet →</Link>
         </div>
-        <div className="activity-grid">
-          <div className="card">
-            <h3>Événements ingest</h3>
-            <EventsTable events={data.recentEvents} showSource />
+        <div className="activity-bento">
+          <div className="card activity-panel">
+            <h3>Événements</h3>
+            <EventsActivityFeed events={data.recentEvents} />
           </div>
-          <div className="card">
+          <div className="card activity-panel">
             <h3>Livraisons</h3>
-            <DeliveriesTable deliveries={data.recentDeliveries} />
+            <DeliveriesActivityFeed deliveries={data.recentDeliveries} />
           </div>
         </div>
       </section>
