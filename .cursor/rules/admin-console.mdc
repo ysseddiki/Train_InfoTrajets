@@ -7,7 +7,7 @@ alwaysApply: false
 # Admin console
 
 - Login simple obligatoire avant toute mutation
-- Configurer Aller/Retour, SMTP, destinataires email, Teams
+- Configurer le **voyage A/R** (gares une fois, fenêtres Aller/Retour, Semaine/Week-end, TER implicite)
 - Destinataires = liste saisie par l’admin (pas d’auto-inscription)
 - Champs secrets : write-only / masked après sauvegarde
 - Boutons test d’envoi par canal

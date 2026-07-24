@@ -186,6 +186,76 @@ main.main-wide {
   margin-top: 1rem;
 }
 
+.voyage-block {
+  margin-top: 0.25rem;
+}
+
+.voyage-form h2 {
+  margin-top: 0;
+}
+
+.voyage-section {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  margin: 0 0 1rem;
+  padding: 0.85rem 1rem 0.35rem;
+}
+
+.voyage-section legend {
+  padding: 0 0.35rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.voyage-stations {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.voyage-station h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.voyage-days {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.voyage-windows {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 0.25rem;
+}
+
+.voyage-leg-hint {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+.voyage-window-row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: 1fr 1fr;
+}
+
+.check-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.check-inline input {
+  width: auto;
+  margin: 0;
+}
+
 .dash-head {
   display: flex;
   justify-content: space-between;
