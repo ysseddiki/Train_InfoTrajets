@@ -270,7 +270,7 @@ function AdminConsole({
     setLiaisonActionMsg(null);
     try {
       await apiSend(`/v1/admin/liaisons/${selected.id}`, "DELETE");
-      const next = liaisons.filter((l) => l.id !== selected.id);
+      const next = await apiGet<LiaisonConfig[]>("/v1/admin/liaisons");
       setLiaisons(next);
       setSelectedId(next[0]?.id ?? null);
       setStubLiaisonId(next[0]?.id ?? "");
@@ -280,6 +280,30 @@ function AdminConsole({
         text: "Suppression impossible (au moins une liaison requise)",
         ok: false,
       });
+    }
+  }
+
+  async function makeDefaultLiaison() {
+    if (!selected || selected.isDefault) return;
+    setLiaisonActionMsg(null);
+    try {
+      const updated = await apiSend<LiaisonConfig>(
+        `/v1/admin/liaisons/${selected.id}/default`,
+        "PUT",
+      );
+      setLiaisons((prev) =>
+        prev.map((l) =>
+          l.id === updated.id
+            ? updated
+            : { ...l, isDefault: false },
+        ),
+      );
+      setLiaisonActionMsg({
+        text: "Liaison définie par défaut sur le dashboard",
+        ok: true,
+      });
+    } catch {
+      setLiaisonActionMsg({ text: "Impossible de définir le défaut", ok: false });
     }
   }
 
@@ -323,6 +347,9 @@ function AdminConsole({
                   onClick={() => setSelectedId(l.id)}
                 >
                   {l.displayName}
+                  {l.isDefault && (
+                    <span className="liaison-chip-default">défaut</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -330,6 +357,19 @@ function AdminConsole({
               <button type="button" className="secondary" onClick={() => void addLiaison()}>
                 <Plus size={16} strokeWidth={2} aria-hidden />
                 Ajouter
+              </button>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void makeDefaultLiaison()}
+                disabled={selected.isDefault}
+                title={
+                  selected.isDefault
+                    ? "Déjà la liaison par défaut"
+                    : "Ouvrir cette liaison par défaut sur le dashboard"
+                }
+              >
+                Définir par défaut
               </button>
               <button
                 type="button"

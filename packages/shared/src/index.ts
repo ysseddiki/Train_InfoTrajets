@@ -87,10 +87,21 @@ export interface LiaisonConfig {
   /** Libellé saisi ; vide → displayName auto « départ <-> arrivée » */
   name: string;
   displayName: string;
+  /** Liaison ouverte par défaut sur le dashboard (une seule). */
+  isDefault: boolean;
   outbound: JourneyConfig;
   inbound: JourneyConfig;
   updatedAt: string;
 }
+
+/** Entrée du sélecteur dashboard (liste légère). */
+export interface LiaisonOption {
+  id: string;
+  displayName: string;
+  isDefault: boolean;
+}
+
+export type DashboardScope = "liaison" | "all";
 
 export interface LiaisonUpsertBody {
   name?: string;
@@ -133,12 +144,19 @@ export interface LiaisonStatusCard {
   id: string;
   name: string;
   displayName: string;
+  isDefault: boolean;
   outbound: JourneyStatusCard | null;
   inbound: JourneyStatusCard | null;
 }
 
 export interface DashboardOverview {
-  /** Liaisons surveillées (Aller + Retour par liaison). */
+  /** Scope effectif de la réponse (stats + activité). */
+  scope: DashboardScope;
+  /** null si scope = all */
+  selectedLiaisonId: string | null;
+  /** Toutes les liaisons pour le sélecteur (indépendant du scope). */
+  availableLiaisons: LiaisonOption[];
+  /** Cartes status : 1 liaison si scoped, toutes si global. */
   liaisons: LiaisonStatusCard[];
   stats: {
     /** @deprecated préférer periods.last24h — conservé pour compat */
@@ -227,6 +245,7 @@ export function formatDelayMinutes(
 export interface AlertDeliveryDto {
   id: string;
   eventId: string | null;
+  liaisonId: string | null;
   direction: JourneyDirection | null;
   channel: DeliveryChannel;
   status: DeliveryStatus;

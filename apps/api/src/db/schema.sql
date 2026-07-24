@@ -21,6 +21,7 @@ CREATE INDEX IF NOT EXISTS sessions_expires_idx ON sessions (expires_at);
 CREATE TABLE IF NOT EXISTS liaisons (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL DEFAULT '',
+  is_default BOOLEAN NOT NULL DEFAULT false,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -72,6 +73,7 @@ CREATE INDEX IF NOT EXISTS disruption_events_detected_idx ON disruption_events (
 CREATE TABLE IF NOT EXISTS alert_deliveries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID REFERENCES disruption_events(id) ON DELETE SET NULL,
+  liaison_id UUID,
   direction TEXT CHECK (direction IS NULL OR direction IN ('outbound', 'inbound')),
   channel TEXT NOT NULL CHECK (channel IN ('email', 'teams')),
   status TEXT NOT NULL CHECK (status IN ('queued', 'sent', 'failed', 'suppressed')),

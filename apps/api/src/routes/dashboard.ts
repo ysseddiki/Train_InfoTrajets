@@ -10,9 +10,21 @@ import type {
 import { store } from "../domain/store.js";
 
 export async function registerDashboardRoutes(app: FastifyInstance) {
-  app.get("/v1/dashboard/overview", async (): Promise<DashboardOverview> => {
-    return store.getOverview();
-  });
+  app.get<{ Querystring: { liaisonId?: string } }>(
+    "/v1/dashboard/overview",
+    async (req, reply): Promise<DashboardOverview | void> => {
+      try {
+        return await store.getOverview(req.query.liaisonId);
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type: status === 404 ? "/errors/not-found" : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
 
   app.get("/v1/liaisons", async (): Promise<LiaisonConfig[]> => {
     return store.listLiaisons();
@@ -22,7 +34,7 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
     return store.listJourneys();
   });
 
-  app.get<{ Querystring: { direction?: string } }>(
+  app.get<{ Querystring: { direction?: string; liaisonId?: string } }>(
     "/v1/events",
     async (req): Promise<DisruptionEventDto[]> => {
       const raw = req.query.direction;
@@ -30,11 +42,22 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         raw === "outbound" || raw === "inbound"
           ? (raw as JourneyDirection)
           : undefined;
-      return store.listEvents(50, direction);
+      const liaisonId =
+        req.query.liaisonId && req.query.liaisonId !== "all"
+          ? req.query.liaisonId
+          : undefined;
+      return store.listEvents(50, { direction, liaisonId });
     },
   );
 
-  app.get("/v1/deliveries", async (): Promise<AlertDeliveryDto[]> => {
-    return store.listDeliveries();
-  });
+  app.get<{ Querystring: { liaisonId?: string } }>(
+    "/v1/deliveries",
+    async (req): Promise<AlertDeliveryDto[]> => {
+      const liaisonId =
+        req.query.liaisonId && req.query.liaisonId !== "all"
+          ? req.query.liaisonId
+          : undefined;
+      return store.listDeliveries(50, { liaisonId });
+    },
+  );
 }

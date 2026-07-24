@@ -328,6 +328,19 @@ main.main-wide {
   color: var(--accent);
 }
 
+.liaison-chip-default {
+  margin-left: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.liaison-chip.is-active .liaison-chip-default {
+  color: var(--accent);
+}
+
 .liaison-actions {
   display: flex;
   flex-wrap: wrap;
@@ -804,6 +817,92 @@ button.danger-action:disabled {
   align-items: flex-start;
   gap: 1rem;
   margin-bottom: 0.5rem;
+}
+
+.dash-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.liaison-scope {
+  position: relative;
+}
+
+.liaison-scope-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+}
+
+.liaison-scope-trigger:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+}
+
+.liaison-scope-label {
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.liaison-scope-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.35rem);
+  z-index: 30;
+  min-width: 14rem;
+  margin: 0;
+  padding: 0.35rem;
+  list-style: none;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-soft);
+}
+
+.liaison-scope-menu button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0.55rem 0.7rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.liaison-scope-menu button:hover,
+.liaison-scope-menu button.is-selected {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.liaison-scope-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
 }
 
 .dash-head h1 {

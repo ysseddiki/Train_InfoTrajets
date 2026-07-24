@@ -16,6 +16,7 @@ export async function notifyForEvent(
   if (!matched && !opts?.force) {
     await store.createDelivery({
       eventId: event.id,
+      liaisonId: event.liaisonId,
       direction: event.direction,
       channel: "email",
       status: "suppressed",
@@ -53,6 +54,7 @@ export async function notifyForEvent(
       });
       await store.createDelivery({
         eventId: event.id,
+        liaisonId: event.liaisonId,
         direction,
         channel: "email",
         status: result.ok ? "sent" : "failed",
@@ -62,6 +64,7 @@ export async function notifyForEvent(
     } else {
       await store.createDelivery({
         eventId: event.id,
+        liaisonId: event.liaisonId,
         direction,
         channel: "email",
         status: "suppressed",
@@ -76,6 +79,7 @@ export async function notifyForEvent(
       const result = await teamsNotifier.send({ title, body });
       await store.createDelivery({
         eventId: event.id,
+        liaisonId: event.liaisonId,
         direction,
         channel: "teams",
         status: result.ok ? "sent" : "failed",
@@ -85,6 +89,7 @@ export async function notifyForEvent(
     } else {
       await store.createDelivery({
         eventId: event.id,
+        liaisonId: event.liaisonId,
         direction,
         channel: "teams",
         status: "suppressed",

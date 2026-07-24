@@ -146,6 +146,48 @@ async function ensureStationsTable(p: pg.Pool): Promise<void> {
   `);
 }
 
+async function ensureLiaisonDefaultColumn(p: pg.Pool): Promise<void> {
+  if (!(await tableExists(p, "liaisons"))) return;
+  if (!(await columnExists(p, "liaisons", "is_default"))) {
+    await p.query(
+      `ALTER TABLE liaisons ADD COLUMN is_default BOOLEAN NOT NULL DEFAULT false`,
+    );
+  }
+  // Au plus une default ; si aucune, marquer la plus ancienne
+  const defaults = await p.query(
+    `SELECT COUNT(*)::int AS n FROM liaisons WHERE is_default = true`,
+  );
+  if (Number(defaults.rows[0]?.n ?? 0) === 0) {
+    await p.query(`
+      UPDATE liaisons SET is_default = true
+      WHERE id = (SELECT id FROM liaisons ORDER BY updated_at ASC LIMIT 1)
+    `);
+  } else if (Number(defaults.rows[0]?.n ?? 0) > 1) {
+    await p.query(`
+      UPDATE liaisons SET is_default = false
+      WHERE id NOT IN (
+        SELECT id FROM liaisons WHERE is_default = true
+        ORDER BY updated_at ASC LIMIT 1
+      )
+    `);
+  }
+}
+
+async function ensureDeliveryLiaisonColumn(p: pg.Pool): Promise<void> {
+  if (!(await tableExists(p, "alert_deliveries"))) return;
+  if (!(await columnExists(p, "alert_deliveries", "liaison_id"))) {
+    await p.query(`ALTER TABLE alert_deliveries ADD COLUMN liaison_id UUID`);
+  }
+  await p.query(`
+    UPDATE alert_deliveries d
+    SET liaison_id = e.liaison_id
+    FROM disruption_events e
+    WHERE d.event_id = e.id
+      AND d.liaison_id IS NULL
+      AND e.liaison_id IS NOT NULL
+  `);
+}
+
 export async function migrate(): Promise<void> {
   const p = getPool();
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -156,6 +198,8 @@ export async function migrate(): Promise<void> {
   await ensureApiQuotaTable(p);
   await ensureWatchColumns(p);
   await ensureStationsTable(p);
+  await ensureLiaisonDefaultColumn(p);
+  await ensureDeliveryLiaisonColumn(p);
 }
 
 export async function closePool(): Promise<void> {

@@ -141,6 +141,23 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     },
   );
 
+  app.put<{ Params: { id: string } }>(
+    "/v1/admin/liaisons/:id/default",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      try {
+        return await store.setDefaultLiaison(req.params.id);
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type: status === 404 ? "/errors/not-found" : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
+
   app.get("/v1/admin/stations", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     return store.listStations();

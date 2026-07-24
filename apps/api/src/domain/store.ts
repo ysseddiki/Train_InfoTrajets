@@ -19,6 +19,7 @@ import type {
   JourneyDirection,
   JourneyStatusCard,
   LiaisonConfig,
+  LiaisonOption,
   LiaisonStatusCard,
   LiaisonUpsertBody,
   RecipientsConfig,
@@ -179,6 +180,7 @@ function mapDelivery(row: Record<string, unknown>): AlertDeliveryDto {
   return {
     id: String(row.id),
     eventId: row.event_id ? String(row.event_id) : null,
+    liaisonId: row.liaison_id ? String(row.liaison_id) : null,
     direction: (row.direction as JourneyDirection | null) ?? null,
     channel: row.channel as DeliveryChannel,
     status: row.status as DeliveryStatus,
@@ -278,7 +280,7 @@ export class PgStore {
       let liaisonId: string;
       if (nLiaisons === 0) {
         const created = await pool.query(
-          `INSERT INTO liaisons (name, updated_at) VALUES ('', now()) RETURNING id`,
+          `INSERT INTO liaisons (name, is_default, updated_at) VALUES ('', true, now()) RETURNING id`,
         );
         liaisonId = String(created.rows[0].id);
       } else {
@@ -669,6 +671,7 @@ export class PgStore {
     name: string,
     updatedAt: string,
     legs: JourneyConfig[],
+    isDefault = false,
   ): LiaisonConfig | null {
     const outbound = legs.find((j) => j.direction === "outbound");
     const inbound = legs.find((j) => j.direction === "inbound");
@@ -681,6 +684,7 @@ export class PgStore {
         outbound.originLabel,
         outbound.destinationLabel,
       ),
+      isDefault,
       outbound,
       inbound,
       updatedAt,
@@ -690,7 +694,10 @@ export class PgStore {
   async listLiaisons(): Promise<LiaisonConfig[]> {
     const pool = getPool();
     const [liaisonsRes, journeys] = await Promise.all([
-      pool.query(`SELECT * FROM liaisons ORDER BY updated_at ASC`),
+      pool.query(
+        `SELECT * FROM liaisons
+         ORDER BY is_default DESC, updated_at ASC`,
+      ),
       this.listJourneys(),
     ]);
     const out: LiaisonConfig[] = [];
@@ -702,6 +709,7 @@ export class PgStore {
         String(row.name ?? ""),
         new Date(String(row.updated_at)).toISOString(),
         legs,
+        Boolean(row.is_default),
       );
       if (liaison) out.push(liaison);
     }
@@ -722,13 +730,18 @@ export class PgStore {
       String(row.name ?? ""),
       new Date(String(row.updated_at)).toISOString(),
       legsRes.rows.map(mapJourney),
+      Boolean(row.is_default),
     );
   }
 
   async createLiaison(): Promise<LiaisonConfig> {
     const pool = getPool();
+    const countRes = await pool.query(`SELECT COUNT(*)::int AS n FROM liaisons`);
+    const isFirst = Number(countRes.rows[0]?.n ?? 0) === 0;
     const created = await pool.query(
-      `INSERT INTO liaisons (name, updated_at) VALUES ('', now()) RETURNING *`,
+      `INSERT INTO liaisons (name, is_default, updated_at)
+       VALUES ('', $1, now()) RETURNING *`,
+      [isFirst],
     );
     const liaisonId = String(created.rows[0].id);
     const outbound = await this.insertLeg(liaisonId, "outbound", {
@@ -745,10 +758,29 @@ export class PgStore {
         outbound.originLabel,
         outbound.destinationLabel,
       ),
+      isDefault: Boolean(created.rows[0].is_default),
       outbound,
       inbound,
       updatedAt: new Date(String(created.rows[0].updated_at)).toISOString(),
     };
+  }
+
+  async setDefaultLiaison(id: string): Promise<LiaisonConfig> {
+    const pool = getPool();
+    const existing = await this.getLiaison(id);
+    if (!existing) {
+      throw Object.assign(new Error("Liaison not found"), { statusCode: 404 });
+    }
+    await pool.query(`UPDATE liaisons SET is_default = false WHERE is_default = true`);
+    await pool.query(
+      `UPDATE liaisons SET is_default = true, updated_at = now() WHERE id = $1`,
+      [id],
+    );
+    const next = await this.getLiaison(id);
+    if (!next) {
+      throw Object.assign(new Error("Liaison not found"), { statusCode: 404 });
+    }
+    return next;
   }
 
   async upsertLiaison(
@@ -789,6 +821,7 @@ export class PgStore {
         outbound.originLabel,
         outbound.destinationLabel,
       ),
+      isDefault: Boolean(res.rows[0].is_default),
       outbound,
       inbound,
       updatedAt: new Date(String(res.rows[0].updated_at)).toISOString(),
@@ -803,9 +836,19 @@ export class PgStore {
         statusCode: 400,
       });
     }
+    const wasDefault = await pool.query(
+      `SELECT is_default FROM liaisons WHERE id = $1`,
+      [id],
+    );
     const res = await pool.query(`DELETE FROM liaisons WHERE id = $1`, [id]);
     if ((res.rowCount ?? 0) === 0) {
       throw Object.assign(new Error("Liaison not found"), { statusCode: 404 });
+    }
+    if (Boolean(wasDefault.rows[0]?.is_default)) {
+      await pool.query(`
+        UPDATE liaisons SET is_default = true
+        WHERE id = (SELECT id FROM liaisons ORDER BY updated_at ASC LIMIT 1)
+      `);
     }
   }
 
@@ -836,27 +879,45 @@ export class PgStore {
 
   async listEvents(
     limit = 50,
-    direction?: JourneyDirection,
+    opts?: { direction?: JourneyDirection; liaisonId?: string },
   ): Promise<DisruptionEventDto[]> {
     const pool = getPool();
+    const direction = opts?.direction;
+    const liaisonId = opts?.liaisonId;
+    const clauses: string[] = [];
+    const params: unknown[] = [];
     if (direction) {
-      const res = await pool.query(
-        `SELECT * FROM disruption_events
-         WHERE direction = $1
-         ORDER BY detected_at DESC LIMIT $2`,
-        [direction, limit],
-      );
-      return res.rows.map(mapEvent);
+      params.push(direction);
+      clauses.push(`direction = $${params.length}`);
     }
+    if (liaisonId) {
+      params.push(liaisonId);
+      clauses.push(`liaison_id = $${params.length}`);
+    }
+    params.push(limit);
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
     const res = await pool.query(
-      `SELECT * FROM disruption_events ORDER BY detected_at DESC LIMIT $1`,
-      [limit],
+      `SELECT * FROM disruption_events ${where}
+       ORDER BY detected_at DESC LIMIT $${params.length}`,
+      params,
     );
     return res.rows.map(mapEvent);
   }
 
-  async listDeliveries(limit = 50): Promise<AlertDeliveryDto[]> {
+  async listDeliveries(
+    limit = 50,
+    opts?: { liaisonId?: string },
+  ): Promise<AlertDeliveryDto[]> {
     const pool = getPool();
+    if (opts?.liaisonId) {
+      const res = await pool.query(
+        `SELECT * FROM alert_deliveries
+         WHERE liaison_id = $1
+         ORDER BY created_at DESC LIMIT $2`,
+        [opts.liaisonId, limit],
+      );
+      return res.rows.map(mapDelivery);
+    }
     const res = await pool.query(
       `SELECT * FROM alert_deliveries ORDER BY created_at DESC LIMIT $1`,
       [limit],
@@ -864,8 +925,19 @@ export class PgStore {
     return res.rows.map(mapDelivery);
   }
 
-  async periodStats(sinceIso: string): Promise<DashboardPeriodStats> {
+  async periodStats(
+    sinceIso: string,
+    liaisonId?: string,
+  ): Promise<DashboardPeriodStats> {
     const pool = getPool();
+    const eventFilter = liaisonId
+      ? `detected_at >= $1 AND liaison_id = $2`
+      : `detected_at >= $1`;
+    const delFilter = liaisonId
+      ? `created_at >= $1 AND liaison_id = $2`
+      : `created_at >= $1`;
+    const params = liaisonId ? [sinceIso, liaisonId] : [sinceIso];
+
     const res = await pool.query(
       `SELECT
         COUNT(*)::int AS events,
@@ -881,16 +953,16 @@ export class PgStore {
         COUNT(*) FILTER (WHERE direction = 'inbound')::int AS inbound,
         COUNT(*) FILTER (WHERE direction IS NULL)::int AS unmatched
        FROM disruption_events
-       WHERE detected_at >= $1`,
-      [sinceIso],
+       WHERE ${eventFilter}`,
+      params,
     );
     const delRes = await pool.query(
       `SELECT
         COUNT(*) FILTER (WHERE status = 'sent')::int AS sent,
         COUNT(*) FILTER (WHERE status = 'failed')::int AS failed
        FROM alert_deliveries
-       WHERE created_at >= $1`,
-      [sinceIso],
+       WHERE ${delFilter}`,
+      params,
     );
     const e = res.rows[0] ?? {};
     const d = delRes.rows[0] ?? {};
@@ -917,11 +989,49 @@ export class PgStore {
     };
   }
 
-  async getOverview(): Promise<DashboardOverview> {
+  /**
+   * @param liaisonQuery `all` = global ; uuid = scoped ; undefined = default liaison
+   */
+  async getOverview(liaisonQuery?: string): Promise<DashboardOverview> {
+    const allLiaisons = await this.listLiaisons();
+    const availableLiaisons: LiaisonOption[] = allLiaisons.map((l) => ({
+      id: l.id,
+      displayName: l.displayName,
+      isDefault: l.isDefault,
+    }));
+
+    let scope: "liaison" | "all";
+    let selectedLiaisonId: string | null;
+    let filterLiaisonId: string | undefined;
+
+    if (liaisonQuery === "all") {
+      scope = "all";
+      selectedLiaisonId = null;
+      filterLiaisonId = undefined;
+    } else if (liaisonQuery) {
+      const found = allLiaisons.find((l) => l.id === liaisonQuery);
+      if (!found) {
+        throw Object.assign(new Error("Liaison not found"), { statusCode: 404 });
+      }
+      scope = "liaison";
+      selectedLiaisonId = found.id;
+      filterLiaisonId = found.id;
+    } else {
+      const def =
+        allLiaisons.find((l) => l.isDefault) ?? allLiaisons[0] ?? null;
+      scope = "liaison";
+      selectedLiaisonId = def?.id ?? null;
+      filterLiaisonId = def?.id;
+    }
+
+    const listOpts = filterLiaisonId
+      ? { liaisonId: filterLiaisonId }
+      : undefined;
+
     const [events, recentEvents, recentDeliveries] = await Promise.all([
-      this.listEvents(20),
-      this.listEvents(12),
-      this.listDeliveries(12),
+      this.listEvents(40, listOpts),
+      this.listEvents(12, listOpts),
+      this.listDeliveries(12, listOpts),
     ]);
     const pool = getPool();
     const now = Date.now();
@@ -936,9 +1046,9 @@ export class PgStore {
           (SELECT value FROM app_meta WHERE key = 'last_ingest_status') AS last_ingest_status,
           (SELECT value FROM app_meta WHERE key = 'last_ingest_detail') AS last_ingest_detail`,
       ),
-      this.periodStats(since24h),
-      this.periodStats(since7d),
-      this.periodStats(since30d),
+      this.periodStats(since24h, filterLiaisonId),
+      this.periodStats(since7d, filterLiaisonId),
+      this.periodStats(since30d, filterLiaisonId),
     ]);
 
     const s = metaRes.rows[0] ?? {};
@@ -949,7 +1059,10 @@ export class PgStore {
       : null;
 
     const RECENT_MS = 3 * 60 * 60 * 1000;
-    const liaisons = await this.listLiaisons();
+    const scopedLiaisons =
+      scope === "all"
+        ? allLiaisons
+        : allLiaisons.filter((l) => l.id === selectedLiaisonId);
 
     const card = (j: JourneyConfig): JourneyStatusCard => {
       const latest =
@@ -996,15 +1109,19 @@ export class PgStore {
       };
     };
 
-    const liaisonCards: LiaisonStatusCard[] = liaisons.map((l) => ({
+    const liaisonCards: LiaisonStatusCard[] = scopedLiaisons.map((l) => ({
       id: l.id,
       name: l.name,
       displayName: l.displayName,
+      isDefault: l.isDefault,
       outbound: card(l.outbound),
       inbound: card(l.inbound),
     }));
 
     return {
+      scope,
+      selectedLiaisonId,
+      availableLiaisons,
       liaisons: liaisonCards,
       stats: {
         eventsLast24h: last24h.events,
@@ -1172,6 +1289,7 @@ export class PgStore {
 
   async createDelivery(input: {
     eventId: string | null;
+    liaisonId?: string | null;
     direction: JourneyDirection | null;
     channel: DeliveryChannel;
     status: DeliveryStatus;
@@ -1180,11 +1298,12 @@ export class PgStore {
   }): Promise<AlertDeliveryDto> {
     const pool = getPool();
     const res = await pool.query(
-      `INSERT INTO alert_deliveries (event_id, direction, channel, status, detail, sent_at)
-       VALUES ($1,$2,$3,$4,$5,$6)
+      `INSERT INTO alert_deliveries (event_id, liaison_id, direction, channel, status, detail, sent_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7)
        RETURNING *`,
       [
         input.eventId,
+        input.liaisonId ?? null,
         input.direction,
         input.channel,
         input.status,
