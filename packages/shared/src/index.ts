@@ -393,6 +393,11 @@ export interface Station {
    * null si non renseigné.
    */
   displayUrl: string | null;
+  /**
+   * Noms « terminus » (tags) pour le matching dégradé G&C :
+   * libellés tels qu’ils apparaissent sur le board (ex. Menton, Monaco Monte-Carlo).
+   */
+  terminusAliases: string[];
   updatedAt: string;
 }
 
@@ -401,6 +406,27 @@ export interface StationUpsertBody {
   label: string;
   /** URL affichage gare ; `""` ou omis → null */
   displayUrl?: string | null;
+  /** Tags terminus G&C ; omis → inchangé à l’update, [] à la création */
+  terminusAliases?: string[];
+}
+
+/** Normalise une liste de tags terminus (trim, dédoublonne, max 40). */
+export function normalizeTerminusAliases(
+  input: unknown,
+): string[] {
+  if (!Array.isArray(input)) return [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of input) {
+    const t = String(raw ?? "").trim();
+    if (t.length < 2) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t.slice(0, 80));
+    if (out.length >= 40) break;
+  }
+  return out;
 }
 
 /** Compteur journalier d’appels API externes (Navitia / PRIM). */

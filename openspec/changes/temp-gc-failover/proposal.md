@@ -9,6 +9,7 @@ Quand la clé API Navitia/PRIM tombe ou le quota est saturé, ops a besoin d’u
 - Toggle Admin → Ingest : `gcFailoverEnabled` (OFF par défaut)
 - Si API active KO / sans token / quota : scrape `/fr/train-times/{UIC}/departure` (+ fiche gare)
 - Source événements : `garesetconnexions` (clear stats dédié)
+- Tags **terminus** par gare catalogue (`terminusAliases`) : libellés board G&C pour matcher la destination en mode dégradé
 
 ## Rollback
 

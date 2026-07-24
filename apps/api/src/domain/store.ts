@@ -35,6 +35,7 @@ import {
   clampWatchLeadHours,
   DEFAULT_WATCH_LEAD_HOURS,
   ingestTokenPreview,
+  normalizeTerminusAliases,
   resolveLiaisonDisplayName,
 } from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
@@ -81,6 +82,7 @@ const NICE_VILLE = {
   label: "Nice-Ville",
   displayUrl:
     "https://www.garesetconnexions.sncf/fr/gares-services/nice-ville",
+  terminusAliases: ["Nice", "Nice-Ville", "Nice Ville"],
 } as const;
 
 const MONACO_MONTE_CARLO = {
@@ -88,6 +90,12 @@ const MONACO_MONTE_CARLO = {
   label: "Monaco - Monte-Carlo",
   displayUrl:
     "https://www.garesetconnexions.sncf/fr/gares-services/monaco-monte-carlo",
+  terminusAliases: [
+    "Monaco",
+    "Monte-Carlo",
+    "Monaco-Monte-Carlo",
+    "Monaco Monte-Carlo",
+  ],
 } as const;
 
 /** Station-board model: origin = gare surveillée, destination = filtre de sens. */
@@ -148,6 +156,7 @@ function mapStation(row: Record<string, unknown>): Station {
     externalId: String(row.external_id),
     label: String(row.label),
     displayUrl,
+    terminusAliases: normalizeTerminusAliases(row.terminus_aliases),
     updatedAt: new Date(String(row.updated_at)).toISOString(),
   };
 }
@@ -408,13 +417,17 @@ export class PgStore {
     const pool = getPool();
     for (const s of defaults) {
       await pool.query(
-        `INSERT INTO stations (external_id, label, display_url, updated_at)
-         VALUES ($1, $2, $3, now())
+        `INSERT INTO stations (external_id, label, display_url, terminus_aliases, updated_at)
+         VALUES ($1, $2, $3, $4::text[], now())
          ON CONFLICT (external_id) DO UPDATE SET
            display_url = COALESCE(NULLIF(stations.display_url, ''), EXCLUDED.display_url),
            label = EXCLUDED.label,
+           terminus_aliases = CASE
+             WHEN cardinality(stations.terminus_aliases) = 0 THEN EXCLUDED.terminus_aliases
+             ELSE stations.terminus_aliases
+           END,
            updated_at = now()`,
-        [s.id, s.label, s.displayUrl],
+        [s.id, s.label, s.displayUrl, [...s.terminusAliases]],
       );
     }
   }
@@ -1664,6 +1677,7 @@ export class PgStore {
     const externalId = String(body.externalId ?? "").trim();
     const label = String(body.label ?? "").trim();
     const displayUrl = normalizeDisplayUrl(body.displayUrl);
+    const terminusAliases = normalizeTerminusAliases(body.terminusAliases);
     if (!externalId || !label) {
       throw Object.assign(new Error("label and externalId are required"), {
         statusCode: 400,
@@ -1672,10 +1686,10 @@ export class PgStore {
     const pool = getPool();
     try {
       const res = await pool.query(
-        `INSERT INTO stations (external_id, label, display_url, updated_at)
-         VALUES ($1, $2, $3, now())
+        `INSERT INTO stations (external_id, label, display_url, terminus_aliases, updated_at)
+         VALUES ($1, $2, $3, $4::text[], now())
          RETURNING *`,
-        [externalId, label, displayUrl],
+        [externalId, label, displayUrl, terminusAliases],
       );
       return mapStation(res.rows[0]);
     } catch (err) {
@@ -1704,6 +1718,10 @@ export class PgStore {
       body.displayUrl !== undefined
         ? normalizeDisplayUrl(body.displayUrl)
         : current.displayUrl;
+    const terminusAliases =
+      body.terminusAliases !== undefined
+        ? normalizeTerminusAliases(body.terminusAliases)
+        : current.terminusAliases;
     if (!externalId || !label) {
       throw Object.assign(new Error("label and externalId are required"), {
         statusCode: 400,
@@ -1713,10 +1731,11 @@ export class PgStore {
     try {
       const res = await pool.query(
         `UPDATE stations
-         SET external_id = $2, label = $3, display_url = $4, updated_at = now()
+         SET external_id = $2, label = $3, display_url = $4,
+             terminus_aliases = $5::text[], updated_at = now()
          WHERE id = $1
          RETURNING *`,
-        [id, externalId, label, displayUrl],
+        [id, externalId, label, displayUrl, terminusAliases],
       );
       return mapStation(res.rows[0]);
     } catch (err) {

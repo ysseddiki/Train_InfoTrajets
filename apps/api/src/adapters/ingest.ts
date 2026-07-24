@@ -304,9 +304,10 @@ async function saveNextFromNavitia(
 async function saveNextFromGc(
   journey: JourneyConfig,
   departures: GcBoardDeparture[],
+  terminusAliases: string[],
 ): Promise<void> {
   const matched = departures.filter((dep) =>
-    matchesDestinationFilter(journey, dep.directionText, null),
+    matchesDestinationFilter(journey, dep.directionText, null, terminusAliases),
   );
   const next =
     matched.find((d) => !d.cancelled) ?? matched[0] ?? null;
@@ -515,10 +516,21 @@ async function upsertFromGcBoard(
   journey: JourneyConfig,
   departures: GcBoardDeparture[],
 ): Promise<number> {
-  await saveNextFromGc(journey, departures);
+  const stations = await store.listStations();
+  const dest = stations.find((s) => s.externalId === journey.destinationId);
+  const terminusAliases = dest?.terminusAliases ?? [];
+
+  await saveNextFromGc(journey, departures, terminusAliases);
   let createdCount = 0;
   for (const dep of departures) {
-    if (!matchesDestinationFilter(journey, dep.directionText, null)) {
+    if (
+      !matchesDestinationFilter(
+        journey,
+        dep.directionText,
+        null,
+        terminusAliases,
+      )
+    ) {
       continue;
     }
 

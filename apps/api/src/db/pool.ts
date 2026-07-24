@@ -142,11 +142,17 @@ async function ensureStationsTable(p: pg.Pool): Promise<void> {
       external_id TEXT NOT NULL UNIQUE,
       label TEXT NOT NULL,
       display_url TEXT,
+      terminus_aliases TEXT[] NOT NULL DEFAULT '{}',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
   if (!(await columnExists(p, "stations", "display_url"))) {
     await p.query(`ALTER TABLE stations ADD COLUMN display_url TEXT`);
+  }
+  if (!(await columnExists(p, "stations", "terminus_aliases"))) {
+    await p.query(
+      `ALTER TABLE stations ADD COLUMN terminus_aliases TEXT[] NOT NULL DEFAULT '{}'`,
+    );
   }
 }
 

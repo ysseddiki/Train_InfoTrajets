@@ -146,11 +146,25 @@ export function resolveDirection(
   return null;
 }
 
+/** Board direction text contains one of the gare terminus tags (G&C dégradé). */
+export function matchesTerminusAliases(
+  directionText: string,
+  terminusAliases: string[],
+): boolean {
+  const text = directionText.toLowerCase();
+  return terminusAliases.some((alias) => {
+    const a = alias.trim().toLowerCase();
+    return a.length >= 2 && text.includes(a);
+  });
+}
+
 /** Does departure board text mention the configured served station (filter)? */
 export function matchesDestinationFilter(
   journey: JourneyConfig,
   directionText: string,
   destinationId?: string | null,
+  /** Tags terminus de la gare destination (matching dégradé G&C). */
+  terminusAliases: string[] = [],
 ): boolean {
   const text = directionText.toLowerCase();
   const label = journey.destinationLabel.toLowerCase();
@@ -166,6 +180,9 @@ export function matchesDestinationFilter(
   if (label && text.includes(label)) return true;
   // partial tokens: "Monaco", "Nice", etc. — covers "via Monaco" / longer headsigns
   if (tokens.some((t) => text.includes(t))) return true;
+
+  // Tags admin sur la gare destination (libellés G&C)
+  if (matchesTerminusAliases(directionText, terminusAliases)) return true;
 
   // Failover G&C / boards terminus-only : Menton au-delà de Monaco, etc.
   return matchesCorridorAllowlist(journey, directionText);

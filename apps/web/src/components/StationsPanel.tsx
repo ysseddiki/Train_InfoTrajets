@@ -1,6 +1,11 @@
 import type { Station } from "@sncf-alerts/shared";
-import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { ExternalLink, Pencil, Plus, Trash2, X } from "lucide-react";
+import {
+  useMemo,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { apiSend } from "../api/client";
 
 export function StationsPanel({
@@ -14,6 +19,8 @@ export function StationsPanel({
   const [label, setLabel] = useState("");
   const [externalId, setExternalId] = useState("");
   const [displayUrl, setDisplayUrl] = useState("");
+  const [terminusAliases, setTerminusAliases] = useState<string[]>([]);
+  const [tagDraft, setTagDraft] = useState("");
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [searchDraft, setSearchDraft] = useState("");
@@ -25,7 +32,8 @@ export function StationsPanel({
     return stations.filter(
       (s) =>
         s.label.toLowerCase().includes(q) ||
-        s.externalId.toLowerCase().includes(q),
+        s.externalId.toLowerCase().includes(q) ||
+        (s.terminusAliases ?? []).some((t) => t.toLowerCase().includes(q)),
     );
   }, [stations, searchApplied]);
 
@@ -34,6 +42,8 @@ export function StationsPanel({
     setLabel("");
     setExternalId("");
     setDisplayUrl("");
+    setTerminusAliases([]);
+    setTagDraft("");
     setMsg(null);
   }
 
@@ -42,6 +52,8 @@ export function StationsPanel({
     setLabel(s.label);
     setExternalId(s.externalId);
     setDisplayUrl(s.displayUrl ?? "");
+    setTerminusAliases([...(s.terminusAliases ?? [])]);
+    setTagDraft("");
     setMsg(null);
   }
 
@@ -50,14 +62,46 @@ export function StationsPanel({
     setSearchApplied(searchDraft);
   }
 
+  function addTag(raw: string) {
+    const t = raw.trim();
+    if (t.length < 2) return;
+    const key = t.toLowerCase();
+    setTerminusAliases((prev) => {
+      if (prev.some((x) => x.toLowerCase() === key)) return prev;
+      return [...prev, t].slice(0, 40);
+    });
+    setTagDraft("");
+  }
+
+  function removeTag(tag: string) {
+    setTerminusAliases((prev) => prev.filter((x) => x !== tag));
+  }
+
+  function onTagKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter" || e.key === ",") {
+      e.preventDefault();
+      addTag(tagDraft);
+      return;
+    }
+    if (e.key === "Backspace" && tagDraft === "" && terminusAliases.length > 0) {
+      e.preventDefault();
+      setTerminusAliases((prev) => prev.slice(0, -1));
+    }
+  }
+
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setBusy(true);
     setMsg(null);
+    const aliases =
+      tagDraft.trim().length >= 2
+        ? [...terminusAliases, tagDraft.trim()]
+        : terminusAliases;
     const payload = {
       label,
       externalId,
       displayUrl: displayUrl.trim() || null,
+      terminusAliases: aliases,
     };
     try {
       if (editingId) {
@@ -67,6 +111,8 @@ export function StationsPanel({
           payload,
         );
         onChange(stations.map((s) => (s.id === updated.id ? updated : s)));
+        setTerminusAliases([...(updated.terminusAliases ?? [])]);
+        setTagDraft("");
         setMsg({ text: "Gare mise à jour", ok: true });
       } else {
         const created = await apiSend<Station>("/v1/admin/stations", "POST", payload);
@@ -77,6 +123,8 @@ export function StationsPanel({
         );
         setMsg({ text: "Gare créée", ok: true });
         setEditingId(created.id);
+        setTerminusAliases([...(created.terminusAliases ?? [])]);
+        setTagDraft("");
       }
     } catch {
       setMsg({
@@ -156,6 +204,20 @@ export function StationsPanel({
                   >
                     <span className="stations-item-label">{s.label}</span>
                     <span className="muted stations-item-id">{s.externalId}</span>
+                    {(s.terminusAliases ?? []).length > 0 ? (
+                      <span className="stations-item-tags">
+                        {(s.terminusAliases ?? []).slice(0, 3).map((t) => (
+                          <span key={t} className="station-tag station-tag--sm">
+                            {t}
+                          </span>
+                        ))}
+                        {(s.terminusAliases ?? []).length > 3 ? (
+                          <span className="muted stations-item-tags-more">
+                            +{(s.terminusAliases ?? []).length - 3}
+                          </span>
+                        ) : null}
+                      </span>
+                    ) : null}
                   </button>
                   {s.displayUrl ? (
                     <a
@@ -240,6 +302,44 @@ export function StationsPanel({
               </a>
             </p>
           ) : null}
+
+          <div className="stations-tags-field">
+            <span className="stations-tags-label">Terminus (tags G&amp;C)</span>
+            <div className="station-tags-input">
+              {terminusAliases.map((tag) => (
+                <span key={tag} className="station-tag">
+                  {tag}
+                  <button
+                    type="button"
+                    className="station-tag-remove"
+                    aria-label={`Retirer ${tag}`}
+                    onClick={() => removeTag(tag)}
+                  >
+                    <X size={12} strokeWidth={2.5} aria-hidden />
+                  </button>
+                </span>
+              ))}
+              <input
+                value={tagDraft}
+                onChange={(e) => setTagDraft(e.target.value)}
+                onKeyDown={onTagKeyDown}
+                onBlur={() => {
+                  if (tagDraft.trim()) addTag(tagDraft);
+                }}
+                placeholder={
+                  terminusAliases.length === 0
+                    ? "Menton, Monaco…"
+                    : "Ajouter…"
+                }
+                autoComplete="off"
+              />
+            </div>
+            <p className="muted field-hint">
+              Noms tels qu’ils apparaissent en terminus sur le board G&amp;C
+              (Entrée ou virgule pour valider). Utilisés en mode dégradé.
+            </p>
+          </div>
+
           <button type="submit" disabled={busy}>
             {busy
               ? "Enregistrement…"
