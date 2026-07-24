@@ -21,8 +21,11 @@ import type {
   SmtpConfigPublic,
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
-import { clampWatchLeadHours, resolveLiaisonDisplayName } from "@sncf-alerts/shared";
-import { DEFAULT_WATCH_LEAD_HOURS } from "@sncf-alerts/shared";
+import {
+  clampWatchLeadHours,
+  DEFAULT_WATCH_LEAD_HOURS,
+  resolveLiaisonDisplayName,
+} from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
 import { isWithinWatchWindow } from "./matching.js";
 
@@ -250,8 +253,9 @@ export class PgStore {
           await pool.query(
             `INSERT INTO journeys (
               liaison_id, direction, label, origin_id, destination_id, origin_label, destination_label,
-              network, days_of_week, window_start, window_end, min_delay_minutes, severities, active, updated_at
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,now())
+              network, days_of_week, window_start, window_end, watch_always, watch_lead_hours,
+              min_delay_minutes, severities, active, updated_at
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,now())
             ON CONFLICT (liaison_id, direction) DO UPDATE SET
               label = EXCLUDED.label,
               origin_id = EXCLUDED.origin_id,
@@ -262,6 +266,8 @@ export class PgStore {
               days_of_week = EXCLUDED.days_of_week,
               window_start = EXCLUDED.window_start,
               window_end = EXCLUDED.window_end,
+              watch_always = EXCLUDED.watch_always,
+              watch_lead_hours = EXCLUDED.watch_lead_hours,
               min_delay_minutes = EXCLUDED.min_delay_minutes,
               severities = EXCLUDED.severities,
               active = EXCLUDED.active,
@@ -278,6 +284,8 @@ export class PgStore {
               base.daysOfWeek,
               base.timeWindow.start,
               base.timeWindow.end,
+              base.watchAlways,
+              base.watchLeadHours,
               base.minDelayMinutes,
               base.severities,
               base.active,
@@ -287,8 +295,9 @@ export class PgStore {
           await pool.query(
             `INSERT INTO journeys (
               liaison_id, direction, label, origin_id, destination_id, origin_label, destination_label,
-              network, days_of_week, window_start, window_end, min_delay_minutes, severities, active
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+              network, days_of_week, window_start, window_end, watch_always, watch_lead_hours,
+              min_delay_minutes, severities, active
+            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
             ON CONFLICT (liaison_id, direction) DO NOTHING`,
             [
               liaisonId,
@@ -302,6 +311,8 @@ export class PgStore {
               base.daysOfWeek,
               base.timeWindow.start,
               base.timeWindow.end,
+              base.watchAlways,
+              base.watchLeadHours,
               base.minDelayMinutes,
               base.severities,
               base.active,
@@ -402,14 +413,22 @@ export class PgStore {
       liaisonId,
       direction,
       timeWindow: patch.timeWindow ?? base.timeWindow,
+      watchAlways:
+        patch.watchAlways !== undefined
+          ? Boolean(patch.watchAlways)
+          : (base.watchAlways ?? false),
+      watchLeadHours: clampWatchLeadHours(
+        patch.watchLeadHours ?? base.watchLeadHours ?? DEFAULT_WATCH_LEAD_HOURS,
+      ),
       updatedAt: new Date().toISOString(),
     };
     const pool = getPool();
     const res = await pool.query(
       `INSERT INTO journeys (
         liaison_id, direction, label, origin_id, destination_id, origin_label, destination_label,
-        network, days_of_week, window_start, window_end, min_delay_minutes, severities, active, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        network, days_of_week, window_start, window_end, watch_always, watch_lead_hours,
+        min_delay_minutes, severities, active, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
       ON CONFLICT (liaison_id, direction) DO UPDATE SET
         label = EXCLUDED.label,
         origin_id = EXCLUDED.origin_id,
@@ -420,6 +439,8 @@ export class PgStore {
         days_of_week = EXCLUDED.days_of_week,
         window_start = EXCLUDED.window_start,
         window_end = EXCLUDED.window_end,
+        watch_always = EXCLUDED.watch_always,
+        watch_lead_hours = EXCLUDED.watch_lead_hours,
         min_delay_minutes = EXCLUDED.min_delay_minutes,
         severities = EXCLUDED.severities,
         active = EXCLUDED.active,
@@ -437,6 +458,8 @@ export class PgStore {
         next.daysOfWeek,
         next.timeWindow.start,
         next.timeWindow.end,
+        next.watchAlways,
+        next.watchLeadHours,
         next.minDelayMinutes,
         next.severities,
         next.active,
@@ -760,6 +783,8 @@ export class PgStore {
         network: j.network,
         timeWindow: j.timeWindow,
         daysOfWeek: j.daysOfWeek,
+        watchAlways: j.watchAlways,
+        watchLeadHours: j.watchLeadHours,
         minDelayMinutes: j.minDelayMinutes,
         boardStatus,
         boardStatusLabel,

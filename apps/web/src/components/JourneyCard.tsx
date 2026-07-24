@@ -43,10 +43,20 @@ export function JourneyCard({
       </div>
       <dl className="meta-list">
         <div>
-          <dt>Fenêtre</dt>
+          <dt>Fenêtre trajet</dt>
           <dd>
             {card.timeWindow.start}–{card.timeWindow.end} ·{" "}
             {daysSummary(card.daysOfWeek)}
+          </dd>
+        </div>
+        <div>
+          <dt>Veille</dt>
+          <dd>
+            {card.watchAlways
+              ? "Continue"
+              : card.watchLeadHours === 0
+                ? "Dès le début trajet"
+                : `${card.watchLeadHours} h avant`}
           </dd>
         </div>
         <div>

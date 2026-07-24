@@ -576,6 +576,19 @@ button.danger-ghost {
   grid-template-columns: 1fr 1fr;
 }
 
+.voyage-watch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.35rem 0 0.85rem;
+}
+
+.voyage-watch label.is-disabled,
+.voyage-watch label.is-disabled select {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .check-inline {
   display: flex;
   align-items: center;
