@@ -3,8 +3,12 @@ import {
   isWithinWatchWindow,
   matchesDestinationFilter,
 } from "../domain/matching.js";
-import { notifyForEvent } from "../domain/notify.js";
+import { notifyForEvent, processNotifyJobs } from "../domain/notify.js";
 import { store } from "../domain/store.js";
+import {
+  NavitiaDeparturesPort,
+  type NavitiaDeparture,
+} from "./departures-navitia.js";
 
 export interface DisruptionIngestPort {
   poll(): Promise<void>;
@@ -63,6 +67,7 @@ export async function injectStubEvent(input?: {
   });
   if (created) {
     await notifyForEvent(event);
+    await processNotifyJobs();
   }
 }
 
@@ -184,22 +189,6 @@ export class StubIngestAdapter implements DisruptionIngestPort {
   }
 }
 
-type NavitiaDeparture = {
-  display_informations?: {
-    direction?: string;
-    headsign?: string;
-    name?: string;
-    label?: string;
-  };
-  stop_date_time?: {
-    base_departure_date_time?: string;
-    departure_date_time?: string;
-  };
-  route?: {
-    direction?: { id?: string; name?: string };
-  };
-};
-
 function navitiaLocalToDate(value?: string): Date | null {
   if (!value || value.length < 15) return null;
   const iso = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15) || "00"}`;
@@ -274,6 +263,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
         checked += 1;
         alerts += n;
       }
+      await processNotifyJobs();
       await store.setIngestResult({
         status: "ok",
         detail: `Navitia OK — ${checked} gare(s), ${alerts} alerte(s)`,
@@ -292,30 +282,8 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
     journey: JourneyConfig,
     token: string,
   ): Promise<number> {
-    const stopId = encodeURIComponent(journey.originId);
-    const url = `https://api.sncf.com/v1/coverage/sncf/stop_areas/${stopId}/departures?count=20&data_freshness=realtime`;
-
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        headers: {
-          Authorization: `Basic ${Buffer.from(`${token}:`).toString("base64")}`,
-        },
-      });
-    } catch (err) {
-      await store.recordApiRequest({ provider: "navitia", ok: false });
-      throw err;
-    }
-
-    if (!res.ok) {
-      await store.recordApiRequest({ provider: "navitia", ok: false });
-      throw new Error(`Navitia HTTP ${res.status} (${journey.direction})`);
-    }
-
-    await store.recordApiRequest({ provider: "navitia", ok: true });
-
-    const body = (await res.json()) as { departures?: NavitiaDeparture[] };
-    const departures = body.departures ?? [];
+    const port = new NavitiaDeparturesPort(token);
+    const { departures } = await port.fetchDepartures(journey);
     let createdCount = 0;
 
     for (const dep of departures) {

@@ -1,25 +1,45 @@
 # SNCF-Alerts
 
-Outil **ops interne** : surveillance de deux trajets SNCF (**Aller** / **Retour**), dashboard de lecture, console admin, notifications **Email (SMTP)** et **Microsoft Teams**.
+Outil **ops interne** : une ou plusieurs **liaisons** SNCF (chaque liaison = Aller + Retour), dashboard ops room, console admin, notifications **Email (SMTP)** et **Teams**.
 
-> Specs : `openspec/specs/` · Baseline : `specs/system/baseline-v1.md` · Change : `openspec/changes/adopt-react-web/`
+> Specs : `openspec/specs/` · Baseline : `specs/system/baseline-v1.md` · Change en cours : `openspec/changes/ops-room-workloads/`
 
 ## Architecture
 
 ```text
-apps/web       → Client React (Dashboard + Admin + Notifications) — aucun secret métier
-apps/api       → Serveur REST + adapters ingest/notify
+apps/web       → Client React (Dashboard ops room + Admin) — aucun secret
+apps/api       → HTTP /v1 (optionnel : poll ingest dans le même process)
+worker-ingest  → Poll Navitia/stub + file notify_jobs (systemd séparé recommandé)
 packages/shared → Types partagés
 ```
 
-Le client **ne fonctionne pas sans l’API**. Les clés PRIM/Navitia, SMTP et Teams restent **uniquement côté serveur**.
+Le client **ne fonctionne pas sans l’API**. Token Navitia = **Admin → Ingest** (DB), pas le `.env`.
 
 ## Prérequis
 
-- Node.js **≥ 22**
+- Node.js **≥ 20**
 - **PostgreSQL 16** (Docker Compose fourni)
 - Accès réseau restreint (VPN/firewall) pour le dashboard (pas d’auth app viewer en v1)
 - Compte admin pour la console
+
+## Systemd (API ≠ ingest) — recommandé en prod
+
+Sur le serveur (chemins à adapter) :
+
+```bash
+sudo cp deploy/systemd/sncf-alerts-api.service /etc/systemd/system/
+sudo cp deploy/systemd/sncf-alerts-ingest.service /etc/systemd/system/
+# Éditer User= et WorkingDirectory= si besoin
+sudo systemctl daemon-reload
+sudo systemctl enable --now sncf-alerts-api sncf-alerts-ingest
+sudo systemctl status sncf-alerts-api sncf-alerts-ingest
+```
+
+Dans `.env` : `INGEST_IN_PROCESS=false` pour que l’API ne double pas le poll.
+
+Dev local (tout-en-un) : laisser `INGEST_IN_PROCESS=true` (défaut) et `npm run dev:api`.
+
+Sans token Navitia : `INGEST_PROVIDER=stub` + **Admin → Debug** (inject / historique) pour peupler le dashboard.
 
 ## PostgreSQL
 
@@ -130,7 +150,7 @@ Chaque sens = **1 gare surveillée** (comme l’écran départs) + **filtre dest
 
 La source active (`stub` | `navitia` | `prim`) et le token se configurent dans **Admin → Ingest** (`GET/PUT /v1/admin/ingest`). Le secret est write-only : après saisie, seuls les **5 premiers caractères** sont renvoyés (`tokenPreview`).
 
-`INGEST_PROVIDER` / `NAVITIA_TOKEN` / `PRIM_API_KEY` dans `.env` ne servent qu’au **bootstrap** du premier démarrage (si rien n’est encore en DB). Ensuite, l’admin fait foi.
+`INGEST_PROVIDER` dans `.env` ne sert qu’au **bootstrap** du provider si la DB est vide. Les **tokens** se configurent uniquement dans **Admin → Ingest** (jamais dans git / `.env` courant).
 
 ### Stub (développement)
 
@@ -158,10 +178,11 @@ L’ingest `navitia` appelle **`https://api.sncf.com/v1`** (moteur Navitia SNCF 
 2. FAQ auth : [numerique.sncf.com/faq/api](https://numerique.sncf.com/faq/api/) — Basic auth, username = token, password vide
 3. Admin → Ingest : provider `navitia` + coller le token
 
-Test hors app :
+Test hors app (token = celui collé en Admin, pas un `.env`) :
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" -u "$NAVITIA_TOKEN:" \
+# remplace TOKEN par la valeur Admin → Ingest
+curl -s -o /dev/null -w "%{http_code}\n" -u "TOKEN:" \
   "https://api.sncf.com/v1/coverage/sncf"
 # attendu : 200
 ```

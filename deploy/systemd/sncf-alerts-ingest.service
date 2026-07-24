@@ -1,0 +1,16 @@
+[Unit]
+Description=SNCF-Alerts Ingest worker (poll + notify queue)
+After=network.target postgresql.service sncf-alerts-api.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=debian
+WorkingDirectory=/home/debian/Train_InfoTrajets
+EnvironmentFile=-/home/debian/Train_InfoTrajets/.env
+ExecStart=/usr/bin/npm run start:ingest -w @sncf-alerts/api
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

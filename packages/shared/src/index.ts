@@ -41,7 +41,7 @@ export interface JourneyConfig {
   /** Gare surveillée (écran départs) */
   originId: string;
   originLabel: string;
-  /** Filtre de sens : destination / direction affichée */
+  /** Filtre de sens : gare desservie (pas forcément le terminus) */
   destinationId: string;
   destinationLabel: string;
   network: string;
@@ -203,6 +203,10 @@ export interface JourneyStatusCard {
   active: boolean;
   originLabel: string;
   destinationLabel: string;
+  /** URL fiche Gares & Connexions (catalogue) pour la gare surveillée */
+  originDisplayUrl: string | null;
+  /** URL fiche G&C pour la gare filtre (desservie) */
+  destinationDisplayUrl: string | null;
   network: string;
   timeWindow: TimeWindow;
   daysOfWeek: number[];
@@ -403,4 +407,9 @@ export interface HealthResponse {
   status: "ok" | "degraded";
   version: string;
   ingestProvider: string;
+  /** Feature flags ops (provider + workloads) */
+  flags: {
+    ingestInProcess: boolean;
+    prometheusEnabled: boolean;
+  };
 }

@@ -10,7 +10,9 @@
   "scripts": {
     "dev": "npm run dev --workspaces --if-present",
     "dev:api": "npm run dev -w @sncf-alerts/api",
+    "dev:ingest": "npm run dev:ingest -w @sncf-alerts/api",
     "dev:web": "npm run dev -w @sncf-alerts/web",
+    "test": "npm run test -w @sncf-alerts/api --if-present",
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },

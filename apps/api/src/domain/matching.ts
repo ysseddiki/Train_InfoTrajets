@@ -145,7 +145,7 @@ export function resolveDirection(
   return null;
 }
 
-/** Does departure board direction match the configured destination filter? */
+/** Does departure board text mention the configured served station (filter)? */
 export function matchesDestinationFilter(
   journey: JourneyConfig,
   directionText: string,
@@ -158,10 +158,11 @@ export function matchesDestinationFilter(
     .map((t) => t.trim())
     .filter((t) => t.length >= 3);
 
+  // Match by stop id if the feed exposes it (served station, not only terminus)
   if (destinationId && journey.destinationId && destinationId === journey.destinationId) {
     return true;
   }
   if (label && text.includes(label)) return true;
-  // partial: "Monaco", "Nice", etc.
+  // partial tokens: "Monaco", "Nice", etc. — covers "via Monaco" / longer headsigns
   return tokens.some((t) => text.includes(t));
 }

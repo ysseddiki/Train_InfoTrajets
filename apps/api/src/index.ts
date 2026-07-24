@@ -5,6 +5,7 @@ import type { HealthResponse } from "@sncf-alerts/shared";
 import { createIngestAdapter } from "./adapters/ingest.js";
 import { migrate } from "./db/pool.js";
 import { loadRepoEnv } from "./domain/env.js";
+import { getFeatureFlags } from "./domain/feature-flags.js";
 import { store } from "./domain/store.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
@@ -41,24 +42,39 @@ async function main() {
   });
   await app.register(cookie);
 
-  app.get("/v1/health", async (): Promise<HealthResponse> => ({
-    status: "ok",
-    version: "0.2.0",
-    ingestProvider: await store.getIngestProvider(),
-  }));
+  app.get("/v1/health", async (): Promise<HealthResponse> => {
+    const flags = await getFeatureFlags();
+    return {
+      status: "ok",
+      version: "0.2.0",
+      ingestProvider: flags.ingestProvider,
+      flags: {
+        ingestInProcess: flags.ingestInProcess,
+        prometheusEnabled: flags.prometheusEnabled,
+      },
+    };
+  });
 
   await registerDashboardRoutes(app);
   await registerAdminRoutes(app);
 
-  const ingest = createIngestAdapter();
-  const intervalMs = Number(process.env.INGEST_INTERVAL_MS ?? 300_000);
-  const tick = () => {
-    void ingest.poll().catch((err) => {
-      app.log.error({ err }, "ingest poll failed");
-    });
-  };
-  tick();
-  setInterval(tick, intervalMs);
+  const ingestInProcess = process.env.INGEST_IN_PROCESS !== "false";
+  if (ingestInProcess) {
+    const ingest = createIngestAdapter();
+    const intervalMs = Number(process.env.INGEST_INTERVAL_MS ?? 300_000);
+    const tick = () => {
+      void ingest.poll().catch((err) => {
+        app.log.error({ err }, "ingest poll failed");
+      });
+    };
+    tick();
+    setInterval(tick, intervalMs);
+    app.log.info("Ingest loop running in API process");
+  } else {
+    app.log.info(
+      "INGEST_IN_PROCESS=false — use sncf-alerts-ingest.service for polling",
+    );
+  }
 
   await app.listen({ port, host });
 }

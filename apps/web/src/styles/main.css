@@ -755,6 +755,17 @@ button.danger-action:disabled {
   margin-bottom: 0.75rem;
 }
 
+.stations-search {
+  margin: 0 0 0.75rem;
+}
+
+.stations-search label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+
 .stations-list-head h3,
 .stations-form h3 {
   margin: 0;
@@ -1273,6 +1284,24 @@ button.danger-action:disabled {
   margin: 0;
   color: var(--muted);
   font-size: 0.95rem;
+}
+
+.gc-link-wrap {
+  margin: 0.5rem 0 0.75rem;
+}
+
+.gc-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.gc-link:hover {
+  text-decoration: underline;
 }
 
 .board-hero {

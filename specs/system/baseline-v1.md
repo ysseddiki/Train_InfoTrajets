@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.2.2`  
+> **Version** : `1.3.0`  
 > **Date** : 2026-07-24  
-> **Change** : `openspec/changes/admin-ingest-config`  
+> **Change** : `openspec/changes/ops-room-workloads`  
 > **Format** : OpenSpec
 
 ---
@@ -25,6 +25,8 @@ Le client (`apps/web`) et le serveur (`apps/api`) sont séparés. Specs détaill
 - SSO / OIDC / 2FA
 - Push, SMS
 - Billetterie, itinéraires alternatifs
+- Scrape Gares & Connexions (lien fiche UI seulement)
+- Prometheus / Grafana (pas de stack monitoring pour l’instant)
 
 ---
 
@@ -85,10 +87,10 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `liaison_id` | UUID | FK Liaison |
 | `direction` | `outbound` \| `inbound` | Unique avec `liaison_id` |
 | `label` | string | Ex. « Aller — Nice → Monaco » |
-| `origin_id` | string | ID gare/source externe |
-| `destination_id` | string | ID gare/source externe |
+| `origin_id` | string | ID gare **surveillée** (écran départs) |
+| `destination_id` | string | ID gare **filtre** = gare **desservie** (pas forcément terminus) |
 | `origin_label` | string | Affichage |
-| `destination_label` | string | Affichage |
+| `destination_label` | string | Affichage filtre |
 | `network` | string | `ter` (implicite UI) |
 | `days_of_week` | int[1..7] | 1=lundi |
 | `time_window` | `{ start, end }` | HH:mm, TZ `Europe/Paris` — **fenêtre trajet** |
@@ -187,9 +189,12 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 | Port | Rôle |
 |------|------|
 | `DisruptionIngestPort` | stub \| prim \| navitia |
+| `DeparturesPort` | départs gare (Navitia + cache TTL) |
 | `EmailNotifierPort` | SMTP |
 | `TeamsNotifierPort` | Incoming webhook |
 | `ClockPort` | Testabilité fenêtres horaires |
+
+Pas de scrape Gares & Connexions : URL `displayUrl` catalogue → lien UI seulement.
 
 ---
 
@@ -200,12 +205,14 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 Notifier seulement si :
 
 1. `JourneyConfig.active` pour le sens
-2. Événement match origine/destination (ou ligne associée)
+2. Événement match gare surveillée + **filtre gare desservie** (direction / id, pas seulement terminus)
 3. Jour + **fenêtre de veille** (TZ Paris) : `watch_always` ou `[start − watch_lead_hours, end]`
 4. Sévérité dans la liste configurée
 5. Si retard avec durée connue : `delay_minutes >= min_delay_minutes` ; si `delay_minutes` null (unknown), le seuil numérique ne s’applique pas
 
 Le poll ingest et le board (`outside_window`) utilisent la même fenêtre de veille. `time_window` reste l’ancre **trajet** configurée en admin.
+
+File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non bloquée).
 ### Dédoublonnage
 
 - Idempotence ingest sur `external_event_id`
@@ -234,8 +241,9 @@ Le poll ingest et le board (`outside_window`) utilisent la même fenêtre de vei
 | Web | Vite + React + TypeScript |
 | Shared | `packages/shared` types |
 | DB | PostgreSQL 16 (phase suivante ; mémoire/sqlite OK pour stub initial) |
-| Queue | optionnel Redis plus tard ; worker in-process OK MVP |
+| Queue | table `notify_jobs` (Postgres) ; Redis optionnel plus tard |
 | Auth | session cookie + password hash |
+| Workloads | `sncf-alerts-api` ≠ `sncf-alerts-ingest` (systemd) |
 
 ### Externes
 
@@ -248,7 +256,7 @@ Le poll ingest et le board (`outside_window`) utilisent la même fenêtre de vei
 
 ### Secrets (env)
 
-Voir `.env.example` : `ADMIN_*`, `SMTP_*`, `TEAMS_*`, `SESSION_SECRET`, `INGEST_INTERVAL_MS`, `NAVITIA_DAILY_QUOTA`. Provider/token ingest : **admin** (env = bootstrap optionnel).
+Voir `.env.example` : `ADMIN_*`, `SMTP_*`, `TEAMS_*`, `SESSION_SECRET`, `INGEST_INTERVAL_MS`, `INGEST_IN_PROCESS`, `DEPARTURES_CACHE_TTL_MS`, `NAVITIA_DAILY_QUOTA`. **Token Navitia = Admin → Ingest (DB)** — pas dans `.env`. Prometheus : plus tard.
 
 ### NFR MVP
 

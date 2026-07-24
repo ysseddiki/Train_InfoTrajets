@@ -32,6 +32,26 @@ Pour un événement de type retard (`delay`), si `delay_minutes` est `null`, le 
 - **WHEN** le dashboard charge
 - **THEN** le retard est libellé `unknown`
 
+### Requirement: Lien fiche Gares & Connexions
+
+Chaque carte Aller/Retour du dashboard SHALL afficher un lien « Fiche Gares & Connexions » vers l’URL configurée sur la gare surveillée (catalogue), si présente. Le système MUST NOT scraper le site G&C.
+
+#### Scenario: Bouton visible
+
+- **GIVEN** la gare Nice a `displayUrl` renseignée
+- **WHEN** l’opérateur ouvre le dashboard
+- **THEN** la carte Aller propose un lien externe vers cette URL
+
+### Requirement: Ops room lecture
+
+Le dashboard SHALL présenter une vue ops (statut liaisons A/R en premier, puis indicateurs, puis fil d’activité). Les données de démo SHALL être générables depuis Admin → Debug (stub).
+
+#### Scenario: Voir un retard après stub
+
+- **GIVEN** provider stub et admin authentifié
+- **WHEN** il injecte un événement stub
+- **THEN** le dashboard affiche le statut retard sur la carte concernée après actualisation
+
 ### Requirement: Libellé hors fenêtre de veille
 
 Hors fenêtre de veille (et trajet actif), le board MUST indiquer un statut `outside_window` (ex. « Hors fenêtre de veille »), distinct de la pause (`active = false`).

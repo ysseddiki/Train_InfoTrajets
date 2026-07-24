@@ -74,11 +74,15 @@ type StoredCheck = {
 const NICE_VILLE = {
   id: "stop_area:SNCF:87756056",
   label: "Nice-Ville",
+  displayUrl:
+    "https://www.garesetconnexions.sncf/fr/gares-services/nice-ville",
 } as const;
 
 const MONACO_MONTE_CARLO = {
   id: "stop_area:SNCF:87756403",
   label: "Monaco - Monte-Carlo",
+  displayUrl:
+    "https://www.garesetconnexions.sncf/fr/gares-services/monaco-monte-carlo",
 } as const;
 
 /** Station-board model: origin = gare surveillée, destination = filtre de sens. */
@@ -399,10 +403,13 @@ export class PgStore {
     const pool = getPool();
     for (const s of defaults) {
       await pool.query(
-        `INSERT INTO stations (external_id, label, updated_at)
-         VALUES ($1, $2, now())
-         ON CONFLICT (external_id) DO NOTHING`,
-        [s.id, s.label],
+        `INSERT INTO stations (external_id, label, display_url, updated_at)
+         VALUES ($1, $2, $3, now())
+         ON CONFLICT (external_id) DO UPDATE SET
+           display_url = COALESCE(NULLIF(stations.display_url, ''), EXCLUDED.display_url),
+           label = EXCLUDED.label,
+           updated_at = now()`,
+        [s.id, s.label, s.displayUrl],
       );
     }
   }
@@ -425,16 +432,12 @@ export class PgStore {
     );
   }
 
-  /** Une fois : copie env → DB si provider pas encore en meta. */
+  /** Une fois : provider stub/navitia depuis env si pas encore en meta. Tokens = Admin uniquement. */
   async ensureIngestConfigBootstrapped(): Promise<void> {
     const existing = await this.getMeta(META_INGEST_PROVIDER);
     if (existing !== null) return;
     const provider = parseIngestProvider(process.env.INGEST_PROVIDER);
     await this.setMeta(META_INGEST_PROVIDER, provider);
-    const nav = process.env.NAVITIA_TOKEN?.trim();
-    if (nav) await this.setMeta(META_NAVITIA_TOKEN, nav);
-    const prim = process.env.PRIM_API_KEY?.trim();
-    if (prim) await this.setMeta(META_PRIM_API_KEY, prim);
   }
 
   async getIngestProvider(): Promise<IngestProviderId> {
@@ -1114,6 +1117,11 @@ export class PgStore {
         ? allLiaisons
         : allLiaisons.filter((l) => l.id === selectedLiaisonId);
 
+    const stations = await this.listStations();
+    const stationByExt = new Map(
+      stations.map((s) => [s.externalId, s] as const),
+    );
+
     const card = (j: JourneyConfig): JourneyStatusCard => {
       const latest =
         events.find((e) => e.journeyId === j.id) ??
@@ -1130,6 +1138,9 @@ export class PgStore {
         recentMs: RECENT_MS,
       });
 
+      const originStation = stationByExt.get(j.originId);
+      const destStation = stationByExt.get(j.destinationId);
+
       return {
         id: j.id,
         liaisonId: j.liaisonId,
@@ -1138,6 +1149,8 @@ export class PgStore {
         active: j.active,
         originLabel: j.originLabel,
         destinationLabel: j.destinationLabel,
+        originDisplayUrl: originStation?.displayUrl ?? null,
+        destinationDisplayUrl: destStation?.displayUrl ?? null,
         network: j.network,
         timeWindow: j.timeWindow,
         daysOfWeek: j.daysOfWeek,
@@ -1585,6 +1598,54 @@ export class PgStore {
     if ((res.rowCount ?? 0) === 0) {
       throw Object.assign(new Error("Station not found"), { statusCode: 404 });
     }
+  }
+
+  async enqueueNotifyJob(eventId: string): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO notify_jobs (event_id, status) VALUES ($1, 'pending')`,
+      [eventId],
+    );
+  }
+
+  async claimNotifyJobs(limit = 20): Promise<Array<{ id: string; eventId: string }>> {
+    const pool = getPool();
+    const res = await pool.query(
+      `UPDATE notify_jobs SET status = 'processing', attempts = attempts + 1
+       WHERE id IN (
+         SELECT id FROM notify_jobs
+         WHERE status = 'pending'
+         ORDER BY created_at ASC
+         LIMIT $1
+         FOR UPDATE SKIP LOCKED
+       )
+       RETURNING id, event_id`,
+      [limit],
+    );
+    return res.rows.map((r) => ({
+      id: String(r.id),
+      eventId: String(r.event_id),
+    }));
+  }
+
+  async completeNotifyJob(id: string, ok: boolean, error?: string): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `UPDATE notify_jobs
+       SET status = $2, last_error = $3, processed_at = now()
+       WHERE id = $1`,
+      [id, ok ? "done" : "failed", error ?? null],
+    );
+  }
+
+  async getEventById(id: string): Promise<DisruptionEventDto | null> {
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT * FROM disruption_events WHERE id = $1`,
+      [id],
+    );
+    if ((res.rowCount ?? 0) === 0) return null;
+    return mapEvent(res.rows[0]);
   }
 }
 

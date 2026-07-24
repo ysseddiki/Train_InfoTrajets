@@ -105,3 +105,18 @@ CREATE TABLE IF NOT EXISTS stations (
   display_url TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE TABLE IF NOT EXISTS notify_jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_id UUID NOT NULL REFERENCES disruption_events(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'processing', 'done', 'failed')),
+  attempts INT NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  processed_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS notify_jobs_pending_idx
+  ON notify_jobs (created_at)
+  WHERE status = 'pending';

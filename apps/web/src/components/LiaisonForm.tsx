@@ -361,7 +361,7 @@ export function LiaisonForm({
         <div className="voyage-stations">
           <StationPicker
             name="A"
-            title="Départ (matin)"
+            title="Gare A (départ aller / filtre retour)"
             stations={stations}
             selectedId={stationAId}
             onChange={setStationAId}
@@ -369,13 +369,18 @@ export function LiaisonForm({
           />
           <StationPicker
             name="B"
-            title="Arrivée (soir)"
+            title="Gare B (filtre aller / départ retour) — gare desservie"
             stations={stations}
             selectedId={stationBId}
             onChange={setStationBId}
             onCreate={() => onCreateStation?.()}
           />
         </div>
+        <p className="muted field-hint">
+          Le filtre n’est pas forcément le terminus : une gare <strong>desservie</strong>{" "}
+          sur le parcours suffit (ex. Monaco sur un train Menton).
+          Renseigne l’URL Gares &amp; Connexions dans le catalogue Gares.
+        </p>
       </fieldset>
 
       <fieldset className="voyage-section">

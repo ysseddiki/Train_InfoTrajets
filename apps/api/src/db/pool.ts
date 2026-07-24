@@ -204,6 +204,23 @@ export async function migrate(): Promise<void> {
   await ensureStationsTable(p);
   await ensureLiaisonDefaultColumn(p);
   await ensureDeliveryLiaisonColumn(p);
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS notify_jobs (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      event_id UUID NOT NULL REFERENCES disruption_events(id) ON DELETE CASCADE,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'processing', 'done', 'failed')),
+      attempts INT NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      processed_at TIMESTAMPTZ
+    )
+  `);
+  await p.query(`
+    CREATE INDEX IF NOT EXISTS notify_jobs_pending_idx
+      ON notify_jobs (created_at)
+      WHERE status = 'pending'
+  `);
 }
 
 export async function closePool(): Promise<void> {

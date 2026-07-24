@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/index.ts",
+    "dev:ingest": "tsx watch src/worker-ingest.ts",
     "start": "node --import tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "start:ingest": "node --import tsx src/worker-ingest.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test src/**/*.test.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.0.2",

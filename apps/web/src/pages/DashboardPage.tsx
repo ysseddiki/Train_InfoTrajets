@@ -135,11 +135,14 @@ export function DashboardPage() {
       <div
         className="dash-head dash-reveal"
         style={{ "--reveal-delay": "0ms" } as CSSProperties}
-      >        <div>
-          <p className="eyebrow">Ops · lecture</p>
+      >
+        <div>
+          <p className="eyebrow">Ops room · lecture</p>
           <h1>Dashboard</h1>
           <p className="lede">
-            Statut trafic Aller / Retour, puis indicateurs et activité récente.
+            Mur de statut par liaison (Aller / Retour). Sans Navitia : génère des
+            données via{" "}
+            <Link to="/admin">Admin → Debug</Link> puis actualise.
           </p>
         </div>
         <div className="dash-head-actions">

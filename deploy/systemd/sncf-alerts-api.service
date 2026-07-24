@@ -1,0 +1,17 @@
+[Unit]
+Description=SNCF-Alerts API (HTTP /v1)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+Type=simple
+User=debian
+WorkingDirectory=/home/debian/Train_InfoTrajets
+EnvironmentFile=-/home/debian/Train_InfoTrajets/.env
+Environment=INGEST_IN_PROCESS=false
+ExecStart=/usr/bin/npm run start -w @sncf-alerts/api
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

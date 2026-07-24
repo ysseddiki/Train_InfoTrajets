@@ -28,6 +28,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiGet, apiSend } from "../api/client";
+import { Link } from "react-router-dom";
 import { ClearStatsPanel } from "../components/ClearStatsPanel";
 import { IngestConfigPanel } from "../components/IngestConfigPanel";
 import { LiaisonForm } from "../components/LiaisonForm";
@@ -245,7 +246,10 @@ function AdminConsole({
         delayMinutes: stubDelay,
         kind: "delay",
       });
-      setStubMsg({ text: "Événement injecté — voir Notifications", ok: true });
+      setStubMsg({
+        text: "Événement injecté — ouvre le Dashboard et actualise",
+        ok: true,
+      });
     } catch {
       setStubMsg({ text: "Échec injection", ok: false });
     }
@@ -508,7 +512,9 @@ function AdminConsole({
       panelBody = (
         <section className="card debug">
           <p className="muted">
-            Injecte un événement stub et déclenche le matching / notifications.
+            Injecte un événement stub (matching + file notifs). Puis ouvre le{" "}
+            <Link to="/">Dashboard</Link> et actualise pour voir le statut
+            Aller/Retour.
           </p>
           <label>
             Liaison

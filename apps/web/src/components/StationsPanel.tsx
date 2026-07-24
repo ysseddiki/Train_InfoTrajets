@@ -1,6 +1,6 @@
 import type { Station } from "@sncf-alerts/shared";
 import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import { apiSend } from "../api/client";
 
 export function StationsPanel({
@@ -16,6 +16,18 @@ export function StationsPanel({
   const [displayUrl, setDisplayUrl] = useState("");
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [searchApplied, setSearchApplied] = useState("");
+
+  const filtered = useMemo(() => {
+    const q = searchApplied.trim().toLowerCase();
+    if (!q) return stations;
+    return stations.filter(
+      (s) =>
+        s.label.toLowerCase().includes(q) ||
+        s.externalId.toLowerCase().includes(q),
+    );
+  }, [stations, searchApplied]);
 
   function startCreate() {
     setEditingId(null);
@@ -31,6 +43,11 @@ export function StationsPanel({
     setExternalId(s.externalId);
     setDisplayUrl(s.displayUrl ?? "");
     setMsg(null);
+  }
+
+  function onSearchSubmit(e: FormEvent) {
+    e.preventDefault();
+    setSearchApplied(searchDraft);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -107,11 +124,30 @@ export function StationsPanel({
               Nouvelle
             </button>
           </div>
-          {stations.length === 0 ? (
-            <p className="muted">Aucune gare — créez-en une.</p>
+          <form className="stations-search" onSubmit={onSearchSubmit}>
+            <label>
+              Filtrer (Entrée)
+              <input
+                type="search"
+                value={searchDraft}
+                onChange={(e) => setSearchDraft(e.target.value)}
+                placeholder="Nice, Monaco…"
+                autoComplete="off"
+              />
+            </label>
+            <p className="muted field-hint">
+              Pas de recherche live : valide avec Entrée.
+            </p>
+          </form>
+          {filtered.length === 0 ? (
+            <p className="muted">
+              {stations.length === 0
+                ? "Aucune gare — créez-en une."
+                : "Aucun résultat — Entrée pour relancer."}
+            </p>
           ) : (
             <ul className="stations-items">
-              {stations.map((s) => (
+              {filtered.map((s) => (
                 <li key={s.id}>
                   <button
                     type="button"

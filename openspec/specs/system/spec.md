@@ -56,3 +56,13 @@ Le client `apps/web` MUST être une application **Vite + React + TypeScript**. I
 - **GIVEN** une évolution du dashboard ou de l’admin
 - **WHEN** on ajoute un composant ou une route
 - **THEN** elle s’inscrit dans l’arborescence React (`pages` / `components`) sans templates HTML string globaux
+
+### Requirement: Documentation déploiement adminsys
+
+Le dépôt SHALL fournir des unités systemd d’exemple (`deploy/systemd/`) et une section README expliquant API vs ingest. Prometheus est hors scope tant qu’aucune stack monitoring n’est en place.
+
+#### Scenario: Install units
+
+- **GIVEN** un serveur Linux avec le repo déployé
+- **WHEN** l’adminsys copie `deploy/systemd/*.service` et active les services
+- **THEN** l’API et l’ingest peuvent tourner en process séparés

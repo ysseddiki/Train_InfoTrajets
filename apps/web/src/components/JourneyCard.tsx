@@ -1,5 +1,6 @@
 import type { JourneyStatusCard } from "@sncf-alerts/shared";
 import { formatDelayMinutes } from "@sncf-alerts/shared";
+import { ExternalLink } from "lucide-react";
 import { boardClass } from "../lib/boardStatus";
 import {
   daysSummary,
@@ -25,6 +26,7 @@ export function JourneyCard({
   }
 
   const ev = card.latestEvent;
+  const gcUrl = card.originDisplayUrl;
 
   return (
     <article className={`journey-card journey-tone-${card.boardStatus}`}>
@@ -37,10 +39,24 @@ export function JourneyCard({
       <p className="journey-label">{card.label}</p>
       <p className="journey-od">
         {card.originLabel} → {card.destinationLabel}
+        <span className="muted"> · filtre gare desservie</span>
       </p>
       <div className={`${boardClass(card.boardStatus)} board-hero`}>
         <strong>{card.boardStatusLabel}</strong>
       </div>
+      {gcUrl ? (
+        <p className="gc-link-wrap">
+          <a
+            className="gc-link"
+            href={gcUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <ExternalLink size={14} aria-hidden />
+            Fiche Gares &amp; Connexions
+          </a>
+        </p>
+      ) : null}
       <dl className="meta-list">
         <div>
           <dt>Fenêtre trajet</dt>

@@ -7,7 +7,40 @@ import { emailNotifier, teamsNotifier } from "../adapters/notifiers.js";
 import { resolveDirection } from "../domain/matching.js";
 import { store } from "../domain/store.js";
 
+/** Enfile une notif ; appeler `processNotifyJobs` pour envoyer. */
 export async function notifyForEvent(
+  event: DisruptionEventDto,
+  opts?: { force?: boolean },
+): Promise<void> {
+  await store.enqueueNotifyJob(event.id);
+  if (opts?.force) {
+    await processNotifyJobs();
+  }
+}
+
+/** Drain la file notify_jobs (SMTP / Teams). */
+export async function processNotifyJobs(): Promise<number> {
+  const jobs = await store.claimNotifyJobs(20);
+  let done = 0;
+  for (const job of jobs) {
+    try {
+      const event = await store.getEventById(job.eventId);
+      if (!event) {
+        await store.completeNotifyJob(job.id, false, "event missing");
+        continue;
+      }
+      await deliverEvent(event);
+      await store.completeNotifyJob(job.id, true);
+      done += 1;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "notify failed";
+      await store.completeNotifyJob(job.id, false, msg.slice(0, 400));
+    }
+  }
+  return done;
+}
+
+async function deliverEvent(
   event: DisruptionEventDto,
   opts?: { force?: boolean },
 ): Promise<void> {
@@ -44,7 +77,6 @@ export async function notifyForEvent(
 
   const recipients = await store.getRecipients();
 
-  // Email
   if (!(await store.hasSentDelivery(event.id, "email")) || opts?.force) {
     if (process.env.EMAIL_ENABLED === "true") {
       const result = await emailNotifier.send({
@@ -73,7 +105,6 @@ export async function notifyForEvent(
     }
   }
 
-  // Teams
   if (!(await store.hasSentDelivery(event.id, "teams")) || opts?.force) {
     if (process.env.TEAMS_ENABLED === "true") {
       const result = await teamsNotifier.send({ title, body });
@@ -111,13 +142,17 @@ export async function sendTestNotification(
     });
     await store.createDelivery({
       eventId: null,
+      liaisonId: null,
       direction: null,
       channel: "email",
       status: result.ok ? "sent" : "failed",
       detail: result.detail ?? "test",
       sentAt: result.ok ? new Date().toISOString() : null,
     });
-    return { status: result.ok ? "sent" : "failed", detail: result.detail ?? null };
+    return {
+      status: result.ok ? "sent" : "failed",
+      detail: result.detail ?? null,
+    };
   }
 
   const result = await teamsNotifier.send({
@@ -126,11 +161,15 @@ export async function sendTestNotification(
   });
   await store.createDelivery({
     eventId: null,
+    liaisonId: null,
     direction: null,
     channel: "teams",
     status: result.ok ? "sent" : "failed",
     detail: result.detail ?? "test",
     sentAt: result.ok ? new Date().toISOString() : null,
   });
-  return { status: result.ok ? "sent" : "failed", detail: result.detail ?? null };
+  return {
+    status: result.ok ? "sent" : "failed",
+    detail: result.detail ?? null,
+  };
 }
