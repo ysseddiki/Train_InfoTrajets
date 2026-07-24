@@ -107,7 +107,7 @@ npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 
 - Ne **jamais** committer `.env`, tokens, mots de passe, webhooks
 - Ne pas logger `Authorization`, `SMTP_PASSWORD`, `TEAMS_WEBHOOK_URL`, clés API
-- L’API admin masque les secrets (`passwordConfigured` / `webhookConfigured`)
+- L’API admin masque les secrets (`passwordConfigured` / `webhookConfigured` / `tokenPreview` 5 caractères)
 - Mot de passe admin stocké **hashé** (bcrypt) en base ; session cookie **httpOnly**
 - Rate-limit sur `/v1/admin/login`
 - Changer `ADMIN_PASSWORD` et `SESSION_SECRET` avant tout déploiement
@@ -128,32 +128,27 @@ Chaque sens = **1 gare surveillée** (comme l’écran départs) + **filtre dest
 
 ## Obtenir les clés API (ingest)
 
-Une seule source active via `INGEST_PROVIDER=stub|prim|navitia`.
+La source active (`stub` | `navitia` | `prim`) et le token se configurent dans **Admin → Ingest** (`GET/PUT /v1/admin/ingest`). Le secret est write-only : après saisie, seuls les **5 premiers caractères** sont renvoyés (`tokenPreview`).
+
+`INGEST_PROVIDER` / `NAVITIA_TOKEN` / `PRIM_API_KEY` dans `.env` ne servent qu’au **bootstrap** du premier démarrage (si rien n’est encore en DB). Ensuite, l’admin fait foi.
 
 ### Stub (développement)
 
-Aucune clé. Idéal pour développer dashboard, admin et notifiers.
+Choisir `stub` dans l’admin. Aucune clé. Idéal pour dashboard, admin et notifiers.
+
+Intervalle de poll (reste en env) :
 
 ```env
-INGEST_PROVIDER=stub
 INGEST_INTERVAL_MS=300000
 ```
 
 ### PRIM — Île-de-France Mobilités (temps réel)
 
-Utile si vos trajets Aller/Retour sont en Île-de-France (Transilien, RER, etc.).
+Utile si vos trajets sont en Île-de-France (Transilien, RER, etc.). Adapter **pas encore implémenté** côté poll.
 
 1. Créer un compte sur le portail [Île-de-France Mobilités — PRIM](https://prim.iledefrance-mobilites.fr/)
 2. Créer une application et générer une **clé API**
-3. Consulter la doc des APIs temps réel / perturbations sur le portail
-4. Renseigner dans `.env` :
-
-```env
-INGEST_PROVIDER=prim
-PRIM_API_KEY=votre_cle
-```
-
-Respecter les quotas et conditions d’usage du portail.
+3. Admin → Ingest : provider `prim` + coller la clé
 
 ### Navitia / API SNCF (`api.sncf.com`)
 
@@ -161,15 +156,9 @@ L’ingest `navitia` appelle **`https://api.sncf.com/v1`** (moteur Navitia SNCF 
 
 1. Demander un token développeur : [Formulaire clé API SNCF](https://numerique.sncf.com/startup/api/token-developpeur/)
 2. FAQ auth : [numerique.sncf.com/faq/api](https://numerique.sncf.com/faq/api/) — Basic auth, username = token, password vide
-3. Renseigner :
+3. Admin → Ingest : provider `navitia` + coller le token
 
-```env
-INGEST_PROVIDER=navitia
-NAVITIA_TOKEN=votre_token_recu_par_email
-INGEST_INTERVAL_MS=300000
-```
-
-Test :
+Test hors app :
 
 ```bash
 curl -s -o /dev/null -w "%{http_code}\n" -u "$NAVITIA_TOKEN:" \
@@ -181,7 +170,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -u "$NAVITIA_TOKEN:" \
 
 L’adapter interroge les **départs** de la gare surveillée (`/stop_areas/.../departures`), filtre le sens (ex. Monaco / Nice), et crée une alerte si retard ≥ seuil ou suppression.
 
-> PRIM reste optionnel pour d’autres réseaux. Ne pas lancer `npm audit fix --force` (casse le lockfile).
+> Ne pas lancer `npm audit fix --force` (casse le lockfile).
 
 ## Email (SMTP custom)
 

@@ -250,6 +250,33 @@ export interface TeamsConfigPublic {
   enabled: boolean;
 }
 
+export type IngestProviderId = "stub" | "navitia" | "prim";
+
+/** Config ingest exposée à l’admin (secret jamais en clair). */
+export interface IngestConfigPublic {
+  provider: IngestProviderId;
+  tokenConfigured: boolean;
+  /** 5 premiers caractères du secret du provider courant, ou null */
+  tokenPreview: string | null;
+}
+
+export interface IngestConfigUpdate {
+  provider: IngestProviderId;
+  /** Si non vide, remplace le secret ; omit / vide = conserver */
+  token?: string;
+}
+
+/** Aperçu identification uniquement (jamais le secret complet). */
+export function ingestTokenPreview(
+  token: string | null | undefined,
+): string | null {
+  if (!token) return null;
+  const t = token.trim();
+  if (!t) return null;
+  return t.slice(0, 5);
+}
+
+
 export interface RecipientsConfig {
   emails: string[];
 }

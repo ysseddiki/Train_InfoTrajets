@@ -9,5 +9,6 @@ alwaysApply: false
 - Une source active : `stub` | `prim` | `navitia` (`INGEST_PROVIDER`)
 - Idempotence sur `external_event_id`
 - Matching / poll : **fenêtre de veille** (`watch_always` ou `start − watch_lead_hours` … `end`), pas seulement `time_window` trajet
+- Provider + token : **config admin** (`/v1/admin/ingest`) ; token jamais renvoyé en clair (preview 5 car.)
 - `delay_minutes` null = **unknown** : ne jamais coercer en `0` ; UI/notif affichent `unknown`
 - Documenter l’obtention des clés dans le README, jamais committer les clés

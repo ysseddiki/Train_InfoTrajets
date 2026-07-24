@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.2.1`  
+> **Version** : `1.2.2`  
 > **Date** : 2026-07-24  
-> **Change** : `openspec/changes/watch-lead-window`  
+> **Change** : `openspec/changes/admin-ingest-config`  
 > **Format** : OpenSpec
 
 ---
@@ -178,6 +178,7 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 | GET/PUT | `/v1/admin/channels/smtp` | Config SMTP (password write-only) |
 | GET/PUT | `/v1/admin/channels/teams` | Webhook Teams (write-only) |
 | GET/PUT | `/v1/admin/channels/recipients` | Liste emails |
+| GET/PUT | `/v1/admin/ingest` | Provider + token (write-only ; preview 5 car.) |
 | POST | `/v1/admin/channels/:type/test` | `email` \| `teams` |
 
 ### Ports internes
@@ -246,7 +247,7 @@ Le poll ingest et le board (`outside_window`) utilisent la même fenêtre de vei
 
 ### Secrets (env)
 
-Voir `.env.example` : `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `SMTP_*`, `TEAMS_WEBHOOK_URL`, `PRIM_API_KEY`, `NAVITIA_TOKEN`, `INGEST_PROVIDER`, `SESSION_SECRET`.
+Voir `.env.example` : `ADMIN_*`, `SMTP_*`, `TEAMS_*`, `SESSION_SECRET`, `INGEST_INTERVAL_MS`, `NAVITIA_DAILY_QUOTA`. Provider/token ingest : **admin** (env = bootstrap optionnel).
 
 ### NFR MVP
 
@@ -280,3 +281,4 @@ specs/system/     # Baseline narrative
 | `1.1.2` | 2026-07-24 | Client web : Vite + React + TypeScript |
 | `1.2.0` | 2026-07-24 | Multi-liaisons |
 | `1.2.1` | 2026-07-24 | Fenêtre de veille (`watch_always` / `watch_lead_hours` 0–12) |
+| `1.2.2` | 2026-07-24 | Ingest config en admin (token preview 5 car.) |

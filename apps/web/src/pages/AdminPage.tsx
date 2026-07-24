@@ -8,6 +8,7 @@ import type {
 } from "@sncf-alerts/shared";
 import {
   Bug,
+  Database,
   Eraser,
   Gauge,
   LogOut,
@@ -26,6 +27,7 @@ import {
 } from "react";
 import { apiGet, apiSend } from "../api/client";
 import { ClearStatsPanel } from "../components/ClearStatsPanel";
+import { IngestConfigPanel } from "../components/IngestConfigPanel";
 import { LiaisonForm } from "../components/LiaisonForm";
 import { QuotaPanel } from "../components/QuotaPanel";
 import { errorMessage } from "../lib/format";
@@ -34,6 +36,7 @@ type AdminMe = { username: string };
 
 type AdminSectionId =
   | "liaisons"
+  | "ingest"
   | "recipients"
   | "channels"
   | "quota"
@@ -51,6 +54,12 @@ const ADMIN_SECTIONS: {
     label: "Liaisons",
     description: "Paires Aller/Retour surveillées (gares, fenêtres, jours).",
     icon: Route,
+  },
+  {
+    id: "ingest",
+    label: "Ingest",
+    description: "Source de données (stub / Navitia / PRIM) et token.",
+    icon: Database,
   },
   {
     id: "recipients",
@@ -342,6 +351,9 @@ function AdminConsole({
           />
         </div>
       );
+      break;
+    case "ingest":
+      panelBody = <IngestConfigPanel />;
       break;
     case "recipients":
       panelBody = (

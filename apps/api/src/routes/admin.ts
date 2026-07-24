@@ -3,6 +3,7 @@ import type {
   JourneyConfig,
   JourneyDirection,
   LiaisonUpsertBody,
+  IngestConfigUpdate,
   RecipientsConfig,
 } from "@sncf-alerts/shared";
 import { injectStubEvent } from "../adapters/ingest.js";
@@ -18,6 +19,12 @@ import {
   resetLoginRateLimit,
 } from "../domain/rate-limit.js";
 import { store } from "../domain/store.js";
+
+function isIngestProvider(
+  value: unknown,
+): value is IngestConfigUpdate["provider"] {
+  return value === "stub" || value === "navitia" || value === "prim";
+}
 
 export async function registerAdminRoutes(app: FastifyInstance) {
   app.post<{
@@ -166,6 +173,30 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (!(await requireAdmin(req, reply))) return;
     return store.getTeamsPublic();
   });
+
+  app.get("/v1/admin/ingest", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return store.getIngestConfigPublic();
+  });
+
+  app.put<{ Body: IngestConfigUpdate }>(
+    "/v1/admin/ingest",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      const body = req.body ?? ({} as IngestConfigUpdate);
+      if (!isIngestProvider(body.provider)) {
+        return reply.code(400).send({
+          type: "/errors/validation",
+          title: "provider must be stub | navitia | prim",
+          status: 400,
+        });
+      }
+      return store.updateIngestConfig({
+        provider: body.provider,
+        token: body.token,
+      });
+    },
+  );
 
   app.get("/v1/admin/channels/recipients", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;

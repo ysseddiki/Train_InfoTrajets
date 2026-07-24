@@ -10,6 +10,9 @@ import type {
   DisruptionEventDto,
   DisruptionKind,
   DisruptionSeverity,
+  IngestConfigPublic,
+  IngestConfigUpdate,
+  IngestProviderId,
   IngestRunStatus,
   JourneyConfig,
   JourneyDirection,
@@ -24,6 +27,7 @@ import type {
 import {
   clampWatchLeadHours,
   DEFAULT_WATCH_LEAD_HOURS,
+  ingestTokenPreview,
   resolveLiaisonDisplayName,
 } from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
@@ -31,6 +35,21 @@ import { isWithinWatchWindow } from "./matching.js";
 
 const SESSION_COOKIE = "sncf_admin_session";
 const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12);
+
+const META_INGEST_PROVIDER = "ingest_provider";
+const META_NAVITIA_TOKEN = "ingest_navitia_token";
+const META_PRIM_API_KEY = "ingest_prim_api_key";
+
+function parseIngestProvider(value: string | null | undefined): IngestProviderId {
+  if (value === "navitia" || value === "prim" || value === "stub") return value;
+  return "stub";
+}
+
+function secretMetaKey(provider: IngestProviderId): string | null {
+  if (provider === "navitia") return META_NAVITIA_TOKEN;
+  if (provider === "prim") return META_PRIM_API_KEY;
+  return null;
+}
 
 const NICE_VILLE = {
   id: "stop_area:SNCF:87756056",
@@ -328,6 +347,77 @@ export class PgStore {
          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
       );
     }
+
+    await this.ensureIngestConfigBootstrapped();
+  }
+
+  private async getMeta(key: string): Promise<string | null> {
+    const pool = getPool();
+    const res = await pool.query(`SELECT value FROM app_meta WHERE key = $1`, [
+      key,
+    ]);
+    if ((res.rowCount ?? 0) === 0) return null;
+    return String(res.rows[0].value);
+  }
+
+  private async setMeta(key: string, value: string): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `INSERT INTO app_meta (key, value) VALUES ($1, $2)
+       ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value`,
+      [key, value],
+    );
+  }
+
+  /** Une fois : copie env → DB si provider pas encore en meta. */
+  async ensureIngestConfigBootstrapped(): Promise<void> {
+    const existing = await this.getMeta(META_INGEST_PROVIDER);
+    if (existing !== null) return;
+    const provider = parseIngestProvider(process.env.INGEST_PROVIDER);
+    await this.setMeta(META_INGEST_PROVIDER, provider);
+    const nav = process.env.NAVITIA_TOKEN?.trim();
+    if (nav) await this.setMeta(META_NAVITIA_TOKEN, nav);
+    const prim = process.env.PRIM_API_KEY?.trim();
+    if (prim) await this.setMeta(META_PRIM_API_KEY, prim);
+  }
+
+  async getIngestProvider(): Promise<IngestProviderId> {
+    await this.ensureIngestConfigBootstrapped();
+    return parseIngestProvider(await this.getMeta(META_INGEST_PROVIDER));
+  }
+
+  /** Secret serveur uniquement — ne jamais exposer via API. */
+  async getIngestSecret(
+    provider?: IngestProviderId,
+  ): Promise<string | null> {
+    const p = provider ?? (await this.getIngestProvider());
+    const key = secretMetaKey(p);
+    if (!key) return null;
+    const v = await this.getMeta(key);
+    return v?.trim() ? v : null;
+  }
+
+  async getIngestConfigPublic(): Promise<IngestConfigPublic> {
+    const provider = await this.getIngestProvider();
+    const secret = await this.getIngestSecret(provider);
+    return {
+      provider,
+      tokenConfigured: Boolean(secret),
+      tokenPreview: ingestTokenPreview(secret),
+    };
+  }
+
+  async updateIngestConfig(
+    body: IngestConfigUpdate,
+  ): Promise<IngestConfigPublic> {
+    const provider = parseIngestProvider(body.provider);
+    await this.setMeta(META_INGEST_PROVIDER, provider);
+    const incoming = body.token?.trim() ?? "";
+    const key = secretMetaKey(provider);
+    if (key && incoming) {
+      await this.setMeta(key, incoming);
+    }
+    return this.getIngestConfigPublic();
   }
 
   async verifyLogin(
@@ -815,7 +905,7 @@ export class PgStore {
         eventsLast24h: last24h.events,
         deliveriesSentLast24h: last24h.deliveriesSent,
         deliveriesFailedLast24h: last24h.deliveriesFailed,
-        ingestProvider: process.env.INGEST_PROVIDER ?? "stub",
+        ingestProvider: await this.getIngestProvider(),
         lastIngestAt,
         periods: { last24h, last7d, last30d },
       },

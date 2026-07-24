@@ -635,6 +635,15 @@ button.danger-action:disabled {
   cursor: not-allowed;
 }
 
+.ingest-token-status {
+  margin: 0.5rem 0;
+  font-size: 0.95rem;
+}
+
+.ingest-token-status code {
+  letter-spacing: 0.02em;
+}
+
 .check-inline {
   display: flex;
   align-items: center;

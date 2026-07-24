@@ -27,6 +27,8 @@ async function main() {
           "body.password",
           "SMTP_PASSWORD",
           "TEAMS_WEBHOOK_URL",
+          "body.token",
+          "NAVITIA_TOKEN",
         ],
         remove: true,
       },
@@ -42,7 +44,7 @@ async function main() {
   app.get("/v1/health", async (): Promise<HealthResponse> => ({
     status: "ok",
     version: "0.2.0",
-    ingestProvider: process.env.INGEST_PROVIDER ?? "stub",
+    ingestProvider: await store.getIngestProvider(),
   }));
 
   await registerDashboardRoutes(app);

@@ -127,14 +127,16 @@ function isCancelled(dep: NavitiaDeparture): boolean {
 }
 
 export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
+  constructor(private readonly token: string) {}
+
   async poll(): Promise<void> {
-    const token = process.env.NAVITIA_TOKEN;
+    const token = this.token;
     if (!token) {
       await store.setIngestResult({
         status: "error",
-        detail: "NAVITIA_TOKEN manquant",
+        detail: "Token Navitia manquant (config admin)",
       });
-      throw new Error("NAVITIA_TOKEN is required for INGEST_PROVIDER=navitia");
+      throw new Error("Navitia token is required");
     }
 
     const quota = await store.getApiQuota("navitia");
@@ -274,8 +276,25 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
   }
 }
 
+export class ConfiguredIngestAdapter implements DisruptionIngestPort {
+  async poll(): Promise<void> {
+    const provider = await store.getIngestProvider();
+    if (provider === "navitia") {
+      const token = (await store.getIngestSecret("navitia")) ?? "";
+      await new NavitiaDeparturesAdapter(token).poll();
+      return;
+    }
+    if (provider === "prim") {
+      await store.setIngestResult({
+        status: "error",
+        detail: "Provider PRIM non implémenté — choisir stub ou navitia",
+      });
+      return;
+    }
+    await new StubIngestAdapter().poll();
+  }
+}
+
 export function createIngestAdapter(): DisruptionIngestPort {
-  const provider = process.env.INGEST_PROVIDER ?? "stub";
-  if (provider === "navitia") return new NavitiaDeparturesAdapter();
-  return new StubIngestAdapter();
+  return new ConfiguredIngestAdapter();
 }

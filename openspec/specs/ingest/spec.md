@@ -8,13 +8,13 @@ Ingestion des perturbations SNCF via un adapter unique (stub / PRIM / Navitia) e
 
 ### Requirement: Ingest via adapter unique
 
-Le pipeline d’ingest SHALL utiliser un port `DisruptionIngestPort` avec une implémentation active à la fois (`stub` en dev, `prim` ou `navitia` en prod).
+Le pipeline d’ingest SHALL utiliser un port `DisruptionIngestPort` avec une implémentation active à la fois (`stub`, `prim` ou `navitia`), choisie via la **config admin** (`provider`).
 
 #### Scenario: Mode stub
 
-- **GIVEN** `INGEST_PROVIDER=stub`
+- **GIVEN** provider admin = `stub`
 - **WHEN** le worker tourne
-- **THEN** des événements synthétiques peuvent être produits pour tester matching et notifications
+- **THEN** aucun appel externe n’est requis ; des événements synthétiques peuvent être injectés via debug admin
 
 ### Requirement: Matching Aller/Retour
 
