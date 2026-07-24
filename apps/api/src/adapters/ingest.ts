@@ -66,6 +66,106 @@ export async function injectStubEvent(input?: {
   }
 }
 
+/**
+ * Génère un historique stub sur N mois (heatmap / stats).
+ * Pas de notifications — données démo uniquement.
+ */
+export async function seedStubHistory(input?: {
+  months?: number;
+  liaisonId?: string;
+}): Promise<{ created: number; months: number }> {
+  const months = Math.min(Math.max(input?.months ?? 6, 1), 12);
+  const journeys = await store.listJourneys();
+  const scoped = input?.liaisonId
+    ? journeys.filter((j) => j.liaisonId === input.liaisonId)
+    : journeys;
+  const legs =
+    scoped.length > 0
+      ? scoped
+      : journeys.length > 0
+        ? journeys
+        : [];
+
+  if (legs.length === 0) {
+    return { created: 0, months };
+  }
+
+  const now = Date.now();
+  const dayMs = 24 * 3600 * 1000;
+  const days = Math.round(months * 30.44);
+  let created = 0;
+
+  for (let d = days; d >= 0; d--) {
+    const dayStart = new Date(now - d * dayMs);
+    // Europe/Paris weekday approx via local — serveur en UTC OK pour démo
+    const dow = dayStart.getUTCDay(); // 0=dim
+    const isWeekend = dow === 0 || dow === 6;
+    // densités : week-end plus calme
+    const roll = Math.random();
+    const eventCount = isWeekend
+      ? roll < 0.55
+        ? 0
+        : roll < 0.85
+          ? 1
+          : 2
+      : roll < 0.25
+        ? 0
+        : roll < 0.55
+          ? 1
+          : roll < 0.8
+            ? 2
+            : roll < 0.92
+              ? 3
+              : 4;
+
+    for (let i = 0; i < eventCount; i++) {
+      const journey = legs[Math.floor(Math.random() * legs.length)]!;
+      const isCancel = Math.random() < 0.12;
+      const delayMinutes = isCancel
+        ? null
+        : [5, 8, 10, 12, 15, 18, 20, 25, 30, 35, 40, 45][
+            Math.floor(Math.random() * 12)
+          ]!;
+      const hour = 6 + Math.floor(Math.random() * 14);
+      const minute = Math.floor(Math.random() * 60);
+      const detected = new Date(dayStart);
+      detected.setUTCHours(hour, minute, Math.floor(Math.random() * 60), 0);
+      const iso = detected.toISOString();
+      const dayKey = iso.slice(0, 10);
+      const externalEventId = `stub-hist-${journey.id}-${dayKey}-${i}`;
+
+      const { created: wasCreated } = await store.upsertEvent({
+        externalEventId,
+        journeyId: journey.id,
+        liaisonId: journey.liaisonId,
+        direction: journey.direction,
+        kind: isCancel ? "cancellation" : "delay",
+        severity:
+          isCancel || (delayMinutes != null && delayMinutes >= 20)
+            ? "critical"
+            : "warning",
+        title: isCancel
+          ? `Suppression (stub hist) ${journey.direction}`
+          : `Retard ${delayMinutes} min (stub hist) ${journey.direction}`,
+        description: "Historique synthétique stub — 6 mois démo.",
+        delayMinutes,
+        startsAt: iso,
+        endsAt: null,
+        source: "stub",
+        detectedAt: iso,
+      });
+      if (wasCreated) created += 1;
+    }
+  }
+
+  await store.setIngestResult({
+    status: "ok",
+    detail: `Stub historique : ${created} événements sur ${months} mois`,
+  });
+
+  return { created, months };
+}
+
 export class StubIngestAdapter implements DisruptionIngestPort {
   async poll(): Promise<void> {
     const journeys = await store.listJourneys();

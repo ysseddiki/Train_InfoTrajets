@@ -123,9 +123,9 @@ export function ActivityHeatmap({
   return (
     <div className="heatmap-card">
       <div className="heatmap-head">
-        <h3>Activité événements</h3>
+        <h3>Retards (heatmap)</h3>
         <p className="muted">
-          53 semaines
+          53 semaines · score retard
           {scopeHint ? ` · ${scopeHint}` : ""}
           {max > 0 ? ` · max ${max}/j` : ""}
         </p>
@@ -159,7 +159,7 @@ export function ActivityHeatmap({
                       title={
                         cell.future
                           ? undefined
-                          : `${cell.date} · ${cell.count} événement${cell.count === 1 ? "" : "s"}`
+                          : `${cell.date} · score retard ${cell.count}`
                       }
                     />
                   ))}
@@ -169,13 +169,13 @@ export function ActivityHeatmap({
           </div>
         </div>
         <div className="heatmap-legend">
-          <span className="muted">Moins</span>
+          <span className="muted">OK</span>
           <span className="heatmap-cell level-0" />
           <span className="heatmap-cell level-1" />
           <span className="heatmap-cell level-2" />
           <span className="heatmap-cell level-3" />
           <span className="heatmap-cell level-4" />
-          <span className="muted">Plus</span>
+          <span className="muted">Retards</span>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
 import type { Station } from "@sncf-alerts/shared";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { apiSend } from "../api/client";
 
@@ -13,6 +13,7 @@ export function StationsPanel({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const [externalId, setExternalId] = useState("");
+  const [displayUrl, setDisplayUrl] = useState("");
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -20,6 +21,7 @@ export function StationsPanel({
     setEditingId(null);
     setLabel("");
     setExternalId("");
+    setDisplayUrl("");
     setMsg(null);
   }
 
@@ -27,6 +29,7 @@ export function StationsPanel({
     setEditingId(s.id);
     setLabel(s.label);
     setExternalId(s.externalId);
+    setDisplayUrl(s.displayUrl ?? "");
     setMsg(null);
   }
 
@@ -34,20 +37,22 @@ export function StationsPanel({
     e.preventDefault();
     setBusy(true);
     setMsg(null);
+    const payload = {
+      label,
+      externalId,
+      displayUrl: displayUrl.trim() || null,
+    };
     try {
       if (editingId) {
         const updated = await apiSend<Station>(
           `/v1/admin/stations/${editingId}`,
           "PUT",
-          { label, externalId },
+          payload,
         );
         onChange(stations.map((s) => (s.id === updated.id ? updated : s)));
         setMsg({ text: "Gare mise à jour", ok: true });
       } else {
-        const created = await apiSend<Station>("/v1/admin/stations", "POST", {
-          label,
-          externalId,
-        });
+        const created = await apiSend<Station>("/v1/admin/stations", "POST", payload);
         onChange(
           [...stations, created].sort((a, b) =>
             a.label.localeCompare(b.label, "fr"),
@@ -116,6 +121,18 @@ export function StationsPanel({
                     <span className="stations-item-label">{s.label}</span>
                     <span className="muted stations-item-id">{s.externalId}</span>
                   </button>
+                  {s.displayUrl ? (
+                    <a
+                      className="secondary stations-item-link"
+                      href={s.displayUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Ouvrir l’affichage gare"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink size={14} strokeWidth={2} aria-hidden />
+                    </a>
+                  ) : null}
                   <button
                     type="button"
                     className="secondary danger-ghost stations-item-del"
@@ -164,6 +181,29 @@ export function StationsPanel({
           <p className="muted field-hint">
             Identifiant <code>stop_area</code> utilisé pour les appels départs.
           </p>
+          <label>
+            Lien affichage gare
+            <input
+              type="url"
+              value={displayUrl}
+              onChange={(e) => setDisplayUrl(e.target.value)}
+              placeholder="https://www.garesetconnexions.sncf/fr/gare/…"
+            />
+          </label>
+          <p className="muted field-hint">
+            URL Gares &amp; Connexions (ou autre page d’affichage) — optionnel.
+          </p>
+          {displayUrl.trim() ? (
+            <p className="stations-display-preview">
+              <a
+                href={displayUrl.trim()}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Ouvrir le lien <ExternalLink size={14} strokeWidth={2} aria-hidden />
+              </a>
+            </p>
+          ) : null}
           <button type="submit" disabled={busy}>
             {busy
               ? "Enregistrement…"

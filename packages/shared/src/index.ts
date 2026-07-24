@@ -140,10 +140,14 @@ export interface DashboardPeriodStats {
   };
 }
 
-/** Jour calendaire (Europe/Paris) pour heatmap d’activité */
+/** Jour calendaire (Europe/Paris) pour heatmap retards */
 export interface DashboardHeatmapDay {
   /** YYYY-MM-DD */
   date: string;
+  /**
+   * Score retards du jour (minutes de retard + pénalité suppressions).
+   * Intensité heatmap vert → rouge.
+   */
   count: number;
 }
 
@@ -348,12 +352,19 @@ export interface Station {
   /** ID Navitia / stop_area (ex. stop_area:SNCF:87756056) */
   externalId: string;
   label: string;
+  /**
+   * URL page publique d’affichage (ex. Gares & Connexions).
+   * null si non renseigné.
+   */
+  displayUrl: string | null;
   updatedAt: string;
 }
 
 export interface StationUpsertBody {
   externalId: string;
   label: string;
+  /** URL affichage gare ; `""` ou omis → null */
+  displayUrl?: string | null;
 }
 
 /** Compteur journalier d’appels API externes (Navitia / PRIM). */

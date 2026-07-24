@@ -102,5 +102,6 @@ CREATE TABLE IF NOT EXISTS stations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   external_id TEXT NOT NULL UNIQUE,
   label TEXT NOT NULL,
+  display_url TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

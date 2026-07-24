@@ -251,6 +251,25 @@ function AdminConsole({
     }
   }
 
+  async function seedStubHistory() {
+    try {
+      const res = await apiSend<{ ok: boolean; created: number; months: number }>(
+        "/v1/admin/debug/stub-history",
+        "POST",
+        {
+          months: 6,
+          liaisonId: stubLiaisonId || undefined,
+        },
+      );
+      setStubMsg({
+        text: `Historique stub : ${res.created} événements sur ${res.months} mois (sans notifs)`,
+        ok: true,
+      });
+    } catch {
+      setStubMsg({ text: "Échec simulation historique", ok: false });
+    }
+  }
+
   async function addLiaison() {
     setLiaisonActionMsg(null);
     try {
@@ -526,6 +545,19 @@ function AdminConsole({
           </label>
           <button type="button" onClick={() => void injectStub()}>
             Injecter événement stub
+          </button>
+          <hr className="admin-sep" />
+          <p className="muted">
+            Remplit ~6 mois d’événements stub (retards / suppressions) pour la
+            heatmap et les stats. <strong>Sans notifications</strong>. Idempotent
+            si relancé.
+          </p>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void seedStubHistory()}
+          >
+            Simuler 6 mois d’historique stub
           </button>
           {stubMsg && (
             <p className={stubMsg.ok ? "ok" : "error"}>{stubMsg.text}</p>

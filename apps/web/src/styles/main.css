@@ -779,7 +779,7 @@ button.danger-action:disabled {
 
 .stations-items li {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   gap: 0.35rem;
   align-items: stretch;
 }
@@ -811,8 +811,31 @@ button.danger-action:disabled {
   word-break: break-all;
 }
 
+.stations-item-link,
 .stations-item-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0.4rem;
+  text-decoration: none;
+}
+
+.stations-display-preview {
+  margin: -0.35rem 0 0.75rem;
+}
+
+.stations-display-preview a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--accent);
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-decoration: none;
+}
+
+.stations-display-preview a:hover {
+  text-decoration: underline;
 }
 
 @media (max-width: 800px) {
@@ -956,6 +979,8 @@ button.danger-action:disabled {
   align-items: flex-start;
   gap: 1rem;
   margin-bottom: 0.5rem;
+  position: relative;
+  z-index: 40;
 }
 
 .dash-head-actions {
@@ -968,6 +993,11 @@ button.danger-action:disabled {
 
 .liaison-scope {
   position: relative;
+  z-index: 1;
+}
+
+.liaison-scope.is-open {
+  z-index: 50;
 }
 
 .liaison-scope-trigger {
@@ -1035,7 +1065,7 @@ button.danger-action:disabled {
   position: absolute;
   right: 0;
   top: calc(100% + 0.5rem);
-  z-index: 30;
+  z-index: 60;
   min-width: min(22rem, 86vw);
   margin: 0;
   padding: 0.55rem;
@@ -1663,19 +1693,19 @@ button.danger-action:disabled {
 }
 
 .heatmap-cell.level-1 {
-  background: #c6e8d8;
+  background: #9be9a8;
 }
 
 .heatmap-cell.level-2 {
-  background: #7dcfb0;
+  background: #d4e157;
 }
 
 .heatmap-cell.level-3 {
-  background: #2fa87c;
+  background: #fb8c00;
 }
 
 .heatmap-cell.level-4 {
-  background: #0a6b52;
+  background: #e53935;
 }
 
 .heatmap-cell.level-empty {
@@ -1799,6 +1829,12 @@ td {
 .debug {
   margin-top: 1rem;
   border-style: dashed;
+}
+
+.admin-sep {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 1rem 0;
 }
 
 section.card {

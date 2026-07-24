@@ -122,11 +122,23 @@ function emptyLeg(
   };
 }
 
+function normalizeDisplayUrl(value: string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const trimmed = String(value).trim();
+  return trimmed === "" ? null : trimmed;
+}
+
 function mapStation(row: Record<string, unknown>): Station {
+  const rawUrl = row.display_url;
+  const displayUrl =
+    rawUrl === null || rawUrl === undefined || String(rawUrl).trim() === ""
+      ? null
+      : String(rawUrl).trim();
   return {
     id: String(row.id),
     externalId: String(row.external_id),
     label: String(row.label),
+    displayUrl,
     updatedAt: new Date(String(row.updated_at)).toISOString(),
   };
 }
@@ -990,7 +1002,7 @@ export class PgStore {
     };
   }
 
-  /** Compteurs journaliers (Europe/Paris) sur ~53 semaines pour la heatmap. */
+  /** Compteurs journaliers retards (Europe/Paris) sur ~53 semaines pour la heatmap. */
   async activityHeatmapDays(
     sinceIso: string,
     liaisonId?: string,
@@ -1003,7 +1015,16 @@ export class PgStore {
     const res = await pool.query(
       `SELECT
          to_char((detected_at AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD') AS day,
-         COUNT(*)::int AS count
+         COALESCE(
+           SUM(
+             CASE
+               WHEN kind = 'delay' THEN GREATEST(COALESCE(delay_minutes, 1), 1)
+               WHEN kind = 'cancellation' THEN 60
+               ELSE 0
+             END
+           ),
+           0
+         )::int AS count
        FROM disruption_events
        WHERE ${filter}
        GROUP BY 1
@@ -1478,6 +1499,7 @@ export class PgStore {
   async createStation(body: StationUpsertBody): Promise<Station> {
     const externalId = String(body.externalId ?? "").trim();
     const label = String(body.label ?? "").trim();
+    const displayUrl = normalizeDisplayUrl(body.displayUrl);
     if (!externalId || !label) {
       throw Object.assign(new Error("label and externalId are required"), {
         statusCode: 400,
@@ -1486,10 +1508,10 @@ export class PgStore {
     const pool = getPool();
     try {
       const res = await pool.query(
-        `INSERT INTO stations (external_id, label, updated_at)
-         VALUES ($1, $2, now())
+        `INSERT INTO stations (external_id, label, display_url, updated_at)
+         VALUES ($1, $2, $3, now())
          RETURNING *`,
-        [externalId, label],
+        [externalId, label, displayUrl],
       );
       return mapStation(res.rows[0]);
     } catch (err) {
@@ -1514,6 +1536,10 @@ export class PgStore {
         : current.externalId;
     const label =
       body.label !== undefined ? String(body.label).trim() : current.label;
+    const displayUrl =
+      body.displayUrl !== undefined
+        ? normalizeDisplayUrl(body.displayUrl)
+        : current.displayUrl;
     if (!externalId || !label) {
       throw Object.assign(new Error("label and externalId are required"), {
         statusCode: 400,
@@ -1523,10 +1549,10 @@ export class PgStore {
     try {
       const res = await pool.query(
         `UPDATE stations
-         SET external_id = $2, label = $3, updated_at = now()
+         SET external_id = $2, label = $3, display_url = $4, updated_at = now()
          WHERE id = $1
          RETURNING *`,
-        [id, externalId, label],
+        [id, externalId, label, displayUrl],
       );
       return mapStation(res.rows[0]);
     } catch (err) {

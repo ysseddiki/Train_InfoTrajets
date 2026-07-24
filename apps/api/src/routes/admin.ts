@@ -10,7 +10,7 @@ import type {
   StationUpsertBody,
 } from "@sncf-alerts/shared";
 import { probeIngestCredential } from "../adapters/ingest-probe.js";
-import { injectStubEvent } from "../adapters/ingest.js";
+import { injectStubEvent, seedStubHistory } from "../adapters/ingest.js";
 import {
   clearSessionCookie,
   requireAdmin,
@@ -447,5 +447,16 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (!(await requireAdmin(req, reply))) return;
     await injectStubEvent(req.body ?? {});
     return { ok: true };
+  });
+
+  app.post<{
+    Body?: {
+      months?: number;
+      liaisonId?: string;
+    };
+  }>("/v1/admin/debug/stub-history", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const result = await seedStubHistory(req.body ?? {});
+    return { ok: true, ...result };
   });
 }
