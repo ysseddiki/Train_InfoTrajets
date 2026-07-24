@@ -10,6 +10,7 @@ alwaysApply: false
 - UI only : Dashboard + Admin + Notifications ; pas de logique d’ingest ni d’envoi mail/Teams
 - Tous les appels passent par `src/api/client.ts` vers `/v1`
 - Router : `HashRouter` (`#/`, `#/notifications`, `#/admin`)
+- Shell : `Layout` = sidebar + contenu ; pas de header top global
 - Si l’API est down : afficher une erreur claire, pas de faux résultats en prod
 - Ne jamais hardcoder secrets ou webhooks
 - Auth admin : cookie httpOnly (`credentials: "include"`)

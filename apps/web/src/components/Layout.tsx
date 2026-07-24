@@ -10,32 +10,39 @@ const NAV = [
 
 export function Layout() {
   return (
-    <>
-      <header className="top">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden />
-          <span className="brand-name">SNCF-Alerts</span>
+    <div className="app-shell">
+      <aside className="sidebar" aria-label="Navigation">
+        <div className="sidebar-top">
+          <div className="brand sidebar-brand">
+            <span className="brand-mark" aria-hidden />
+            <span className="brand-name">SNCF-Alerts</span>
+          </div>
+          <nav className="sidebar-nav">
+            {NAV.map(({ to, label, icon: Icon, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `sidebar-link${isActive ? " sidebar-link-active" : ""}`
+                }
+                title={label}
+              >
+                <Icon size={20} strokeWidth={2} aria-hidden />
+                <span className="nav-label">{label}</span>
+              </NavLink>
+            ))}
+          </nav>
         </div>
-        <ApiStatusLine />
-        <nav className="top-nav" aria-label="Navigation principale">
-          {NAV.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `nav-item${isActive ? " nav-item-active" : ""}`
-              }
-            >
-              <Icon size={18} strokeWidth={2} aria-hidden />
-              <span className="nav-label">{label}</span>
-            </NavLink>
-          ))}
-        </nav>
-      </header>
-      <main className="main-wide">
-        <Outlet />
-      </main>
-    </>
+        <div className="sidebar-foot">
+          <ApiStatusLine />
+        </div>
+      </aside>
+      <div className="shell-main">
+        <main className="shell-content">
+          <Outlet />
+        </main>
+      </div>
+    </div>
   );
 }

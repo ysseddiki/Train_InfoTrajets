@@ -12,5 +12,5 @@ alwaysApply: false
 - Stats / activité filtrées côté API (`overview` / `events` / `deliveries` + `liaisonId`)
 - Deux cartes sens (`outbound` / `inbound`) par liaison ; plusieurs liaisons possibles
 - Stack React : `DashboardPage` + `LiaisonScopePicker`, `JourneyCard`, stats, tables
-- Header : marque + nav icônes + statut API discret
+- Shell : sidebar sombre (`Layout`) + zone contenu ; statut API en bas de sidebar
 - Ne jamais inventer de données si l’API est down

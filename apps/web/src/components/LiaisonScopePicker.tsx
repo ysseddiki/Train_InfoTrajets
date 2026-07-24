@@ -1,4 +1,4 @@
-import { ChevronDown, Route } from "lucide-react";
+import { ChevronDown, Layers, TrainFront } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { LiaisonOption } from "@sncf-alerts/shared";
 
@@ -17,10 +17,12 @@ export function LiaisonScopePicker({
   const rootRef = useRef<HTMLDivElement>(null);
   const listId = useId();
 
+  const selected =
+    value === "all" ? null : (options.find((o) => o.id === value) ?? null);
   const label =
     value === "all"
       ? "Toutes les liaisons"
-      : (options.find((o) => o.id === value)?.displayName ?? "Liaison");
+      : (selected?.displayName ?? "Liaison");
 
   useEffect(() => {
     if (!open) return;
@@ -39,7 +41,7 @@ export function LiaisonScopePicker({
   }, [open]);
 
   return (
-    <div className="liaison-scope" ref={rootRef}>
+    <div className={`liaison-scope${open ? " is-open" : ""}`} ref={rootRef}>
       <button
         type="button"
         className="liaison-scope-trigger"
@@ -48,9 +50,20 @@ export function LiaisonScopePicker({
         aria-controls={listId}
         onClick={() => setOpen((v) => !v)}
       >
-        <Route size={16} strokeWidth={2} aria-hidden />
+        <span className="liaison-scope-avatar" aria-hidden>
+          {value === "all" ? (
+            <Layers size={15} strokeWidth={2} />
+          ) : (
+            <TrainFront size={15} strokeWidth={2} />
+          )}
+        </span>
         <span className="liaison-scope-label">{label}</span>
-        <ChevronDown size={16} strokeWidth={2} aria-hidden />
+        <ChevronDown
+          size={16}
+          strokeWidth={2}
+          className="liaison-scope-chevron"
+          aria-hidden
+        />
       </button>
       {open && (
         <ul
@@ -60,30 +73,49 @@ export function LiaisonScopePicker({
           aria-label="Choisir une liaison"
         >
           {options.map((o) => (
-            <li key={o.id} role="option" aria-selected={value === o.id}>
+            <li key={o.id} role="presentation">
               <button
                 type="button"
-                className={value === o.id ? "is-selected" : undefined}
+                role="option"
+                aria-selected={value === o.id}
+                className={`liaison-scope-option${value === o.id ? " is-selected" : ""}`}
                 onClick={() => {
                   onChange(o.id);
                   setOpen(false);
                 }}
               >
-                <span>{o.displayName}</span>
-                {o.isDefault && <span className="liaison-scope-badge">défaut</span>}
+                <span className="liaison-scope-option-main">
+                  <span className="liaison-scope-avatar sm" aria-hidden>
+                    <TrainFront size={14} strokeWidth={2} />
+                  </span>
+                  <span className="liaison-scope-option-text">{o.displayName}</span>
+                </span>
+                {o.isDefault && (
+                  <span className="liaison-scope-badge">Défaut</span>
+                )}
               </button>
             </li>
           ))}
-          <li role="option" aria-selected={value === "all"}>
+          <li className="liaison-scope-sep" role="separator" aria-hidden />
+          <li role="presentation">
             <button
               type="button"
-              className={value === "all" ? "is-selected" : undefined}
+              role="option"
+              aria-selected={value === "all"}
+              className={`liaison-scope-option${value === "all" ? " is-selected" : ""}`}
               onClick={() => {
                 onChange("all");
                 setOpen(false);
               }}
             >
-              Toutes les liaisons
+              <span className="liaison-scope-option-main">
+                <span className="liaison-scope-avatar sm" aria-hidden>
+                  <Layers size={14} strokeWidth={2} />
+                </span>
+                <span className="liaison-scope-option-text">
+                  Toutes les liaisons
+                </span>
+              </span>
             </button>
           </li>
         </ul>
