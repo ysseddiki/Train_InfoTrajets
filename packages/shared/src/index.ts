@@ -140,6 +140,13 @@ export interface DashboardPeriodStats {
   };
 }
 
+/** Jour calendaire (Europe/Paris) pour heatmap d’activité */
+export interface DashboardHeatmapDay {
+  /** YYYY-MM-DD */
+  date: string;
+  count: number;
+}
+
 export interface LiaisonStatusCard {
   id: string;
   name: string;
@@ -180,6 +187,8 @@ export interface DashboardOverview {
   /** Derniers événements / livraisons pour le panneau activité */
   recentEvents: DisruptionEventDto[];
   recentDeliveries: AlertDeliveryDto[];
+  /** Activité journalière (~53 semaines, TZ Paris) pour heatmap */
+  activityHeatmap: DashboardHeatmapDay[];
 }
 
 export interface JourneyStatusCard {

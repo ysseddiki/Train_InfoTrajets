@@ -17,7 +17,7 @@ export function ApiStatusLine() {
       role="status"
     >
       <span className="api-status-dot" aria-hidden />
-      <span>{label}</span>
+      <span className="api-status-label">{label}</span>
     </p>
   );
 }

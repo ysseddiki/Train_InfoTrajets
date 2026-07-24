@@ -1,8 +1,14 @@
 import type { DashboardOverview } from "@sncf-alerts/shared";
 import { RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+} from "react";
 import { Link } from "react-router-dom";
 import { apiGet } from "../api/client";
+import { ActivityHeatmap } from "../components/ActivityHeatmap";
 import {
   DeliveriesActivityFeed,
   EventsActivityFeed,
@@ -123,9 +129,13 @@ export function DashboardPage() {
     data.scope === "all" ? "toutes les liaisons" : "liaison sélectionnée";
 
   return (
-    <div className="page-enter dash-page">
-      <div className="dash-head">
-        <div>
+    <div
+      className={`page-enter dash-page${loading ? " is-refreshing" : ""}`}
+    >
+      <div
+        className="dash-head dash-reveal"
+        style={{ "--reveal-delay": "0ms" } as CSSProperties}
+      >        <div>
           <p className="eyebrow">Ops · lecture</p>
           <h1>Dashboard</h1>
           <p className="lede">
@@ -143,14 +153,18 @@ export function DashboardPage() {
             className="btn-icon secondary"
             onClick={() => void load(scope)}
             disabled={loading}
+            aria-busy={loading}
           >
             <RefreshCw size={16} className={loading ? "spin" : undefined} />
-            Actualiser
+            <span className="btn-label">Actualiser</span>
           </button>
         </div>
       </div>
 
-      <section className="dash-section">
+      <section
+        className="dash-section dash-reveal"
+        style={{ "--reveal-delay": "60ms" } as CSSProperties}
+      >
         <h2 className="dash-section-title">Statut en cours</h2>
         <div className="liaison-dash-list">
           {data.liaisons.map((liaison) => (
@@ -170,7 +184,10 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <section className="dash-section">
+      <section
+        className="dash-section dash-reveal"
+        style={{ "--reveal-delay": "120ms" } as CSSProperties}
+      >
         <h2 className="dash-section-title">Indicateurs 24 h</h2>
         <p className="muted section-hint">Vue rapide · {scopeHint}</p>
         <div className="stat-card-grid">
@@ -206,20 +223,30 @@ export function DashboardPage() {
             label="7 jours"
             value={p7.events}
             hint={`${p7.delays} retards · ${p7.deliveriesSent} notifs`}
+            compact
           />
           <StatCard
             label="30 jours"
             value={p30.events}
             hint={`${p30.delays} retards · ${p30.deliveriesSent} notifs`}
+            compact
           />
           <StatCard
             label="Retard max 24 h"
             value={p24.maxDelayMinutes != null ? `${p24.maxDelayMinutes} min` : "—"}
+            compact
           />
         </div>
+        <ActivityHeatmap
+          days={data.activityHeatmap ?? []}
+          scopeHint={scopeHint}
+        />
       </section>
 
-      <section className="dash-section">
+      <section
+        className="dash-section dash-reveal"
+        style={{ "--reveal-delay": "180ms" } as CSSProperties}
+      >
         <div className="dash-section-head">
           <h2 className="dash-section-title">Activité récente</h2>
           <Link to="/notifications">Historique complet →</Link>

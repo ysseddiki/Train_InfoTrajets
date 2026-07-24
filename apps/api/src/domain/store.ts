@@ -3,6 +3,7 @@ import type {
   AlertDeliveryDto,
   ApiQuotaStatus,
   BoardTrafficStatus,
+  DashboardHeatmapDay,
   DashboardOverview,
   DashboardPeriodStats,
   DeliveryChannel,
@@ -989,6 +990,32 @@ export class PgStore {
     };
   }
 
+  /** Compteurs journaliers (Europe/Paris) sur ~53 semaines pour la heatmap. */
+  async activityHeatmapDays(
+    sinceIso: string,
+    liaisonId?: string,
+  ): Promise<DashboardHeatmapDay[]> {
+    const pool = getPool();
+    const filter = liaisonId
+      ? `detected_at >= $1 AND liaison_id = $2`
+      : `detected_at >= $1`;
+    const params = liaisonId ? [sinceIso, liaisonId] : [sinceIso];
+    const res = await pool.query(
+      `SELECT
+         to_char((detected_at AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD') AS day,
+         COUNT(*)::int AS count
+       FROM disruption_events
+       WHERE ${filter}
+       GROUP BY 1
+       ORDER BY 1`,
+      params,
+    );
+    return res.rows.map((row) => ({
+      date: String(row.day),
+      count: Number(row.count ?? 0),
+    }));
+  }
+
   /**
    * @param liaisonQuery `all` = global ; uuid = scoped ; undefined = default liaison
    */
@@ -1038,8 +1065,9 @@ export class PgStore {
     const since24h = new Date(now - 24 * 3600 * 1000).toISOString();
     const since7d = new Date(now - 7 * 24 * 3600 * 1000).toISOString();
     const since30d = new Date(now - 30 * 24 * 3600 * 1000).toISOString();
+    const sinceHeatmap = new Date(now - 53 * 7 * 24 * 3600 * 1000).toISOString();
 
-    const [metaRes, last24h, last7d, last30d] = await Promise.all([
+    const [metaRes, last24h, last7d, last30d, activityHeatmap] = await Promise.all([
       pool.query(
         `SELECT
           (SELECT value FROM app_meta WHERE key = 'last_ingest_at') AS last_ingest,
@@ -1049,6 +1077,7 @@ export class PgStore {
       this.periodStats(since24h, filterLiaisonId),
       this.periodStats(since7d, filterLiaisonId),
       this.periodStats(since30d, filterLiaisonId),
+      this.activityHeatmapDays(sinceHeatmap, filterLiaisonId),
     ]);
 
     const s = metaRes.rows[0] ?? {};
@@ -1138,6 +1167,7 @@ export class PgStore {
       },
       recentEvents,
       recentDeliveries,
+      activityHeatmap,
     };
   }
 
