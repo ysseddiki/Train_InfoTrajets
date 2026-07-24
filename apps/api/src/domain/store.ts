@@ -536,7 +536,7 @@ export class PgStore {
 
   /**
    * Met à jour secrets et/ou provider actif.
-   * Les nouveaux tokens MUST avoir passé un probe OK avant appel (fait côté route).
+   * Un probe est fait côté route pour le statut OK/KO (n’empêche pas la persistance).
    */
   async updateIngestConfig(
     body: IngestConfigUpdate,

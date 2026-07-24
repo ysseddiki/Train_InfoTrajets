@@ -94,7 +94,7 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 
 - Secrets Navitia / PRIM : **write-only** ; `tokenPreview` = 5 premiers caractères
 - `POST /v1/admin/ingest/probe` : test API sans forcément activer
-- À l’enregistrement d’un token (ou à l’activation d’un provider distant), le serveur MUST appeler l’API cible ; en cas d’échec MUST NOT persister le token / MUST NOT activer le provider, et MUST renvoyer une erreur avec le détail du check
+- À l’enregistrement d’un token (ou à l’activation d’un provider distant), le serveur MUST appeler l’API cible et MUST persister le résultat du check (`lastCheckOk` / détail). MUST NOT bloquer la sauvegarde ni l’activation si le check échoue ; les données MAY rester absentes tant que l’API cible échoue
 
 #### Scenario: Trois slots indépendants
 
@@ -106,4 +106,6 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 
 - **GIVEN** un admin authentifié
 - **WHEN** il envoie `PUT /v1/admin/ingest` avec un `navitiaToken` rejeté par `api.sncf.com`
-- **THEN** l’API retourne `400` et le secret n’est pas mis à jour
+- **THEN** le secret est quand même persisté
+- **AND** le check stocké indique un échec (`lastCheckOk = false`)
+- **AND** l’API ne renvoie pas `400` pour cause de probe

@@ -167,7 +167,14 @@ export function IngestConfigPanel() {
         activeProvider: provider,
       });
       setConfig(next);
-      setMsg({ text: `Provider actif : ${LABELS[provider]}`, ok: true });
+      const slot = next.providers[provider];
+      const checkOk = provider === "stub" || slot.lastCheckOk === true;
+      setMsg({
+        text: checkOk
+          ? `Provider actif : ${LABELS[provider]}`
+          : `Provider actif : ${LABELS[provider]} — check KO (${slot.lastCheckDetail ?? "API indisponible"}). Pas de données tant que le check échoue.`,
+        ok: checkOk,
+      });
     } catch (err) {
       setMsg({ text: errorMessage(err), ok: false });
       try {
@@ -194,9 +201,13 @@ export function IngestConfigPanel() {
         body,
       );
       setConfig(next);
+      const slot = next.providers[provider];
+      const checkOk = slot.lastCheckOk === true;
       setMsg({
-        text: `${LABELS[provider]} : token enregistré (check API OK)`,
-        ok: true,
+        text: checkOk
+          ? `${LABELS[provider]} : token enregistré (check API OK)`
+          : `${LABELS[provider]} : token enregistré — check KO (${slot.lastCheckDetail ?? "API indisponible"}). Pas de données tant que le check échoue.`,
+        ok: checkOk,
       });
     } catch (err) {
       setMsg({ text: errorMessage(err), ok: false });
@@ -267,8 +278,10 @@ export function IngestConfigPanel() {
         <p className="muted">
           Configure chaque provider indépendamment, puis choisis celui{" "}
           <strong>actif</strong> pour le poll. Les tokens sont write-only : seuls
-          les 5 premiers caractères restent visibles. Enregistrer un token
-          déclenche un check API (refus si échec).
+          les 5 premiers caractères restent visibles. Un check API est lancé à
+          l’enregistrement / activation (statut OK/KO affiché) mais{" "}
+          <strong>n’empêche pas</strong> la sauvegarde : si KO, pas de données
+          remontées tant que l’API ne répond pas.
         </p>
         <p>
           Actif : <strong>{LABELS[config.activeProvider]}</strong>

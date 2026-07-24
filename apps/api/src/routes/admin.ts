@@ -316,35 +316,16 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       const navitiaToken = body.navitiaToken?.trim() || undefined;
       const primApiKey = body.primApiKey?.trim() || undefined;
 
-      // Check API before saving new credentials
+      // Probe for status display — never blocks save/activation (data simply won't flow if KO)
       if (navitiaToken) {
         const probe = await probeIngestCredential("navitia", navitiaToken);
         await store.saveIngestCheck(probe);
-        if (!probe.ok) {
-          return reply.code(400).send({
-            type: "/errors/ingest-probe",
-            title: "Navitia token rejeté",
-            status: 400,
-            detail: probe.detail,
-            probe,
-          });
-        }
       }
       if (primApiKey) {
         const probe = await probeIngestCredential("prim", primApiKey);
         await store.saveIngestCheck(probe);
-        if (!probe.ok) {
-          return reply.code(400).send({
-            type: "/errors/ingest-probe",
-            title: "Clé PRIM rejetée",
-            status: 400,
-            detail: probe.detail,
-            probe,
-          });
-        }
       }
 
-      // Activating a remote provider requires a working stored credential
       if (body.activeProvider === "navitia" || body.activeProvider === "prim") {
         const tokenForActive =
           body.activeProvider === "navitia"
@@ -355,15 +336,6 @@ export async function registerAdminRoutes(app: FastifyInstance) {
           tokenForActive,
         );
         await store.saveIngestCheck(probe);
-        if (!probe.ok) {
-          return reply.code(400).send({
-            type: "/errors/ingest-probe",
-            title: `Impossible d’activer ${body.activeProvider}`,
-            status: 400,
-            detail: probe.detail,
-            probe,
-          });
-        }
       }
 
       if (body.activeProvider === "stub") {
