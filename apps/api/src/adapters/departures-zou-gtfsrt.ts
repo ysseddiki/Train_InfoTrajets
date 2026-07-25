@@ -6,7 +6,9 @@ import { matchesDestinationFilter } from "../domain/matching.js";
 import {
   getZouStaticIndex,
   resolveTripMeta,
+  staticTripServesUicPair,
   stopNameForId,
+  tripStopIds,
   type ZouStaticIndex,
 } from "./zou-gtfs-static.js";
 import {
@@ -15,8 +17,9 @@ import {
   stopIdMatchesUic,
 } from "./zou-ids.js";
 
-const DEFAULT_TRIPS_URL =
-  "https://proxy-data.zou.maregionsud.fr/GTFS-RT/GTFS-RT_trips_ZOU_express.pb";
+const DEFAULT_TRIPS_URLS = [
+  "https://proxy-data.zou.maregionsud.fr/GTFS-RT/GTFS-RT_trips_ZOU_express.pb",
+];
 const DEFAULT_SA_URL =
   "https://proxy-data.zou.maregionsud.fr/GTFS-RT/GTFS-RT_SA_ZOU_express.pb";
 
@@ -35,6 +38,7 @@ type CachedFeed = {
   at: number;
   feed: InstanceType<typeof FeedMessage>;
   httpStatus: number;
+  sources: string[];
 };
 
 let tripsFeedCache: CachedFeed | null = null;
@@ -58,8 +62,17 @@ export type ZouServiceAlertHit = {
   kind: "delay" | "cancellation";
 };
 
-function tripsUrl(): string {
-  return process.env.ZOU_GTFSRT_TRIPS_URL?.trim() || DEFAULT_TRIPS_URL;
+function tripsUrls(): string[] {
+  const multi = process.env.ZOU_GTFSRT_TRIPS_URLS?.trim();
+  if (multi) {
+    return multi
+      .split(",")
+      .map((u) => u.trim())
+      .filter(Boolean);
+  }
+  const single = process.env.ZOU_GTFSRT_TRIPS_URL?.trim();
+  if (single) return [single];
+  return [...DEFAULT_TRIPS_URLS];
 }
 
 function saUrl(): string {
@@ -189,31 +202,58 @@ async function getTripsFeed(): Promise<CachedFeed> {
   ) {
     return tripsFeedCache;
   }
-  try {
-    const { feed, httpStatus } = await fetchFeedRaw(tripsUrl());
-    tripsFeedCache = { at: Date.now(), feed, httpStatus };
-    appendIngestApiLog({
-      source: "zou",
-      title: "GTFS-RT TripUpdates (feed brut)",
-      httpStatus,
-      ok: true,
-      lines: formatTripUpdateLines(feed),
-    });
-    return tripsFeedCache;
-  } catch (err) {
-    const httpStatus =
-      err && typeof err === "object" && "httpStatus" in err
-        ? Number((err as { httpStatus: number }).httpStatus)
-        : null;
-    appendIngestApiLog({
-      source: "zou",
-      title: "GTFS-RT TripUpdates (feed brut)",
-      httpStatus,
-      ok: false,
-      lines: [err instanceof Error ? err.message : String(err)],
-    });
-    throw err;
+  const urls = tripsUrls();
+  const entities: InstanceType<typeof FeedMessage>["entity"] = [];
+  const sources: string[] = [];
+  let lastStatus = 200;
+  const errors: string[] = [];
+
+  for (const url of urls) {
+    try {
+      const { feed, httpStatus } = await fetchFeedRaw(url);
+      lastStatus = httpStatus;
+      sources.push(url.split("/").pop() ?? url);
+      for (const e of feed.entity ?? []) {
+        entities.push(e);
+      }
+    } catch (err) {
+      errors.push(err instanceof Error ? err.message : String(err));
+    }
   }
+
+  if (entities.length === 0 && errors.length > 0) {
+    appendIngestApiLog({
+      source: "zou",
+      title: "GTFS-RT TripUpdates (feed brut)",
+      httpStatus: null,
+      ok: false,
+      lines: errors,
+    });
+    throw new Error(errors[0] ?? "Aucun feed TripUpdates ZOU");
+  }
+
+  const feed = {
+    header: { gtfsRealtimeVersion: "2.0", timestamp: Date.now() / 1000 },
+    entity: entities,
+  } as InstanceType<typeof FeedMessage>;
+  tripsFeedCache = {
+    at: Date.now(),
+    feed,
+    httpStatus: lastStatus,
+    sources,
+  };
+  appendIngestApiLog({
+    source: "zou",
+    title: "GTFS-RT TripUpdates (feed brut)",
+    httpStatus: lastStatus,
+    ok: true,
+    lines: [
+      `sources=${sources.join(" + ") || "—"}`,
+      ...formatTripUpdateLines(feed),
+      ...(errors.length ? [`partial errors: ${errors.join(" | ")}`] : []),
+    ],
+  });
+  return tripsFeedCache;
 }
 
 async function getSaFeed(): Promise<CachedFeed> {
@@ -222,7 +262,12 @@ async function getSaFeed(): Promise<CachedFeed> {
   }
   try {
     const { feed, httpStatus } = await fetchFeedRaw(saUrl());
-    saFeedCache = { at: Date.now(), feed, httpStatus };
+    saFeedCache = {
+      at: Date.now(),
+      feed,
+      httpStatus,
+      sources: [saUrl().split("/").pop() ?? "sa"],
+    };
     appendIngestApiLog({
       source: "zou",
       title: "GTFS-RT Service Alerts (feed brut)",
@@ -267,7 +312,9 @@ function directionTextForTrip(
 }
 
 function tripServesDestination(
+  index: ZouStaticIndex,
   journey: JourneyConfig,
+  tripId: string,
   directionText: string,
   stopIds: string[],
   originUic: string,
@@ -279,8 +326,20 @@ function tripServesDestination(
     if (originIdx >= 0 && destIdx >= 0) {
       return destIdx > originIdx;
     }
+    // RT incomplet : parcours GTFS static (stop_times)
+    if (staticTripServesUicPair(index, tripId, originUic, destUic)) {
+      return true;
+    }
   }
-  return matchesDestinationFilter(journey, directionText, null);
+  if (matchesDestinationFilter(journey, directionText, null)) return true;
+  if (matchesCorridorAllowlist(journey, directionText)) return true;
+  // Headsign / stops static names
+  const staticStops = tripStopIds(index, tripId);
+  for (const sid of staticStops) {
+    const name = stopNameForId(index, sid);
+    if (name && matchesDestinationFilter(journey, name, null)) return true;
+  }
+  return false;
 }
 
 /**
@@ -330,7 +389,9 @@ export async function fetchZouDeparturesForJourney(
     const directionText = directionTextForTrip(index, tripId, stopIds);
     if (
       !tripServesDestination(
+        index,
         journey,
+        tripId,
         directionText,
         stopIds,
         originUic,

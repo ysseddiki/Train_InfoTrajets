@@ -18,7 +18,7 @@ alwaysApply: true
 - `apps/web` = client React (UI only) → appelle `/v1` uniquement
 - `apps/api` = serveur : métier, ingest, matching, notifiers, secrets
 - `packages/shared` = types sans secrets
-- Le client ne doit **jamais** contenir clés PRIM/Navitia, SMTP password, webhook Teams
+- Le client ne doit **jamais** contenir clés Navitia, SMTP password, webhook Teams
 
 ## Sécurité / privacy
 

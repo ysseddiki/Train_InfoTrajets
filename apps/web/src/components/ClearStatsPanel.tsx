@@ -19,8 +19,8 @@ const EVENT_SOURCES: { id: IngestEventSource; label: string; hint: string }[] =
     },
     {
       id: "prim",
-      label: "Événements PRIM",
-      hint: "Source Île-de-France Mobilités (si utilisée)",
+      label: "Événements PRIM (legacy)",
+      hint: "Ancienne source IDF — purge historique seulement",
     },
     {
       id: "zou",

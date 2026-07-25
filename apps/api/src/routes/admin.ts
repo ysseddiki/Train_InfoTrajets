@@ -7,6 +7,7 @@ import type {
   IngestProbeRequest,
   IngestProviderId,
   RecipientsConfig,
+  SmtpConfigUpdate,
   StationUpsertBody,
 } from "@sncf-alerts/shared";
 import { probeIngestCredential } from "../adapters/ingest-probe.js";
@@ -30,7 +31,7 @@ import {
 import { store } from "../domain/store.js";
 
 function isIngestProvider(value: unknown): value is IngestProviderId {
-  return value === "stub" || value === "navitia" || value === "prim";
+  return value === "stub" || value === "navitia";
 }
 
 export async function registerAdminRoutes(app: FastifyInstance) {
@@ -270,6 +271,25 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     return store.getSmtpPublic();
   });
 
+  app.put<{ Body: SmtpConfigUpdate }>(
+    "/v1/admin/channels/smtp",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      const body = req.body ?? {};
+      if (body.port !== undefined) {
+        const p = Number(body.port);
+        if (!Number.isFinite(p) || p < 1 || p > 65535) {
+          return reply.code(400).send({
+            type: "/errors/validation",
+            title: "port must be 1–65535",
+            status: 400,
+          });
+        }
+      }
+      return store.updateSmtpConfig(body);
+    },
+  );
+
   app.get("/v1/admin/channels/teams", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     return store.getTeamsPublic();
@@ -288,7 +308,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       if (!isIngestProvider(provider)) {
         return reply.code(400).send({
           type: "/errors/validation",
-          title: "provider must be stub | navitia | prim",
+          title: "provider must be stub | navitia",
           status: 400,
         });
       }
@@ -313,33 +333,22 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       ) {
         return reply.code(400).send({
           type: "/errors/validation",
-          title: "activeProvider must be stub | navitia | prim",
+          title: "activeProvider must be stub | navitia",
           status: 400,
         });
       }
 
       const navitiaToken = body.navitiaToken?.trim() || undefined;
-      const primApiKey = body.primApiKey?.trim() || undefined;
 
-      // Probe for status display — never blocks save/activation (data simply won't flow if KO)
       if (navitiaToken) {
         const probe = await probeIngestCredential("navitia", navitiaToken);
         await store.saveIngestCheck(probe);
       }
-      if (primApiKey) {
-        const probe = await probeIngestCredential("prim", primApiKey);
-        await store.saveIngestCheck(probe);
-      }
 
-      if (body.activeProvider === "navitia" || body.activeProvider === "prim") {
+      if (body.activeProvider === "navitia") {
         const tokenForActive =
-          body.activeProvider === "navitia"
-            ? navitiaToken || (await store.getIngestSecret("navitia"))
-            : primApiKey || (await store.getIngestSecret("prim"));
-        const probe = await probeIngestCredential(
-          body.activeProvider,
-          tokenForActive,
-        );
+          navitiaToken || (await store.getIngestSecret("navitia"));
+        const probe = await probeIngestCredential("navitia", tokenForActive);
         await store.saveIngestCheck(probe);
       }
 
@@ -351,7 +360,6 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       return store.updateIngestConfig({
         activeProvider: body.activeProvider,
         navitiaToken,
-        primApiKey,
         zouFailoverEnabled: body.zouFailoverEnabled,
       });
     },
@@ -446,7 +454,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (raw && raw !== "all" && !isIngestApiLogSource(raw)) {
       return reply.code(400).send({
         type: "/errors/validation",
-        title: "source must be navitia | zou | stub | prim | all",
+        title: "source must be navitia | zou | stub | all",
         status: 400,
       });
     }
@@ -466,7 +474,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (raw && raw !== "all" && !isIngestApiLogSource(raw)) {
       return reply.code(400).send({
         type: "/errors/validation",
-        title: "source must be navitia | zou | stub | prim | all",
+        title: "source must be navitia | zou | stub | all",
         status: 400,
       });
     }

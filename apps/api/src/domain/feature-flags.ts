@@ -3,7 +3,7 @@ import { store } from "./store.js";
 
 /**
  * Interrupteurs ops (feature flags v1) :
- * provider stub | navitia | prim + mode process.
+ * provider stub | navitia + mode process.
  * Source : Admin → Ingest (DB) + env process.
  */
 export interface FeatureFlags {

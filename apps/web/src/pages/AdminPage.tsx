@@ -2,7 +2,6 @@ import type {
   ApiQuotaStatus,
   LiaisonConfig,
   RecipientsConfig,
-  SmtpConfigPublic,
   Station,
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
@@ -32,6 +31,7 @@ import { DebugPanel } from "../components/DebugPanel";
 import { IngestConfigPanel } from "../components/IngestConfigPanel";
 import { LiaisonForm } from "../components/LiaisonForm";
 import { QuotaPanel } from "../components/QuotaPanel";
+import { SmtpConfigPanel } from "../components/SmtpConfigPanel";
 import { StationsPanel } from "../components/StationsPanel";
 import { errorMessage } from "../lib/format";
 
@@ -117,7 +117,6 @@ function AdminConsole({
   const [stations, setStations] = useState<Station[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [recipients, setRecipients] = useState<RecipientsConfig | null>(null);
-  const [smtp, setSmtp] = useState<SmtpConfigPublic | null>(null);
   const [teams, setTeams] = useState<TeamsConfigPublic | null>(null);
   const [quota, setQuota] = useState<ApiQuotaStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -144,11 +143,10 @@ function AdminConsole({
     let cancelled = false;
     void (async () => {
       try {
-        const [list, st, r, s, t, q] = await Promise.all([
+        const [list, st, r, t, q] = await Promise.all([
           apiGet<LiaisonConfig[]>("/v1/admin/liaisons"),
           apiGet<Station[]>("/v1/admin/stations"),
           apiGet<RecipientsConfig>("/v1/admin/channels/recipients"),
-          apiGet<SmtpConfigPublic>("/v1/admin/channels/smtp"),
           apiGet<TeamsConfigPublic>("/v1/admin/channels/teams"),
           apiGet<ApiQuotaStatus>("/v1/admin/quota"),
         ]);
@@ -157,7 +155,6 @@ function AdminConsole({
         setStations(st);
         setSelectedId((prev) => prev ?? list[0]?.id ?? null);
         setRecipients(r);
-        setSmtp(s);
         setTeams(t);
         setQuota(q);
       } catch (err) {
@@ -294,15 +291,19 @@ function AdminConsole({
     );
   }
 
-  if (
-    !recipients ||
-    !smtp ||
-    !teams ||
-    !quota ||
-    liaisons.length === 0 ||
-    !selected
-  ) {
+  if (!recipients || !teams || !quota) {
     return <p className="muted page-enter">Chargement…</p>;
+  }
+
+  if ((section === "liaisons" || section === "debug") && !selected) {
+    return (
+      <div className="page-enter">
+        <p className="muted">Aucune liaison — créez-en une depuis Admin.</p>
+        <button type="button" onClick={() => void addLiaison()}>
+          Ajouter une liaison
+        </button>
+      </div>
+    );
   }
 
   const active = ADMIN_SECTIONS.find((s) => s.id === section)!;
@@ -415,26 +416,7 @@ function AdminConsole({
     case "channels":
       panelBody = (
         <div className="grid">
-          <article className="card">
-            <h3>SMTP</h3>
-            <ul>
-              <li>Activé : {smtp.enabled ? "oui" : "non"}</li>
-              <li>Host : {smtp.host || "—"}</li>
-              <li>From : {smtp.fromAddress || "—"}</li>
-              <li>
-                Password : {smtp.passwordConfigured ? "configuré" : "manquant"}
-              </li>
-            </ul>
-            <p className="muted">
-              Secrets SMTP via <code>.env</code> (jamais affichés).
-            </p>
-            <button type="button" onClick={() => void testEmail()}>
-              Envoyer un test email
-            </button>
-            {emailMsg && (
-              <p className={emailMsg.ok ? "ok" : "error"}>{emailMsg.text}</p>
-            )}
-          </article>
+          <SmtpConfigPanel onTest={() => testEmail()} testMsg={emailMsg} />
           <article className="card">
             <h3>Teams</h3>
             <ul>

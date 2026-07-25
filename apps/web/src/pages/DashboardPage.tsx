@@ -32,16 +32,14 @@ function formatIngestSourceLabel(data: DashboardOverview): string {
   const base =
     provider === "navitia"
       ? "Navitia"
-      : provider === "prim"
-        ? "PRIM"
-        : provider === "stub"
-          ? "Stub"
-          : provider;
+      : provider === "stub"
+        ? "Stub"
+        : provider;
 
   if (usedZou && provider !== "stub") {
     return "ZOU (failover)";
   }
-  if (failover && (provider === "navitia" || provider === "prim")) {
+  if (failover && provider === "navitia") {
     return `${base} · ZOU secours`;
   }
   return base;
@@ -49,7 +47,6 @@ function formatIngestSourceLabel(data: DashboardOverview): string {
 
 function sourceTone(provider: string): string {
   if (provider === "navitia") return "navitia";
-  if (provider === "prim") return "prim";
   if (provider === "stub") return "stub";
   return "default";
 }

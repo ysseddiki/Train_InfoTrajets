@@ -11,7 +11,6 @@ import { errorMessage } from "../lib/format";
 const LABELS: Record<IngestProviderId, string> = {
   stub: "Stub (dev / démo)",
   navitia: "Navitia (api.sncf.com)",
-  prim: "PRIM (Île-de-France Mobilités)",
 };
 
 function CheckBadge({ slot }: { slot: IngestProviderSlotPublic }) {
@@ -208,19 +207,13 @@ export function IngestConfigPanel() {
     }
   }
 
-  async function saveToken(provider: "navitia" | "prim", token: string) {
+  async function saveToken(provider: "navitia", token: string) {
     setBusy(true);
     setMsg(null);
     try {
-      const body =
-        provider === "navitia"
-          ? { navitiaToken: token }
-          : { primApiKey: token };
-      const next = await apiSend<IngestConfigPublic>(
-        "/v1/admin/ingest",
-        "PUT",
-        body,
-      );
+      const next = await apiSend<IngestConfigPublic>("/v1/admin/ingest", "PUT", {
+        navitiaToken: token,
+      });
       setConfig(next);
       const slot = next.providers[provider];
       const checkOk = slot.lastCheckOk === true;
@@ -269,7 +262,7 @@ export function IngestConfigPanel() {
     return <p className="muted">Chargement…</p>;
   }
 
-  const order: IngestProviderId[] = ["stub", "navitia", "prim"];
+  const order: IngestProviderId[] = ["stub", "navitia"];
 
   return (
     <div className="ingest-config">
@@ -314,8 +307,8 @@ export function IngestConfigPanel() {
           >
             Trains régionaux ZOU !
           </a>
-          . Couverture TripUpdates variable selon les lignes (ex. MCN / CFP plus
-          présentes que le côtier SNC) ; les Service Alerts complètent.
+          . Matching renforcé via GTFS static (stop_times) + multi-feeds
+          TripUpdates si configurés.
         </p>
       </div>
 
@@ -327,9 +320,7 @@ export function IngestConfigPanel() {
             active={config.activeProvider === id}
             busy={busy}
             onActivate={() => void activate(id)}
-            onSaveToken={(t) =>
-              saveToken(id as "navitia" | "prim", t)
-            }
+            onSaveToken={(t) => saveToken("navitia", t)}
             onProbe={(t) => probe(id, t)}
           />
         ))}

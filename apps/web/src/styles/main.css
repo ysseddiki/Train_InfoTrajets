@@ -728,6 +728,46 @@ button.danger-action:disabled {
   min-width: 0;
 }
 
+.station-picker-combo {
+  position: relative;
+}
+
+.station-autocomplete {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0.25rem;
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow: auto;
+  background: var(--card, #fff);
+  border: 1px solid var(--border, #d0d4dc);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(20, 24, 36, 0.12);
+}
+
+.station-autocomplete button {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.station-autocomplete button:hover,
+.station-autocomplete button.is-selected {
+  background: #eef2f7;
+}
+
 .station-create-btn {
   display: inline-flex;
   align-items: center;

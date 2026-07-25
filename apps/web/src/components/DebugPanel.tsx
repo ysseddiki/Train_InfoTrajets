@@ -14,7 +14,6 @@ const SOURCES: { id: IngestApiLogSource; label: string }[] = [
   { id: "navitia", label: "Navitia" },
   { id: "zou", label: "ZOU" },
   { id: "stub", label: "Stub" },
-  { id: "prim", label: "PRIM" },
 ];
 
 function formatAt(iso: string): string {

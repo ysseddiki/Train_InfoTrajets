@@ -20,6 +20,8 @@ export type ZouStaticIndex = {
   stopName: Map<string, string>;
   /** trip_id → meta */
   trips: Map<string, ZouTripMeta>;
+  /** trip_id → stop_ids ordonnés (stop_times) */
+  tripStopIds: Map<string, string[]>;
 };
 
 let cache: ZouStaticIndex | null = null;
@@ -82,14 +84,16 @@ function buildIndex(zipBytes: Uint8Array): ZouStaticIndex {
   const files = unzipSync(zipBytes, {
     filter: (file) => {
       const n = file.name.replace(/^.*\//, "").toLowerCase();
-      return n === "stops.txt" || n === "trips.txt";
+      return (
+        n === "stops.txt" || n === "trips.txt" || n === "stop_times.txt"
+      );
     },
   });
 
   const findEntry = (base: string): Uint8Array | undefined => {
     if (files[base]) return files[base];
-    const key = Object.keys(files).find((k) =>
-      k.replace(/^.*\//, "").toLowerCase() === base,
+    const key = Object.keys(files).find(
+      (k) => k.replace(/^.*\//, "").toLowerCase() === base,
     );
     return key ? files[key] : undefined;
   };
@@ -127,11 +131,35 @@ function buildIndex(zipBytes: Uint8Array): ZouStaticIndex {
     });
   }
 
+  const tripStopIds = new Map<string, string[]>();
+  const stopTimesRaw = findEntry("stop_times.txt");
+  if (stopTimesRaw) {
+    type Seq = { seq: number; stopId: string };
+    const byTrip = new Map<string, Seq[]>();
+    for (const row of parseCsv(decoder.decode(stopTimesRaw))) {
+      const tripId = row.trip_id?.trim();
+      const stopId = row.stop_id?.trim();
+      if (!tripId || !stopId) continue;
+      const seq = Number(row.stop_sequence ?? 0);
+      const list = byTrip.get(tripId) ?? [];
+      list.push({ seq: Number.isFinite(seq) ? seq : 0, stopId });
+      byTrip.set(tripId, list);
+    }
+    for (const [tripId, list] of byTrip) {
+      list.sort((a, b) => a.seq - b.seq);
+      tripStopIds.set(
+        tripId,
+        list.map((x) => x.stopId),
+      );
+    }
+  }
+
   return {
     fetchedAt: Date.now(),
     stopUic,
     stopName,
     trips,
+    tripStopIds,
   };
 }
 
@@ -147,7 +175,7 @@ async function fetchStatic(): Promise<ZouStaticIndex> {
   return buildIndex(buf);
 }
 
-/** Cached GTFS static (stops + trips). Refresh every 12h. */
+/** Cached GTFS static (stops + trips + stop_times). Refresh every 12h. */
 export async function getZouStaticIndex(): Promise<ZouStaticIndex> {
   if (cache && Date.now() - cache.fetchedAt < CACHE_TTL_MS) {
     return cache;
@@ -179,6 +207,34 @@ export function stopNameForId(
 ): string | null {
   if (!stopId) return null;
   return index.stopName.get(stopId) ?? null;
+}
+
+/** Stop_ids ordonnés du trajet (GTFS stop_times), vide si inconnu. */
+export function tripStopIds(
+  index: ZouStaticIndex,
+  tripId: string | null | undefined,
+): string[] {
+  if (!tripId) return [];
+  return index.tripStopIds.get(tripId) ?? [];
+}
+
+/** True si le parcours static dessert dest UIC après origin UIC. */
+export function staticTripServesUicPair(
+  index: ZouStaticIndex,
+  tripId: string,
+  originUic: string,
+  destUic: string,
+): boolean {
+  const stops = tripStopIds(index, tripId);
+  if (stops.length === 0) return false;
+  let originIdx = -1;
+  let destIdx = -1;
+  for (let i = 0; i < stops.length; i++) {
+    const uic = index.stopUic.get(stops[i]!) ?? extractUic(stops[i]);
+    if (uic === originUic && originIdx < 0) originIdx = i;
+    if (uic === destUic) destIdx = i;
+  }
+  return originIdx >= 0 && destIdx > originIdx;
 }
 
 /** Test helper */

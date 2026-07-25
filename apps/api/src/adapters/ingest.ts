@@ -621,25 +621,6 @@ export class ConfiguredIngestAdapter implements DisruptionIngestPort {
       await new NavitiaDeparturesAdapter(token).poll();
       return;
     }
-    if (provider === "prim") {
-      const zouFailover = await store.isZouFailoverEnabled();
-      if (zouFailover) {
-        // PRIM non implémenté : failover ZOU si activé (token Navitia vide)
-        await new NavitiaDeparturesAdapter("").poll();
-        return;
-      }
-      await store.setIngestResult({
-        status: "error",
-        detail: "Provider PRIM non implémenté — choisir stub ou navitia",
-      });
-      appendIngestApiLog({
-        source: "prim",
-        title: "Poll PRIM",
-        ok: false,
-        lines: ["Provider PRIM non implémenté — aucun appel API"],
-      });
-      return;
-    }
     await new StubIngestAdapter().poll();
   }
 }

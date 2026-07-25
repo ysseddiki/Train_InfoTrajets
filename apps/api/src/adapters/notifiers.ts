@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { store } from "../domain/store.js";
 
 export interface EmailNotifierPort {
   send(input: {
@@ -21,31 +22,32 @@ export class SmtpEmailNotifier implements EmailNotifierPort {
     subject: string;
     body: string;
   }): Promise<{ ok: boolean; detail?: string }> {
-    if (process.env.EMAIL_ENABLED !== "true") {
-      return { ok: false, detail: "EMAIL_ENABLED is false" };
+    const cfg = await store.getSmtpRuntime();
+    if (!cfg.enabled) {
+      return { ok: false, detail: "SMTP désactivé (admin)" };
     }
-    if (!process.env.SMTP_HOST || !process.env.SMTP_FROM) {
-      return { ok: false, detail: "SMTP_HOST/SMTP_FROM missing" };
+    if (!cfg.host || !cfg.fromAddress) {
+      return { ok: false, detail: "SMTP_HOST / From manquants" };
     }
     if (input.to.length === 0) {
       return { ok: false, detail: "No recipients configured" };
     }
 
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT ?? 587),
-      secure: process.env.SMTP_SECURE === "true",
-      auth: process.env.SMTP_USERNAME
+      host: cfg.host,
+      port: cfg.port,
+      secure: cfg.secure,
+      auth: cfg.username
         ? {
-            user: process.env.SMTP_USERNAME,
-            pass: process.env.SMTP_PASSWORD ?? "",
+            user: cfg.username,
+            pass: cfg.password,
           }
         : undefined,
     });
 
     try {
       await transporter.sendMail({
-        from: process.env.SMTP_FROM,
+        from: cfg.fromAddress,
         to: input.to.join(", "),
         subject: input.subject,
         text: input.body,

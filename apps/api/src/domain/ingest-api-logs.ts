@@ -3,7 +3,7 @@
  * Jamais de tokens / Authorization.
  */
 
-export type IngestApiLogSource = "navitia" | "zou" | "stub" | "prim";
+export type IngestApiLogSource = "navitia" | "zou" | "stub";
 
 export type IngestApiLogEntry = {
   id: string;
@@ -22,7 +22,6 @@ const buffers: Record<IngestApiLogSource, IngestApiLogEntry[]> = {
   navitia: [],
   zou: [],
   stub: [],
-  prim: [],
 };
 
 let seq = 0;
@@ -57,7 +56,7 @@ export function listIngestApiLogs(
   if (source && source in buffers) {
     return [...buffers[source]];
   }
-  return (["navitia", "zou", "stub", "prim"] as const).flatMap((s) => [
+  return (["navitia", "zou", "stub"] as const).flatMap((s) => [
     ...buffers[s],
   ]);
 }
@@ -77,5 +76,5 @@ export function clearIngestApiLogs(source?: IngestApiLogSource | null): number {
 }
 
 export function isIngestApiLogSource(v: unknown): v is IngestApiLogSource {
-  return v === "navitia" || v === "zou" || v === "stub" || v === "prim";
+  return v === "navitia" || v === "zou" || v === "stub";
 }

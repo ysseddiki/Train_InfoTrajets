@@ -25,7 +25,7 @@ Hors scope v1 explicite : scrape / failover G&C (Datadome) ; `displayUrl` catalo
 
 ### Requirement: Séparation client/serveur
 
-Le client web MUST n’appeler que l’API HTTP `/v1` ; les intégrations PRIM/Navitia, SMTP et Teams MUST s’exécuter uniquement côté serveur.
+Le client web MUST n’appeler que l’API HTTP `/v1` ; les intégrations Navitia / ZOU, SMTP et Teams MUST s’exécuter uniquement côté serveur.
 
 #### Scenario: Pas de secret dans le front
 
@@ -46,7 +46,7 @@ Le système MUST NOT stocker de mots de passe en clair, MUST NOT committer de se
 
 ### Requirement: Stack client web React
 
-Le client `apps/web` MUST être une application **Vite + React + TypeScript**. Il MUST n’appeler que l’API HTTP `/v1` et MUST NOT embarquer de logique d’ingest ni de secrets (SMTP, webhooks, clés PRIM/Navitia).
+Le client `apps/web` MUST être une application **Vite + React + TypeScript**. Il MUST n’appeler que l’API HTTP `/v1` et MUST NOT embarquer de logique d’ingest ni de secrets (SMTP, webhooks, clés Navitia).
 
 #### Scenario: Bundle web
 
@@ -63,7 +63,7 @@ Le client `apps/web` MUST être une application **Vite + React + TypeScript**. I
 
 ### Requirement: Documentation déploiement adminsys
 
-Le dépôt SHALL fournir des unités systemd d’exemple (`deploy/systemd/`) et une section README expliquant API vs ingest. Prometheus est hors scope tant qu’aucune stack monitoring n’est en place.
+Le dépôt SHALL fournir des unités systemd d’exemple (`deploy/systemd/`) et une section README expliquant API vs ingest.
 
 #### Scenario: Install units
 

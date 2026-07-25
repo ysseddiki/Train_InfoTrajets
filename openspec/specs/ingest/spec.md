@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Ingestion des perturbations SNCF via un adapter unique (stub / PRIM / Navitia) et matching sur les trajets Aller et Retour.
+Ingestion des perturbations SNCF via un adapter (stub / Navitia) et matching sur les trajets Aller et Retour. Failover optionnel ZOU GTFS-RT.
 
 ## Requirements
 
 ### Requirement: Ingest via adapter unique
 
-Le pipeline d’ingest SHALL utiliser un port `DisruptionIngestPort` avec une implémentation active à la fois (`stub`, `prim` ou `navitia`), choisie via la **config admin** (`provider`).
+Le pipeline d’ingest SHALL utiliser un port `DisruptionIngestPort` avec une implémentation active à la fois (`stub` ou `navitia`), choisie via la **config admin** (`activeProvider`).
 
 #### Scenario: Mode stub
 
@@ -111,7 +111,7 @@ Le pipeline d’ingest MUST NOT scraper Gares & Connexions ni exposer une source
 
 ### Requirement: Failover GTFS-RT ZOU (open data)
 
-Quand `zouFailoverEnabled` est vrai, le poll Navitia SHALL basculer vers les flux open data ZOU PACA (GTFS-RT TripUpdates + Service Alerts) si le token Navitia est absent, le quota journalier est épuisé, ou un appel Navitia échoue. Les événements / snapshots SHALL utiliser `source = zou`. ZOU MUST NOT être un `IngestProviderId` primaire sélectionnable.
+Quand `zouFailoverEnabled` est vrai, le poll Navitia SHALL basculer vers les flux open data ZOU PACA (GTFS-RT TripUpdates + Service Alerts) si le token Navitia est absent, le quota journalier est épuisé, ou un appel Navitia échoue. Les événements / snapshots SHALL utiliser `source = zou`. ZOU MUST NOT être un `IngestProviderId` primaire sélectionnable. Le matching SHALL s’appuyer sur l’UIC, le filtre gare desservie / corridor, et le parcours GTFS static (`stop_times`) lorsque le TripUpdate est incomplet. Plusieurs URLs TripUpdates MAY être fusionnées (`ZOU_GTFSRT_TRIPS_URLS`).
 
 #### Scenario: Quota épuisé + failover ON
 
@@ -158,4 +158,4 @@ Après bootstrap provider éventuel (`INGEST_PROVIDER`), le token Navitia MUST �
 
 ### Requirement: Feature flags ops
 
-Le système SHALL exposer des interrupteurs ops (`stub` | `navitia` | `prim` via Admin Ingest, `INGEST_IN_PROCESS`, Prometheus off par défaut) via `GET /v1/health.flags`.
+Le système SHALL exposer des interrupteurs ops (`stub` | `navitia` via Admin Ingest, `INGEST_IN_PROCESS`) via `GET /v1/health.flags`.

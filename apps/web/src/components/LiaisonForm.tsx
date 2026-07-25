@@ -7,7 +7,13 @@ import {
   WATCH_LEAD_HOURS_MIN,
 } from "@sncf-alerts/shared";
 import { Plus } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { apiSend } from "../api/client";
 
 const WEEKDAYS = [1, 2, 3, 4, 5] as const;
@@ -100,28 +106,88 @@ function StationPicker({
   onCreate: () => void;
 }) {
   const selected = stations.find((s) => s.id === selectedId);
+  const [query, setQuery] = useState(selected?.label ?? "");
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setQuery(selected?.label ?? "");
+  }, [selected?.label, selectedId]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return stations.slice(0, 12);
+    return stations
+      .filter(
+        (s) =>
+          s.label.toLowerCase().includes(q) ||
+          s.externalId.toLowerCase().includes(q),
+      )
+      .slice(0, 12);
+  }, [stations, query]);
+
+  function pick(s: Station) {
+    onChange(s.id);
+    setQuery(s.label);
+    setOpen(false);
+  }
+
+  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      const first = filtered[0];
+      if (first) pick(first);
+    } else if (e.key === "Escape") {
+      setOpen(false);
+      setQuery(selected?.label ?? "");
+    }
+  }
+
   return (
     <div className="voyage-station">
       <h3>{title}</h3>
       <div className="station-picker-row">
-        <label className="station-picker-select">
-          Gare
-          <select
-            value={selectedId}
-            onChange={(e) => onChange(e.target.value)}
-            required
-          >
-            <option value="" disabled>
-              {stations.length === 0
+        <label className="station-picker-select station-picker-combo">
+          Gare (saisie + Entrée)
+          <input
+            type="search"
+            value={query}
+            placeholder={
+              stations.length === 0
                 ? "Aucune gare — créez-en une"
-                : "Choisir une gare…"}
-            </option>
-            {stations.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.label}
-              </option>
-            ))}
-          </select>
+                : "Tapez un nom, Entrée pour valider"
+            }
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setOpen(true);
+              if (selectedId) onChange("");
+            }}
+            onFocus={() => setOpen(true)}
+            onBlur={() => {
+              window.setTimeout(() => setOpen(false), 120);
+            }}
+            onKeyDown={onKeyDown}
+            required={!selectedId}
+            autoComplete="off"
+          />
+          {open && filtered.length > 0 && (
+            <ul className="station-autocomplete" role="listbox">
+              {filtered.map((s) => (
+                <li key={s.id}>
+                  <button
+                    type="button"
+                    className={s.id === selectedId ? "is-selected" : undefined}
+                    onMouseDown={(ev) => {
+                      ev.preventDefault();
+                      pick(s);
+                    }}
+                  >
+                    <span>{s.label}</span>
+                    <code className="muted">{s.externalId}</code>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </label>
         <button
           type="button"

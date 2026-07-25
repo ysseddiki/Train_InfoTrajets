@@ -27,6 +27,7 @@ import type {
   NextDepartureInfo,
   RecipientsConfig,
   SmtpConfigPublic,
+  SmtpConfigUpdate,
   Station,
   StationUpsertBody,
   TeamsConfigPublic,
@@ -46,26 +47,33 @@ const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12);
 
 const META_INGEST_PROVIDER = "ingest_provider";
 const META_NAVITIA_TOKEN = "ingest_navitia_token";
-const META_PRIM_API_KEY = "ingest_prim_api_key";
 const META_NAVITIA_CHECK = "ingest_navitia_check";
-const META_PRIM_CHECK = "ingest_prim_check";
 const META_STUB_CHECK = "ingest_stub_check";
 const META_ZOU_FAILOVER = "ingest_zou_failover_enabled";
 
+const META_SMTP_ENABLED = "smtp_enabled";
+const META_SMTP_HOST = "smtp_host";
+const META_SMTP_PORT = "smtp_port";
+const META_SMTP_SECURE = "smtp_secure";
+const META_SMTP_USERNAME = "smtp_username";
+const META_SMTP_PASSWORD = "smtp_password";
+const META_SMTP_FROM = "smtp_from";
+const META_SMTP_BOOTSTRAPPED = "smtp_bootstrapped_from_env";
+
 function parseIngestProvider(value: string | null | undefined): IngestProviderId {
-  if (value === "navitia" || value === "prim" || value === "stub") return value;
+  // Ancien provider PRIM (IDF) → Navitia
+  if (value === "navitia" || value === "prim") return "navitia";
+  if (value === "stub") return "stub";
   return "stub";
 }
 
 function secretMetaKey(provider: IngestProviderId): string | null {
   if (provider === "navitia") return META_NAVITIA_TOKEN;
-  if (provider === "prim") return META_PRIM_API_KEY;
   return null;
 }
 
 function checkMetaKey(provider: IngestProviderId): string {
   if (provider === "navitia") return META_NAVITIA_CHECK;
-  if (provider === "prim") return META_PRIM_CHECK;
   return META_STUB_CHECK;
 }
 
@@ -499,7 +507,7 @@ export class PgStore {
   private async buildSlot(
     id: IngestProviderId,
   ): Promise<IngestProviderSlotPublic> {
-    const requiresToken = id === "navitia" || id === "prim";
+    const requiresToken = id === "navitia";
     const secret = requiresToken ? await this.getIngestSecret(id) : null;
     const check = await this.readStoredCheck(id);
     return {
@@ -516,14 +524,13 @@ export class PgStore {
   async getIngestConfigPublic(): Promise<IngestConfigPublic> {
     await this.ensureIngestConfigBootstrapped();
     const activeProvider = await this.getIngestProvider();
-    const [stub, navitia, prim] = await Promise.all([
+    const [stub, navitia] = await Promise.all([
       this.buildSlot("stub"),
       this.buildSlot("navitia"),
-      this.buildSlot("prim"),
     ]);
     return {
       activeProvider,
-      providers: { stub, navitia, prim },
+      providers: { stub, navitia },
       zouFailoverEnabled: await this.isZouFailoverEnabled(),
     };
   }
@@ -542,8 +549,6 @@ export class PgStore {
   ): Promise<IngestConfigPublic> {
     const nav = body.navitiaToken?.trim() ?? "";
     if (nav) await this.setMeta(META_NAVITIA_TOKEN, nav);
-    const prim = body.primApiKey?.trim() ?? "";
-    if (prim) await this.setMeta(META_PRIM_API_KEY, prim);
     if (body.activeProvider !== undefined) {
       const next = parseIngestProvider(body.activeProvider);
       await this.setMeta(META_INGEST_PROVIDER, next);
@@ -1304,16 +1309,129 @@ export class PgStore {
     }
   }
 
-  getSmtpPublic(): SmtpConfigPublic {
+  /** Bootstrap SMTP depuis .env une fois si meta vide. */
+  async ensureSmtpBootstrapped(): Promise<void> {
+    const done = await this.getMeta(META_SMTP_BOOTSTRAPPED);
+    if (done === "1") return;
+    const host = (process.env.SMTP_HOST ?? "").trim();
+    if (host) {
+      const existing = await this.getMeta(META_SMTP_HOST);
+      if (existing === null) {
+        await this.setMeta(META_SMTP_HOST, host);
+        await this.setMeta(
+          META_SMTP_PORT,
+          String(process.env.SMTP_PORT ?? "587"),
+        );
+        await this.setMeta(
+          META_SMTP_SECURE,
+          process.env.SMTP_SECURE === "true" ? "1" : "0",
+        );
+        await this.setMeta(
+          META_SMTP_USERNAME,
+          (process.env.SMTP_USERNAME ?? "").trim(),
+        );
+        await this.setMeta(
+          META_SMTP_FROM,
+          (process.env.SMTP_FROM ?? "").trim(),
+        );
+        const pass = process.env.SMTP_PASSWORD ?? "";
+        if (pass) await this.setMeta(META_SMTP_PASSWORD, pass);
+        await this.setMeta(
+          META_SMTP_ENABLED,
+          process.env.EMAIL_ENABLED === "true" ? "1" : "0",
+        );
+      }
+    }
+    await this.setMeta(META_SMTP_BOOTSTRAPPED, "1");
+  }
+
+  async getSmtpPublic(): Promise<SmtpConfigPublic> {
+    await this.ensureSmtpBootstrapped();
+    const host =
+      (await this.getMeta(META_SMTP_HOST)) ??
+      (process.env.SMTP_HOST ?? "").trim();
+    const portRaw =
+      (await this.getMeta(META_SMTP_PORT)) ?? process.env.SMTP_PORT ?? "587";
+    const secureMeta = await this.getMeta(META_SMTP_SECURE);
+    const secure =
+      secureMeta != null
+        ? secureMeta === "1" || secureMeta === "true"
+        : process.env.SMTP_SECURE === "true";
+    const username =
+      (await this.getMeta(META_SMTP_USERNAME)) ??
+      (process.env.SMTP_USERNAME ?? "").trim();
+    const fromAddress =
+      (await this.getMeta(META_SMTP_FROM)) ??
+      (process.env.SMTP_FROM ?? "").trim();
+    const password =
+      (await this.getMeta(META_SMTP_PASSWORD)) ??
+      process.env.SMTP_PASSWORD ??
+      "";
+    const enabledMeta = await this.getMeta(META_SMTP_ENABLED);
+    const enabled =
+      enabledMeta != null
+        ? enabledMeta === "1" || enabledMeta === "true"
+        : process.env.EMAIL_ENABLED === "true";
     return {
-      host: process.env.SMTP_HOST ?? "",
-      port: Number(process.env.SMTP_PORT ?? 587),
-      secure: process.env.SMTP_SECURE === "true",
-      username: process.env.SMTP_USERNAME ?? "",
-      fromAddress: process.env.SMTP_FROM ?? "",
-      passwordConfigured: Boolean(process.env.SMTP_PASSWORD),
-      enabled: process.env.EMAIL_ENABLED === "true",
+      host,
+      port: Number(portRaw) || 587,
+      secure,
+      username,
+      fromAddress,
+      passwordConfigured: Boolean(password.trim()),
+      enabled,
     };
+  }
+
+  /** Secrets runtime SMTP (serveur uniquement). */
+  async getSmtpRuntime(): Promise<{
+    enabled: boolean;
+    host: string;
+    port: number;
+    secure: boolean;
+    username: string;
+    password: string;
+    fromAddress: string;
+  }> {
+    const pub = await this.getSmtpPublic();
+    const password =
+      (await this.getMeta(META_SMTP_PASSWORD)) ??
+      process.env.SMTP_PASSWORD ??
+      "";
+    return {
+      enabled: pub.enabled,
+      host: pub.host,
+      port: pub.port,
+      secure: pub.secure,
+      username: pub.username,
+      password,
+      fromAddress: pub.fromAddress,
+    };
+  }
+
+  async updateSmtpConfig(body: SmtpConfigUpdate): Promise<SmtpConfigPublic> {
+    await this.ensureSmtpBootstrapped();
+    if (body.enabled !== undefined) {
+      await this.setMeta(META_SMTP_ENABLED, body.enabled ? "1" : "0");
+    }
+    if (body.host !== undefined) {
+      await this.setMeta(META_SMTP_HOST, body.host.trim());
+    }
+    if (body.port !== undefined) {
+      await this.setMeta(META_SMTP_PORT, String(body.port));
+    }
+    if (body.secure !== undefined) {
+      await this.setMeta(META_SMTP_SECURE, body.secure ? "1" : "0");
+    }
+    if (body.username !== undefined) {
+      await this.setMeta(META_SMTP_USERNAME, body.username.trim());
+    }
+    if (body.fromAddress !== undefined) {
+      await this.setMeta(META_SMTP_FROM, body.fromAddress.trim());
+    }
+    const pass = body.password?.trim() ?? "";
+    if (pass) await this.setMeta(META_SMTP_PASSWORD, pass);
+    return this.getSmtpPublic();
   }
 
   getTeamsPublic(): TeamsConfigPublic {

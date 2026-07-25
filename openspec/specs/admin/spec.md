@@ -59,20 +59,20 @@ Si **Veille continue** est cochée, la liste MUST être désactivée (grisée) ;
 
 ### Requirement: Clear stats par source
 
-Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `prim`, `zou`, et/ou livraisons email/Teams. MUST NOT proposer une source `garesetconnexions`.
+Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `zou`, `prim` (legacy), et/ou livraisons email/Teams.
 
 #### Scenario: Clear événements stub seulement
 
 - **GIVEN** un admin authentifié
 - **WHEN** il envoie `POST /v1/admin/stats/clear` avec `eventSources: ["stub"]`
 - **THEN** seuls les événements `source=stub` (et livraisons liées) sont supprimés
-- **AND** les événements Navitia / PRIM restent
+- **AND** les événements Navitia / ZOU restent
 
 ### Requirement: Catalogue de gares
 
-Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`label`, `externalId` Navitia, `displayUrl` optionnel). La configuration d’une liaison SHALL sélectionner les gares via une liste déroulante et MUST proposer un accès « Créer » vers le catalogue si la gare n’existe pas.
+Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`label`, `externalId` Navitia, `displayUrl` optionnel). La configuration d’une liaison SHALL permettre de sélectionner une gare via **autocomplete** (saisie + **Entrée** pour valider le premier match) et MUST proposer un accès « Créer » vers le catalogue si la gare n’existe pas.
 
-`displayUrl` SHALL servir uniquement de lien UI (fiche publique) ; le système MUST NOT l’utiliser pour un scrape. Aucun champ d’alias terminus scrape MUST être exposé.
+`displayUrl` SHALL servir uniquement de lien UI (fiche publique) ; le système MUST NOT l’utiliser pour un scrape.
 
 #### Scenario: Création depuis la liaison
 
@@ -99,19 +99,19 @@ Un admin SHALL pouvoir ajouter et retirer des adresses email destinataires dans 
 
 ### Requirement: Configuration ingest en admin
 
-Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers `stub`, `navitia` et `prim`, puis choisir le provider **actif** via `GET/PUT /v1/admin/ingest`.
+Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers `stub` et `navitia`, puis choisir le provider **actif** via `GET/PUT /v1/admin/ingest`.
 
-- Secrets Navitia / PRIM : **write-only** ; `tokenPreview` = 5 premiers caractères
+- Secret Navitia : **write-only** ; `tokenPreview` = 5 premiers caractères
 - `POST /v1/admin/ingest/probe` : test API sans forcément activer
-- À l’enregistrement d’un token (ou à l’activation d’un provider distant), le serveur MUST appeler l’API cible et MUST persister le résultat du check (`lastCheckOk` / détail). MUST NOT bloquer la sauvegarde ni l’activation si le check échoue ; les données MAY rester absentes tant que l’API cible échoue
+- À l’enregistrement d’un token (ou à l’activation), le serveur MUST appeler l’API cible et MUST persister le résultat du check (`lastCheckOk` / détail). MUST NOT bloquer la sauvegarde si le check échoue
 - MAY exposer un toggle `zouFailoverEnabled` (failover GTFS-RT ZOU open data)
-- MUST NOT exposer de toggle `gcFailoverEnabled` ni d’option scrape G&C
+- MUST NOT exposer de provider `prim` (Île-de-France)
 
-#### Scenario: Trois slots indépendants
+#### Scenario: Deux slots indépendants
 
-- **GIVEN** un token Navitia et une clé PRIM déjà saisis
+- **GIVEN** un token Navitia déjà saisi
 - **WHEN** l’admin active `stub`
-- **THEN** les secrets Navitia et PRIM restent configurés (slots indépendants)
+- **THEN** le secret Navitia reste configuré
 
 #### Scenario: Toggle failover ZOU
 
@@ -126,3 +126,7 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 - **THEN** le secret est quand même persisté
 - **AND** le check stocké indique un échec (`lastCheckOk = false`)
 - **AND** l’API ne renvoie pas `400` pour cause de probe
+
+### Requirement: Configuration SMTP en admin
+
+Un admin authentifié SHALL pouvoir lire et mettre à jour la config SMTP via `GET/PUT /v1/admin/channels/smtp` (host, port, secure, username, from, enabled). Le mot de passe MUST être write-only (`passwordConfigured` en lecture). La config MUST être stockée côté serveur (app_meta) ; un bootstrap depuis `.env` MAY remplir les meta vides une seule fois.

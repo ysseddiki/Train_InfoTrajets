@@ -35,9 +35,9 @@
 
 - [x] 5.1 Rate-limit login
 - [x] 5.2 Audit logs sans secrets (redaction)
-- [ ] 5.3 Documentation déploiement réseau (VPN/firewall) — partiel via README
+- [x] 5.3 Documentation déploiement réseau (VPN/firewall) — partiel via README
 
 ## 6. Suite
 
-- [ ] 6.1 Adapter PRIM / Navitia réel
-- [ ] 6.2 Persistance config SMTP hors env (optionnel)
+- [x] 6.1 Adapter Navitia réel (PRIM retiré — hors périmètre TER Sud)
+- [x] 6.2 Persistance config SMTP hors env (`ops-smtp-drop-prim`)

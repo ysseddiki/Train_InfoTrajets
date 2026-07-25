@@ -2,7 +2,7 @@
 
 Outil **ops interne** : une ou plusieurs **liaisons** SNCF (chaque liaison = Aller + Retour), dashboard ops room, console admin, notifications **Email (SMTP)** et **Teams**.
 
-> Specs : `openspec/specs/` · Baseline : `specs/system/baseline-v1.md` · Change en cours : `openspec/changes/ops-room-workloads/`
+> Specs : `openspec/specs/` · Baseline : `specs/system/baseline-v1.md` · Change : `openspec/changes/ops-smtp-drop-prim/`
 
 ## Architecture
 
@@ -162,14 +162,6 @@ Intervalle de poll (reste en env) :
 INGEST_INTERVAL_MS=300000
 ```
 
-### PRIM — Île-de-France Mobilités (temps réel)
-
-Utile si vos trajets sont en Île-de-France (Transilien, RER, etc.). Adapter **pas encore implémenté** côté poll.
-
-1. Créer un compte sur le portail [Île-de-France Mobilités — PRIM](https://prim.iledefrance-mobilites.fr/)
-2. Créer une application et générer une **clé API**
-3. Admin → Ingest : provider `prim` + coller la clé
-
 ### Navitia / API SNCF (`api.sncf.com`)
 
 L’ingest `navitia` appelle **`https://api.sncf.com/v1`** (moteur Navitia SNCF : horaires / temps réel trains).
@@ -196,15 +188,19 @@ L’adapter interroge les **départs** de la gare surveillée (`/stop_areas/.../
 Filet de secours si Navitia est KO / quota / sans token. Activable dans **Admin → Ingest** (`zouFailoverEnabled`).
 
 - Dataset : [Trains régionaux ZOU !](https://transport.data.gouv.fr/datasets/trains-zou-en-provence-alpes-cote-dazur)
-- Flux : TripUpdates + Service Alerts (+ cache GTFS static stops/trips)
+- Flux : TripUpdates (+ multi-URL optionnelle) + Service Alerts + GTFS static (stops / trips / stop_times)
 - Source événements / board : `zou` (pas un provider primaire)
-- URLs surchargeables : `ZOU_GTFS_URL`, `ZOU_GTFSRT_TRIPS_URL`, `ZOU_GTFSRT_SA_URL`
+- URLs : `ZOU_GTFS_URL`, `ZOU_GTFSRT_TRIPS_URL` ou `ZOU_GTFSRT_TRIPS_URLS` (virgules), `ZOU_GTFSRT_SA_URL`
 
 > Ne pas lancer `npm audit fix --force` (casse le lockfile).
 
 ## Email (SMTP custom)
 
+Configurer dans **Admin → Canaux → SMTP** (stocké en base, mot de passe write-only).  
+Optionnel au premier boot : bootstrap depuis `.env` si la meta SMTP est vide.
+
 ```env
+# Bootstrap optionnel (sinon Admin → Canaux)
 EMAIL_ENABLED=true
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
@@ -214,7 +210,7 @@ SMTP_PASSWORD=...
 SMTP_FROM=alerts@example.com
 ```
 
-Les **destinataires** se configurent ensuite dans la console admin (liste d’emails), pas dans git.
+Les **destinataires** se configurent dans la console admin (liste d’emails).
 
 ## Microsoft Teams
 

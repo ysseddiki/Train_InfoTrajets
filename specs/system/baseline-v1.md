@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.5.0`  
-> **Date** : 2026-07-24  
-> **Change** : `openspec/changes/zou-gtfsrt-failover`  
+> **Version** : `1.6.0`  
+> **Date** : 2026-07-25  
+> **Change** : `openspec/changes/ops-smtp-drop-prim`  
 > **Format** : OpenSpec
 
 ---
@@ -18,15 +18,6 @@ SNCF-Alerts est un outil **ops interne** (quelques opérateurs) qui :
 4. Envoie des notifications via **Email (SMTP custom)** et **Microsoft Teams**
 
 Le client (`apps/web`) et le serveur (`apps/api`) sont séparés. Specs détaillées : `openspec/specs/*`.
-
-### Hors scope v1
-
-- Comptes viewer / inscription voyageurs (version lointaine possible)
-- SSO / OIDC / 2FA
-- Push, SMS
-- Billetterie, itinéraires alternatifs
-- Scrape / failover Gares & Connexions (Datadome ; lien fiche UI seulement via `displayUrl`)
-- Prometheus / Grafana (pas de stack monitoring pour l’instant)
 
 ---
 
@@ -116,7 +107,7 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `description` | string | |
 | `delay_minutes` | int \| null | `null` = durée **unknown** (jamais coercée en `0`) |
 | `starts_at` / `ends_at` | datetime | |
-| `source` | `stub` \| `prim` \| `navitia` \| `zou` | `zou` = failover GTFS-RT ; pas de `garesetconnexions` |
+| `source` | `stub` \| `navitia` \| `zou` (legacy `prim` en lecture seule) | `zou` = failover GTFS-RT |
 | `detected_at` | datetime | |
 
 `raw_payload` : optionnel, rétention courte ; **pas de secrets**.
@@ -200,7 +191,7 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 
 | Port | Rôle |
 |------|------|
-| `DisruptionIngestPort` | stub \| prim \| navitia (pas de scrape G&C) |
+| `DisruptionIngestPort` | stub \| navitia (+ failover ZOU optionnel) |
 | `DeparturesPort` | départs gare (Navitia + cache TTL) |
 | `EmailNotifierPort` | SMTP |
 | `TeamsNotifierPort` | Incoming webhook |
@@ -261,9 +252,10 @@ File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non blo
 
 | Dépendance | Usage |
 |------------|-------|
-| SMTP custom | Email |
-| Teams Incoming Webhook | Notifs Teams |
-| PRIM et/ou Navitia | Ingest prod (une seule active) |
+| SMTP custom | Email — config Admin (DB) ; bootstrap `.env` optionnel |
+| Teams Incoming Webhook | Notifs Teams (`.env`) |
+| Navitia | Ingest prod |
+| ZOU GTFS-RT | Failover open data Région Sud |
 | Stub | Dev / démo |
 
 ### Secrets (env)
@@ -303,3 +295,4 @@ specs/system/     # Baseline narrative
 | `1.2.0` | 2026-07-24 | Multi-liaisons |
 | `1.2.1` | 2026-07-24 | Fenêtre de veille (`watch_always` / `watch_lead_hours` 0–12) |
 | `1.2.2` | 2026-07-24 | Ingest config en admin (token preview 5 car.) |
+| `1.6.0` | 2026-07-25 | Drop PRIM ; SMTP en DB ; autocomplete gares ; ZOU stop_times / multi-feeds |

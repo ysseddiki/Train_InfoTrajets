@@ -8,14 +8,20 @@ Envoi d’alertes via Email (serveur SMTP custom) et Microsoft Teams, avec histo
 
 ### Requirement: Canaux Email SMTP et Teams
 
-Le système SHALL supporter les canaux `email` (serveur SMTP custom configurable) et `teams` (webhook), activables indépendamment.
+Le système SHALL supporter les canaux `email` (serveur SMTP custom configurable **en admin / DB**) et `teams` (webhook, `.env`), activables indépendamment.
 
 #### Scenario: Test d’envoi
 
-- **GIVEN** un canal email configuré
+- **GIVEN** un canal email configuré via `PUT /v1/admin/channels/smtp`
 - **WHEN** l’admin appelle `POST /v1/admin/channels/email/test`
 - **THEN** un message de test est envoyé via SMTP
 - **AND** une `AlertDelivery` de type test est enregistrée
+
+#### Scenario: Mot de passe write-only
+
+- **GIVEN** un SMTP avec mot de passe en base
+- **WHEN** `GET /v1/admin/channels/smtp`
+- **THEN** la réponse expose `passwordConfigured: true` et MUST NOT inclure le mot de passe
 
 ### Requirement: Livraison indépendante par canal
 

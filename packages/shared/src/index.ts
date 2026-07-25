@@ -199,7 +199,7 @@ export interface DashboardOverview {
     deliveriesSentLast24h: number;
     deliveriesFailedLast24h: number;
     ingestProvider: string;
-    /** Failover ZOU GTFS-RT actif (secours si Navitia/PRIM KO) */
+    /** Failover ZOU GTFS-RT actif (secours si Navitia KO) */
     zouFailoverEnabled?: boolean;
     lastIngestAt: string | null;
     periods: {
@@ -309,12 +309,24 @@ export interface SmtpConfigPublic {
   enabled: boolean;
 }
 
+/** Mise à jour SMTP (password write-only ; vide = conserver). */
+export interface SmtpConfigUpdate {
+  enabled?: boolean;
+  host?: string;
+  port?: number;
+  secure?: boolean;
+  username?: string;
+  fromAddress?: string;
+  /** Remplace le mot de passe si non vide */
+  password?: string;
+}
+
 export interface TeamsConfigPublic {
   webhookConfigured: boolean;
   enabled: boolean;
 }
 
-export type IngestProviderId = "stub" | "navitia" | "prim";
+export type IngestProviderId = "stub" | "navitia";
 
 /** Slot public pour un provider (secret jamais en clair). */
 export interface IngestProviderSlotPublic {
@@ -328,7 +340,7 @@ export interface IngestProviderSlotPublic {
   lastCheckDetail: string | null;
 }
 
-/** Config ingest : 3 providers indépendants + celui actif. */
+/** Config ingest : stub | navitia + failover ZOU. */
 export interface IngestConfigPublic {
   activeProvider: IngestProviderId;
   providers: Record<IngestProviderId, IngestProviderSlotPublic>;
@@ -344,8 +356,6 @@ export interface IngestConfigUpdate {
   activeProvider?: IngestProviderId;
   /** Remplace le token Navitia si non vide */
   navitiaToken?: string;
-  /** Remplace la clé PRIM si non vide */
-  primApiKey?: string;
   /** Active / désactive le failover GTFS-RT ZOU */
   zouFailoverEnabled?: boolean;
 }
@@ -406,7 +416,7 @@ export interface StationUpsertBody {
   displayUrl?: string | null;
 }
 
-/** Compteur journalier d’appels API externes (Navitia / PRIM). */
+/** Compteur journalier d’appels API externes (Navitia). */
 export interface ApiQuotaStatus {
   provider: string;
   /** Jour civil Europe/Paris (YYYY-MM-DD) */
@@ -423,10 +433,10 @@ export interface ApiQuotaStatus {
   exhausted: boolean;
 }
 
-export type IngestEventSource = "stub" | "prim" | "navitia" | "zou";
+export type IngestEventSource = "stub" | "navitia" | "zou" | "prim";
 
 /** Source de log debug API ingest (onglets Admin → Debug). */
-export type IngestApiLogSource = "stub" | "prim" | "navitia" | "zou";
+export type IngestApiLogSource = "stub" | "navitia" | "zou";
 
 export interface IngestApiLogEntry {
   id: string;
