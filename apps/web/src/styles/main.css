@@ -1229,22 +1229,28 @@ button.danger-action:disabled {
   border: 1px solid #d0d4dc;
 }
 
-.source-pill.source-navitia {
+.source-pill.source-ok {
   background: #e8f5ef;
   color: #1b5e3b;
   border-color: #b7e0c8;
 }
 
-.source-pill.source-prim {
-  background: #eef2ff;
-  color: #3730a3;
-  border-color: #c7d2fe;
+.source-pill.source-err {
+  background: #fde8e8;
+  color: #9b1c1c;
+  border-color: #f5c2c2;
 }
 
-.source-pill.source-stub {
-  background: #f3f0e8;
-  color: #6b5d3e;
-  border-color: #e0d6bf;
+.source-pill.source-warn {
+  background: #fff6e5;
+  color: #92400e;
+  border-color: #f0d4a8;
+}
+
+.source-pill.source-unknown {
+  background: #e8eaef;
+  color: #3a3f4b;
+  border-color: #d0d4dc;
 }
 
 .ingest-banner {

@@ -45,10 +45,13 @@ function formatIngestSourceLabel(data: DashboardOverview): string {
   return base;
 }
 
-function sourceTone(provider: string): string {
-  if (provider === "navitia") return "navitia";
-  if (provider === "stub") return "stub";
-  return "default";
+/** Couleur = statut réel du dernier poll, pas le provider. */
+function sourceStatusTone(data: DashboardOverview): string {
+  const status = data.lastIngest.status;
+  if (status === "ok") return "ok";
+  if (status === "error") return "err";
+  if (status === "skipped") return "warn";
+  return "unknown";
 }
 
 function readStoredScope(): LiaisonScopeValue | null {
@@ -195,8 +198,17 @@ export function DashboardPage() {
         <h2 className="dash-section-title">Statut en cours</h2>
         <p className="source-pill-row">
           <span
-            className={`source-pill source-${sourceTone(data.stats.ingestProvider)}`}
-            title={data.lastIngest.detail ?? undefined}
+            className={`source-pill source-${sourceStatusTone(data)}`}
+            title={
+              [
+                data.lastIngest.status
+                  ? `Statut: ${data.lastIngest.status}`
+                  : "Statut: inconnu",
+                data.lastIngest.detail,
+              ]
+                .filter(Boolean)
+                .join(" — ")
+            }
           >
             Source · {sourceLabel}
           </span>
