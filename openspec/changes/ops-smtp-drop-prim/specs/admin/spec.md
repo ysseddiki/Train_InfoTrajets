@@ -6,7 +6,7 @@ Un admin authentifié SHALL pouvoir configurer SMTP via `GET/PUT /v1/admin/chann
 
 ### Requirement: Autocomplete gares liaison
 
-La sélection de gare d’une liaison SHALL accepter une saisie filtrée validée par Entrée (premier match).
+La sélection de gare d’une liaison SHALL afficher la liste complète du catalogue avec un champ de recherche pour filtrer.
 
 ### Requirement: ZOU matching renforcé
 

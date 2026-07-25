@@ -8,11 +8,9 @@ import {
 } from "@sncf-alerts/shared";
 import { Plus } from "lucide-react";
 import {
-  useEffect,
   useMemo,
   useState,
   type FormEvent,
-  type KeyboardEvent,
 } from "react";
 import { apiSend } from "../api/client";
 
@@ -106,89 +104,62 @@ function StationPicker({
   onCreate: () => void;
 }) {
   const selected = stations.find((s) => s.id === selectedId);
-  const [query, setQuery] = useState(selected?.label ?? "");
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    setQuery(selected?.label ?? "");
-  }, [selected?.label, selectedId]);
+  const [filter, setFilter] = useState("");
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return stations.slice(0, 12);
-    return stations
-      .filter(
-        (s) =>
-          s.label.toLowerCase().includes(q) ||
-          s.externalId.toLowerCase().includes(q),
-      )
-      .slice(0, 12);
-  }, [stations, query]);
+    const q = filter.trim().toLowerCase();
+    if (!q) return stations;
+    return stations.filter(
+      (s) =>
+        s.label.toLowerCase().includes(q) ||
+        s.externalId.toLowerCase().includes(q),
+    );
+  }, [stations, filter]);
 
-  function pick(s: Station) {
-    onChange(s.id);
-    setQuery(s.label);
-    setOpen(false);
-  }
-
-  function onKeyDown(e: KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      const first = filtered[0];
-      if (first) pick(first);
-    } else if (e.key === "Escape") {
-      setOpen(false);
-      setQuery(selected?.label ?? "");
-    }
-  }
+  // Garde la sélection visible même si hors filtre courant
+  const options =
+    selected && !filtered.some((s) => s.id === selected.id)
+      ? [selected, ...filtered]
+      : filtered;
 
   return (
     <div className="voyage-station">
       <h3>{title}</h3>
       <div className="station-picker-row">
-        <label className="station-picker-select station-picker-combo">
-          Gare (saisie + Entrée)
-          <input
-            type="search"
-            value={query}
-            placeholder={
-              stations.length === 0
-                ? "Aucune gare — créez-en une"
-                : "Tapez un nom, Entrée pour valider"
-            }
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setOpen(true);
-              if (selectedId) onChange("");
-            }}
-            onFocus={() => setOpen(true)}
-            onBlur={() => {
-              window.setTimeout(() => setOpen(false), 120);
-            }}
-            onKeyDown={onKeyDown}
-            required={!selectedId}
-            autoComplete="off"
-          />
-          {open && filtered.length > 0 && (
-            <ul className="station-autocomplete" role="listbox">
-              {filtered.map((s) => (
-                <li key={s.id}>
-                  <button
-                    type="button"
-                    className={s.id === selectedId ? "is-selected" : undefined}
-                    onMouseDown={(ev) => {
-                      ev.preventDefault();
-                      pick(s);
-                    }}
-                  >
-                    <span>{s.label}</span>
-                    <code className="muted">{s.externalId}</code>
-                  </button>
-                </li>
+        <div className="station-picker-fields">
+          <label>
+            Rechercher
+            <input
+              type="search"
+              value={filter}
+              placeholder="Filtrer la liste…"
+              onChange={(e) => setFilter(e.target.value)}
+              autoComplete="off"
+            />
+          </label>
+          <label className="station-picker-select">
+            Gare
+            <select
+              value={selectedId}
+              onChange={(e) => onChange(e.target.value)}
+              required
+              size={Math.min(8, Math.max(4, options.length || 4))}
+            >
+              <option value="" disabled>
+                {stations.length === 0
+                  ? "Aucune gare — créez-en une"
+                  : options.length === 0
+                    ? "Aucun résultat"
+                    : "Choisir une gare…"}
+              </option>
+              {options.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
               ))}
-            </ul>
-          )}
-        </label>
+            </select>
+          </label>
+        </div>
         <button
           type="button"
           className="secondary station-create-btn"
@@ -212,6 +183,12 @@ function StationPicker({
       {selected && (
         <p className="muted field-hint station-id-hint">
           Id : <code>{selected.externalId}</code>
+        </p>
+      )}
+      {filter.trim() && (
+        <p className="muted field-hint">
+          {filtered.length} gare{filtered.length > 1 ? "s" : ""} affichée
+          {filtered.length > 1 ? "s" : ""}
         </p>
       )}
     </div>

@@ -70,7 +70,7 @@ Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboa
 
 ### Requirement: Catalogue de gares
 
-Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`label`, `externalId` Navitia, `displayUrl` optionnel). La configuration d’une liaison SHALL permettre de sélectionner une gare via **autocomplete** (saisie + **Entrée** pour valider le premier match) et MUST proposer un accès « Créer » vers le catalogue si la gare n’existe pas.
+Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`label`, `externalId` Navitia, `displayUrl` optionnel). La configuration d’une liaison SHALL afficher la **liste complète** des gares du catalogue avec un **champ de recherche** pour filtrer, et MUST proposer un accès « Créer » vers le catalogue si la gare n’existe pas.
 
 `displayUrl` SHALL servir uniquement de lien UI (fiche publique) ; le système MUST NOT l’utiliser pour un scrape.
 
