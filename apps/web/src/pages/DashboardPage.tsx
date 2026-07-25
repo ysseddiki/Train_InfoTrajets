@@ -23,6 +23,37 @@ import { errorMessage } from "../lib/format";
 
 const STORAGE_KEY = "sncf.dashboard.liaisonScope";
 
+function formatIngestSourceLabel(data: DashboardOverview): string {
+  const provider = data.stats.ingestProvider;
+  const failover = data.stats.zouFailoverEnabled === true;
+  const detail = data.lastIngest.detail ?? "";
+  const usedZou = /\bzou\b|GTFS-RT|failover/i.test(detail);
+
+  const base =
+    provider === "navitia"
+      ? "Navitia"
+      : provider === "prim"
+        ? "PRIM"
+        : provider === "stub"
+          ? "Stub"
+          : provider;
+
+  if (usedZou && provider !== "stub") {
+    return "ZOU (failover)";
+  }
+  if (failover && (provider === "navitia" || provider === "prim")) {
+    return `${base} · ZOU secours`;
+  }
+  return base;
+}
+
+function sourceTone(provider: string): string {
+  if (provider === "navitia") return "navitia";
+  if (provider === "prim") return "prim";
+  if (provider === "stub") return "stub";
+  return "default";
+}
+
 function readStoredScope(): LiaisonScopeValue | null {
   try {
     const v = localStorage.getItem(STORAGE_KEY);
@@ -127,6 +158,7 @@ export function DashboardPage() {
   const p30 = data.stats.periods.last30d;
   const scopeHint =
     data.scope === "all" ? "toutes les liaisons" : "liaison sélectionnée";
+  const sourceLabel = formatIngestSourceLabel(data);
 
   return (
     <div
@@ -139,11 +171,6 @@ export function DashboardPage() {
         <div>
           <p className="eyebrow">Ops room · lecture</p>
           <h1>Dashboard</h1>
-          <p className="lede">
-            Mur de statut par liaison (Aller / Retour). Sans Navitia : génère des
-            données via{" "}
-            <Link to="/admin">Admin → Debug</Link> puis actualise.
-          </p>
         </div>
         <div className="dash-head-actions">
           <LiaisonScopePicker
@@ -169,6 +196,14 @@ export function DashboardPage() {
         style={{ "--reveal-delay": "60ms" } as CSSProperties}
       >
         <h2 className="dash-section-title">Statut en cours</h2>
+        <p className="source-pill-row">
+          <span
+            className={`source-pill source-${sourceTone(data.stats.ingestProvider)}`}
+            title={data.lastIngest.detail ?? undefined}
+          >
+            Source · {sourceLabel}
+          </span>
+        </p>
         <div className="liaison-dash-list">
           {data.liaisons.map((liaison) => (
             <div key={liaison.id} className="liaison-dash-block">

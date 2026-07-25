@@ -133,3 +133,10 @@ CREATE TABLE IF NOT EXISTS journey_board_snapshots (
   source TEXT NOT NULL,
   fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+/** Jours avec au moins un poll board réussi (heatmap : vert si 0 retard). */
+CREATE TABLE IF NOT EXISTS board_day_observations (
+  day DATE NOT NULL,
+  liaison_id UUID NOT NULL REFERENCES liaisons(id) ON DELETE CASCADE,
+  PRIMARY KEY (day, liaison_id)
+);

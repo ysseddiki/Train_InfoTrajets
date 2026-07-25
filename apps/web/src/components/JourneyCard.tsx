@@ -63,10 +63,8 @@ export function JourneyCard({
           {card.active ? "Surveillance ON" : "Pause"}
         </span>
       </div>
-      <p className="journey-label">{card.label}</p>
-      <p className="journey-od">
+      <p className="journey-label">
         {card.originLabel} → {card.destinationLabel}
-        <span className="muted"> · filtre gare desservie</span>
       </p>
       <div className={`${boardClass(card.boardStatus)} board-hero`}>
         <strong>{card.boardStatusLabel}</strong>

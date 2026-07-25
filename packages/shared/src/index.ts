@@ -170,6 +170,7 @@ export interface DashboardHeatmapDay {
   /**
    * Score retards du jour (minutes de retard + pénalité suppressions).
    * Intensité heatmap vert → rouge.
+   * Absence du jour dans `activityHeatmap` = aucune donnée (cellule grise).
    */
   count: number;
 }
@@ -198,6 +199,8 @@ export interface DashboardOverview {
     deliveriesSentLast24h: number;
     deliveriesFailedLast24h: number;
     ingestProvider: string;
+    /** Failover ZOU GTFS-RT actif (secours si Navitia/PRIM KO) */
+    zouFailoverEnabled?: boolean;
     lastIngestAt: string | null;
     periods: {
       last24h: DashboardPeriodStats;

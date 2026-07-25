@@ -1203,6 +1203,42 @@ button.danger-action:disabled {
   font-size: 0.92rem;
 }
 
+.source-pill-row {
+  margin: -0.35rem 0 1rem;
+}
+
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  background: #e8eaef;
+  color: #3a3f4b;
+  border: 1px solid #d0d4dc;
+}
+
+.source-pill.source-navitia {
+  background: #e8f5ef;
+  color: #1b5e3b;
+  border-color: #b7e0c8;
+}
+
+.source-pill.source-prim {
+  background: #eef2ff;
+  color: #3730a3;
+  border-color: #c7d2fe;
+}
+
+.source-pill.source-stub {
+  background: #f3f0e8;
+  color: #6b5d3e;
+  border-color: #e0d6bf;
+}
+
 .ingest-banner {
   display: grid;
   gap: 0.35rem;
@@ -1799,6 +1835,10 @@ button.danger-action:disabled {
 
 .heatmap-cell.level-4 {
   background: #e53e3e;
+}
+
+.heatmap-cell.level-none {
+  background: #d8dce3;
 }
 
 .heatmap-cell.level-empty {

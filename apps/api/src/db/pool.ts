@@ -238,6 +238,13 @@ export async function migrate(): Promise<void> {
       fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
+  await p.query(`
+    CREATE TABLE IF NOT EXISTS board_day_observations (
+      day DATE NOT NULL,
+      liaison_id UUID NOT NULL REFERENCES liaisons(id) ON DELETE CASCADE,
+      PRIMARY KEY (day, liaison_id)
+    )
+  `);
 }
 
 export async function closePool(): Promise<void> {

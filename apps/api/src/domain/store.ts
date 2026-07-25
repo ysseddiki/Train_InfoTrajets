@@ -1029,27 +1029,44 @@ export class PgStore {
     liaisonId?: string,
   ): Promise<DashboardHeatmapDay[]> {
     const pool = getPool();
-    const filter = liaisonId
+    const eventFilter = liaisonId
       ? `detected_at >= $1 AND liaison_id = $2`
       : `detected_at >= $1`;
+    const obsFilter = liaisonId
+      ? `day >= ($1::timestamptz AT TIME ZONE 'Europe/Paris')::date AND liaison_id = $2`
+      : `day >= ($1::timestamptz AT TIME ZONE 'Europe/Paris')::date`;
     const params = liaisonId ? [sinceIso, liaisonId] : [sinceIso];
     const res = await pool.query(
-      `SELECT
-         to_char((detected_at AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD') AS day,
-         COALESCE(
-           SUM(
-             CASE
-               WHEN kind = 'delay' THEN GREATEST(COALESCE(delay_minutes, 1), 1)
-               WHEN kind = 'cancellation' THEN 60
-               ELSE 0
-             END
-           ),
-           0
-         )::int AS count
-       FROM disruption_events
-       WHERE ${filter}
-       GROUP BY 1
-       ORDER BY 1`,
+      `WITH scores AS (
+         SELECT
+           to_char((detected_at AT TIME ZONE 'Europe/Paris')::date, 'YYYY-MM-DD') AS day,
+           COALESCE(
+             SUM(
+               CASE
+                 WHEN kind = 'delay' THEN GREATEST(COALESCE(delay_minutes, 1), 1)
+                 WHEN kind = 'cancellation' THEN 60
+                 ELSE 0
+               END
+             ),
+             0
+           )::int AS count
+         FROM disruption_events
+         WHERE ${eventFilter}
+         GROUP BY 1
+       ),
+       observed AS (
+         SELECT to_char(day, 'YYYY-MM-DD') AS day, 0::int AS count
+         FROM board_day_observations
+         WHERE ${obsFilter}
+       )
+       SELECT day, MAX(count)::int AS count
+       FROM (
+         SELECT day, count FROM scores
+         UNION ALL
+         SELECT day, count FROM observed
+       ) u
+       GROUP BY day
+       ORDER BY day`,
       params,
     );
     return res.rows.map((row) => ({
@@ -1243,6 +1260,7 @@ export class PgStore {
         deliveriesSentLast24h: last24h.deliveriesSent,
         deliveriesFailedLast24h: last24h.deliveriesFailed,
         ingestProvider: await this.getIngestProvider(),
+        zouFailoverEnabled: await this.isZouFailoverEnabled(),
         lastIngestAt,
         periods: { last24h, last7d, last30d },
       },
@@ -1388,6 +1406,17 @@ export class PgStore {
         input.source,
         fetchedAt,
       ],
+    );
+    // Marque le jour (Paris) comme observé → heatmap vert si aucun retard
+    await pool.query(
+      `INSERT INTO board_day_observations (day, liaison_id)
+       SELECT
+         (($1::timestamptz) AT TIME ZONE 'Europe/Paris')::date,
+         j.liaison_id
+       FROM journeys j
+       WHERE j.id = $2::uuid AND j.liaison_id IS NOT NULL
+       ON CONFLICT DO NOTHING`,
+      [fetchedAt, input.journeyId],
     );
   }
 

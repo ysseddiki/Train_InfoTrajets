@@ -50,17 +50,19 @@ function parisToday(): { y: number; m: number; day: number; dow: number } {
 /** 0 = aucun retard (vert) ; 1–4 = jaune → rouge selon score minutes. */
 function levelForCount(count: number): 0 | 1 | 2 | 3 | 4 {
   if (count <= 0) return 0;
-  if (count <= 15) return 1; // léger
-  if (count <= 40) return 2; // modéré
-  if (count <= 90) return 3; // important
-  return 4; // très important
+  if (count <= 15) return 1;
+  if (count <= 40) return 2;
+  if (count <= 90) return 3;
+  return 4;
 }
+
+type CellLevel = "future" | "none" | 0 | 1 | 2 | 3 | 4;
 
 type Cell = {
   date: string;
   count: number;
-  level: 0 | 1 | 2 | 3 | 4;
-  future: boolean;
+  level: CellLevel;
+  hasData: boolean;
 };
 
 type WeekCol = {
@@ -68,7 +70,10 @@ type WeekCol = {
   monthLabel: string | null;
 };
 
-function buildWeeks(days: DashboardHeatmapDay[]): { weeks: WeekCol[]; max: number } {
+function buildWeeks(days: DashboardHeatmapDay[]): {
+  weeks: WeekCol[];
+  max: number;
+} {
   const byDate = new Map(days.map((d) => [d.date, d.count]));
   const todayP = parisToday();
   const todayKey = toDateKey(todayP.y, todayP.m, todayP.day);
@@ -85,15 +90,18 @@ function buildWeeks(days: DashboardHeatmapDay[]): { weeks: WeekCol[]; max: numbe
       cursor.getUTCMonth() + 1,
       cursor.getUTCDate(),
     );
+    const hasData = byDate.has(key);
     const count = byDate.get(key) ?? 0;
-    cells.push({ date: key, count, level: 0, future: key > todayKey });
+    const future = key > todayKey;
+    let level: CellLevel;
+    if (future) level = "future";
+    else if (!hasData) level = "none";
+    else level = levelForCount(count);
+    cells.push({ date: key, count, level, hasData });
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
   const max = Math.max(0, ...cells.map((c) => c.count));
-  for (const c of cells) {
-    c.level = c.future ? 0 : levelForCount(c.count);
-  }
 
   const weeks: WeekCol[] = [];
   let lastMonth = -1;
@@ -108,6 +116,19 @@ function buildWeeks(days: DashboardHeatmapDay[]): { weeks: WeekCol[]; max: numbe
   }
 
   return { weeks, max };
+}
+
+function cellClass(level: CellLevel): string {
+  if (level === "future") return "level-empty";
+  if (level === "none") return "level-none";
+  return `level-${level}`;
+}
+
+function cellTitle(cell: Cell): string | undefined {
+  if (cell.level === "future") return undefined;
+  if (!cell.hasData) return `${cell.date} · aucune donnée`;
+  if (cell.count <= 0) return `${cell.date} · aucun retard`;
+  return `${cell.date} · score retard ${cell.count}`;
 }
 
 export function ActivityHeatmap({
@@ -154,12 +175,8 @@ export function ActivityHeatmap({
                   {week.cells.map((cell) => (
                     <span
                       key={cell.date}
-                      className={`heatmap-cell level-${cell.future ? "empty" : cell.level}`}
-                      title={
-                        cell.future
-                          ? undefined
-                          : `${cell.date} · score retard ${cell.count}`
-                      }
+                      className={`heatmap-cell ${cellClass(cell.level)}`}
+                      title={cellTitle(cell)}
                     />
                   ))}
                 </div>
@@ -168,7 +185,8 @@ export function ActivityHeatmap({
           </div>
         </div>
         <div className="heatmap-legend">
-          <span className="muted">Aucun</span>
+          <span className="muted">Sans donnée</span>
+          <span className="heatmap-cell level-none" title="Aucune donnée" />
           <span className="heatmap-cell level-0" title="Aucun retard" />
           <span className="heatmap-cell level-1" title="Léger" />
           <span className="heatmap-cell level-2" title="Modéré" />
