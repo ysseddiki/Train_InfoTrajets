@@ -9,6 +9,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiGet, apiSend } from "../api/client";
 import { errorMessage } from "../lib/format";
+import {
+  toReadableLogEntry,
+  type LogViewMode,
+} from "../lib/ingestLogReadable";
 
 const SOURCES: { id: IngestApiLogSource; label: string }[] = [
   { id: "navitia", label: "Navitia" },
@@ -37,6 +41,7 @@ export function DebugPanel({
   liaisons: LiaisonConfig[];
 }) {
   const [source, setSource] = useState<IngestApiLogSource>("navitia");
+  const [viewMode, setViewMode] = useState<LogViewMode>("readable");
   const [entries, setEntries] = useState<IngestApiLogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [auto, setAuto] = useState(true);
@@ -128,13 +133,17 @@ export function DebugPanel({
     }
   }
 
+  const readableEntries =
+    viewMode === "readable" ? entries.map(toReadableLogEntry) : [];
+
   return (
     <div className="debug-panel">
       <div className="card debug-logs-card">
         <h3>Logs API ingest</h3>
         <p className="muted">
-          Réponses reçues lors des polls / probes, ligne par ligne. Buffer
-          process (récent). Actualise après un poll ou un check Ingest.
+          {viewMode === "readable"
+            ? "Mode lecture : résumé en français. Passe en Technique pour le dump complet (utile pour ZOU)."
+            : "Mode technique : toutes les infos reçues, ligne par ligne."}
         </p>
 
         <div className="debug-log-tabs" role="tablist" aria-label="Source ingest">
@@ -152,6 +161,27 @@ export function DebugPanel({
           ))}
         </div>
 
+        <div
+          className="debug-view-modes"
+          role="group"
+          aria-label="Mode d’affichage"
+        >
+          <button
+            type="button"
+            className={`debug-view-mode${viewMode === "readable" ? " is-active" : ""}`}
+            onClick={() => setViewMode("readable")}
+          >
+            Lecture
+          </button>
+          <button
+            type="button"
+            className={`debug-view-mode${viewMode === "raw" ? " is-active" : ""}`}
+            onClick={() => setViewMode("raw")}
+          >
+            Technique
+          </button>
+        </div>
+
         <div className="debug-log-toolbar">
           <button
             type="button"
@@ -161,7 +191,11 @@ export function DebugPanel({
           >
             Actualiser
           </button>
-          <button type="button" className="secondary" onClick={() => void clearLogs()}>
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => void clearLogs()}
+          >
             Vider cet onglet
           </button>
           <label className="check-inline">
@@ -181,8 +215,40 @@ export function DebugPanel({
 
         {entries.length === 0 ? (
           <p className="muted debug-log-empty">
-            Aucun log {SOURCES.find((s) => s.id === source)?.label} pour l’instant.
+            Aucun log {SOURCES.find((s) => s.id === source)?.label} pour
+            l’instant.
           </p>
+        ) : viewMode === "readable" ? (
+          <div className="debug-log-list">
+            {readableEntries.map((entry) => (
+              <article
+                key={entry.id}
+                className={`debug-log-entry debug-log-readable kind-${entry.kind}${entry.ok ? "" : " is-error"}`}
+              >
+                <header className="debug-log-entry-head">
+                  <span className="debug-log-time">{formatAt(entry.at)}</span>
+                  <strong>{entry.title}</strong>
+                  {entry.httpStatus != null && (
+                    <span className="pill">HTTP {entry.httpStatus}</span>
+                  )}
+                  <span className={`pill ${entry.ok ? "pill-ok" : "pill-err"}`}>
+                    {entry.ok ? "OK" : "KO"}
+                  </span>
+                </header>
+                <ul className="debug-log-bullets">
+                  {entry.bullets.map((b, i) => (
+                    <li key={`${entry.id}-b-${i}`}>{b}</li>
+                  ))}
+                </ul>
+                {entry.hiddenRawLines > 0 && (
+                  <p className="muted debug-log-hint">
+                    {entry.hiddenRawLines} ligne(s) techniques masquée(s) —
+                    bascule en <em>Technique</em> pour tout voir.
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
         ) : (
           <div className="debug-log-list">
             {entries.map((entry) => (

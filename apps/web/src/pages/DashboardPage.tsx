@@ -19,9 +19,22 @@ import {
   type LiaisonScopeValue,
 } from "../components/LiaisonScopePicker";
 import { StatCard } from "../components/StatCard";
-import { errorMessage } from "../lib/format";
+import { errorMessage, formatRelative, formatWhen } from "../lib/format";
 
 const STORAGE_KEY = "sncf.dashboard.liaisonScope";
+
+function formatLastCheckHm(iso: string | null): string | null {
+  if (!iso) return null;
+  try {
+    return new Date(iso).toLocaleTimeString("fr-FR", {
+      timeZone: "Europe/Paris",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return null;
+  }
+}
 
 function formatIngestSourceLabel(data: DashboardOverview): string {
   const provider = data.stats.ingestProvider;
@@ -36,13 +49,17 @@ function formatIngestSourceLabel(data: DashboardOverview): string {
         ? "Stub"
         : provider;
 
+  let source: string;
   if (usedZou && provider !== "stub") {
-    return "ZOU (failover)";
+    source = "ZOU (failover)";
+  } else if (failover && provider === "navitia") {
+    source = `${base} · ZOU secours`;
+  } else {
+    source = base;
   }
-  if (failover && provider === "navitia") {
-    return `${base} · ZOU secours`;
-  }
-  return base;
+
+  const hm = formatLastCheckHm(data.lastIngest.at);
+  return hm ? `${source} · ${hm}` : source;
 }
 
 /** Couleur = statut réel du dernier poll, pas le provider. */
@@ -204,6 +221,9 @@ export function DashboardPage() {
                 data.lastIngest.status
                   ? `Statut: ${data.lastIngest.status}`
                   : "Statut: inconnu",
+                data.lastIngest.at
+                  ? `${formatWhen(data.lastIngest.at)} (${formatRelative(data.lastIngest.at)})`
+                  : null,
                 data.lastIngest.detail,
               ]
                 .filter(Boolean)
