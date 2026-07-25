@@ -143,13 +143,12 @@ function StationPicker({
               value={selectedId}
               onChange={(e) => onChange(e.target.value)}
               required
-              size={Math.min(8, Math.max(4, options.length || 4))}
             >
               <option value="" disabled>
                 {stations.length === 0
                   ? "Aucune gare — créez-en une"
                   : options.length === 0
-                    ? "Aucun résultat"
+                    ? "Aucun résultat pour ce filtre"
                     : "Choisir une gare…"}
               </option>
               {options.map((s) => (
@@ -185,12 +184,11 @@ function StationPicker({
           Id : <code>{selected.externalId}</code>
         </p>
       )}
-      {filter.trim() && (
+      {filter.trim() ? (
         <p className="muted field-hint">
-          {filtered.length} gare{filtered.length > 1 ? "s" : ""} affichée
-          {filtered.length > 1 ? "s" : ""}
+          {filtered.length} gare{filtered.length > 1 ? "s" : ""} dans le menu
         </p>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -735,14 +735,6 @@ button.danger-action:disabled {
   min-width: 0;
 }
 
-.station-picker-select select[size] {
-  width: 100%;
-  min-height: 6.5rem;
-  padding: 0.35rem;
-  font: inherit;
-  line-height: 1.35;
-}
-
 .station-create-btn {
   display: inline-flex;
   align-items: center;
