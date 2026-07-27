@@ -406,6 +406,16 @@ export interface Station {
    * null si non renseigné.
    */
   displayUrl: string | null;
+  /**
+   * Si vrai, les `terminusHelperLabels` aident le matching
+   * (terminus / gares au-delà sur le board).
+   */
+  terminusHelpersEnabled: boolean;
+  /**
+   * Libellés board « terminus / destination d’aide »
+   * (ex. Menton, Vintimille quand la gare filtre est Monaco).
+   */
+  terminusHelperLabels: string[];
   updatedAt: string;
 }
 
@@ -414,6 +424,8 @@ export interface StationUpsertBody {
   label: string;
   /** URL affichage gare ; `""` ou omis → null */
   displayUrl?: string | null;
+  terminusHelpersEnabled?: boolean;
+  terminusHelperLabels?: string[];
 }
 
 /** Compteur journalier d’appels API externes (Navitia). */

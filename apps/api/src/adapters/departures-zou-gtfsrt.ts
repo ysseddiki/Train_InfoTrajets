@@ -2,7 +2,12 @@ import type { JourneyConfig } from "@sncf-alerts/shared";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 import { matchesCorridorAllowlist } from "../domain/corridor.js";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
-import { matchesDestinationFilter } from "../domain/matching.js";
+import {
+  matchesDestinationFilter,
+  matchesTerminusHelpers,
+  type TerminusHelpersInput,
+} from "../domain/matching.js";
+import { store } from "../domain/store.js";
 import {
   getZouStaticIndex,
   resolveTripMeta,
@@ -319,6 +324,7 @@ function tripServesDestination(
   stopIds: string[],
   originUic: string,
   destUic: string | null,
+  terminusHelpers: TerminusHelpersInput | null,
 ): boolean {
   if (destUic) {
     const originIdx = stopIds.findIndex((id) => stopIdMatchesUic(id, originUic));
@@ -331,13 +337,20 @@ function tripServesDestination(
       return true;
     }
   }
-  if (matchesDestinationFilter(journey, directionText, null)) return true;
+  if (matchesDestinationFilter(journey, directionText, null, terminusHelpers)) {
+    return true;
+  }
   if (matchesCorridorAllowlist(journey, directionText)) return true;
   // Headsign / stops static names
   const staticStops = tripStopIds(index, tripId);
   for (const sid of staticStops) {
     const name = stopNameForId(index, sid);
-    if (name && matchesDestinationFilter(journey, name, null)) return true;
+    if (
+      name &&
+      matchesDestinationFilter(journey, name, null, terminusHelpers)
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -356,11 +369,20 @@ export async function fetchZouDeparturesForJourney(
     );
   }
 
-  const [index, cached] = await Promise.all([
+  const [index, cached, destStation] = await Promise.all([
     getZouStaticIndex(),
     getTripsFeed(),
+    journey.destinationId
+      ? store.getStationByExternalId(journey.destinationId)
+      : Promise.resolve(null),
   ]);
   const feed = cached.feed;
+  const terminusHelpers: TerminusHelpersInput | null = destStation
+    ? {
+        enabled: destStation.terminusHelpersEnabled,
+        labels: destStation.terminusHelperLabels,
+      }
+    : null;
 
   const out: ZouRtDeparture[] = [];
   const nowSec = Math.floor(Date.now() / 1000);
@@ -396,6 +418,7 @@ export async function fetchZouDeparturesForJourney(
         stopIds,
         originUic,
         destUic,
+        terminusHelpers,
       )
     ) {
       continue;
@@ -491,31 +514,15 @@ export async function fetchZouDeparturesForJourney(
   return out;
 }
 
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-/** Mot entier (évite « monte » ⊂ « monter »). */
-function textHasToken(text: string, token: string): boolean {
-  if (!token || token.length < 3) return false;
-  const re = new RegExp(
-    `(^|[^\\p{L}\\p{N}])${escapeRegExp(token)}([^\\p{L}\\p{N}]|$)`,
-    "iu",
-  );
-  return re.test(text);
-}
-
-function matchesZouAlertText(journey: JourneyConfig, text: string): boolean {
-  const blob = text.toLowerCase();
-  const dest = journey.destinationLabel.toLowerCase().trim();
-  if (dest && blob.includes(dest)) return true;
-
-  const tokens = dest
-    .split(/[\s\-–—,/]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 4);
-  if (tokens.some((t) => textHasToken(blob, t))) return true;
-
+function matchesZouAlertText(
+  journey: JourneyConfig,
+  text: string,
+  terminusHelpers: TerminusHelpersInput | null,
+): boolean {
+  if (matchesDestinationFilter(journey, text, null, terminusHelpers)) {
+    return true;
+  }
+  if (matchesTerminusHelpers(text, terminusHelpers)) return true;
   return matchesCorridorAllowlist(journey, text);
 }
 
@@ -527,7 +534,18 @@ export async function fetchZouAlertsForJourney(
 ): Promise<ZouServiceAlertHit[]> {
   const originUic = extractUic(journey.originId);
   const destUic = extractUic(journey.destinationId);
-  const { feed } = await getSaFeed();
+  const [{ feed }, destStation] = await Promise.all([
+    getSaFeed(),
+    journey.destinationId
+      ? store.getStationByExternalId(journey.destinationId)
+      : Promise.resolve(null),
+  ]);
+  const terminusHelpers: TerminusHelpersInput | null = destStation
+    ? {
+        enabled: destStation.terminusHelpersEnabled,
+        labels: destStation.terminusHelperLabels,
+      }
+    : null;
   const hits: ZouServiceAlertHit[] = [];
   const matchLines: string[] = [];
 
@@ -546,7 +564,7 @@ export async function fetchZouAlertsForJourney(
       (destUic != null &&
         informedStops.some((id) => stopIdMatchesUic(id, destUic)));
 
-    const textHit = matchesZouAlertText(journey, blob);
+    const textHit = matchesZouAlertText(journey, blob, terminusHelpers);
 
     if (!stopHit && !textHit) continue;
 

@@ -120,9 +120,11 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `external_id` | string | ID Navitia `stop_area` (unique) |
 | `label` | string | Affichage |
 | `display_url` | string \| null | Lien UI fiche publique (ex. G&C) — **jamais** scrapé |
+| `terminus_helpers_enabled` | bool | Défaut false — active les libellés d’aide matching |
+| `terminus_helper_labels` | string[] | Terminus / destinations d’aide (ex. Menton) |
 | `updated_at` | datetime | UTC |
 
-Pas d’alias terminus scrape. Les liaisons référencent les gares via `external_id`.
+Pas d’alias scrape G&C. Les liaisons référencent les gares via `external_id`.
 
 ### 1.5 NotificationSettings & canaux
 

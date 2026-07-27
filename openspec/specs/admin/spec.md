@@ -70,9 +70,11 @@ Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboa
 
 ### Requirement: Catalogue de gares
 
-Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`label`, `externalId` Navitia, `displayUrl` optionnel). La configuration d’une liaison SHALL afficher la **liste complète** des gares du catalogue avec un **champ de recherche** pour filtrer, et MUST proposer un accès « Créer » vers le catalogue si la gare n’existe pas.
+Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`label`, `externalId` Navitia, `displayUrl` optionnel, helpers terminus optionnels). La configuration d’une liaison SHALL afficher la **liste complète** des gares du catalogue avec un **champ de recherche** pour filtrer, et MUST proposer un accès « Créer » vers le catalogue si la gare n’existe pas.
 
 `displayUrl` SHALL servir uniquement de lien UI (fiche publique) ; le système MUST NOT l’utiliser pour un scrape.
+
+Chaque gare MAY exposer des **terminus / destinations d’aide** (`terminusHelperLabels`) activables via `terminusHelpersEnabled`. Quand la gare est le filtre destination d’une liaison et que l’option est active, le matching SHALL accepter un headsign / direction board contenant l’un de ces libellés (en plus du matching label / corridor).
 
 #### Scenario: Création depuis la liaison
 
@@ -86,6 +88,12 @@ Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`la
 - **WHEN** l’admin enregistre la gare
 - **THEN** l’URL est persistée pour l’UI
 - **AND** aucun job d’ingest ne lit cette URL comme source de départs
+
+#### Scenario: Terminus d’aide activés
+
+- **GIVEN** la gare Monaco avec `terminusHelpersEnabled = true` et labels `Menton`, `Vintimille`
+- **WHEN** un départ affiche la direction « Menton »
+- **THEN** le matching accepte le départ pour une liaison filtrée sur Monaco
 
 ### Requirement: Destinataires email saisis par l’admin
 

@@ -60,4 +60,27 @@ describe("matchesDestinationFilter (gare desservie)", () => {
     const j = journey({});
     assert.equal(matchesDestinationFilter(j, "Menton"), true);
   });
+
+  it("matches Menton via terminus helpers when enabled", () => {
+    const j = journey({
+      // Hors corridor (destination fictive) pour isoler les helpers
+      destinationId: "stop_area:SNCF:99999999",
+      destinationLabel: "Gare Test",
+    });
+    assert.equal(matchesDestinationFilter(j, "Menton"), false);
+    assert.equal(
+      matchesDestinationFilter(j, "Menton", null, {
+        enabled: true,
+        labels: ["Menton", "Vintimille"],
+      }),
+      true,
+    );
+    assert.equal(
+      matchesDestinationFilter(j, "Menton", null, {
+        enabled: false,
+        labels: ["Menton"],
+      }),
+      false,
+    );
+  });
 });

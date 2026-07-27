@@ -78,7 +78,7 @@ La `time_window` d’un `JourneyConfig` MUST représenter la fenêtre **trajet**
 
 ### Requirement: Filtre gare desservie
 
-Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents dans la direction affichée des départs), pas uniquement le terminus commercial. L’allowlist corridor (ex. Menton au-delà de Monaco) MAY compléter le matching Navitia lorsque le headsign n’expose que le terminus.
+Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents dans la direction affichée des départs), pas uniquement le terminus commercial. L’allowlist corridor (ex. Menton au-delà de Monaco) MAY compléter le matching Navitia lorsque le headsign n’expose que le terminus. Les **terminus helpers** activés sur la gare catalogue (`terminusHelpersEnabled` + `terminusHelperLabels`) MUST aussi être pris en compte.
 
 #### Scenario: Direction Menton via Monaco
 

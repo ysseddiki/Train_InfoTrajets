@@ -142,6 +142,8 @@ async function ensureStationsTable(p: pg.Pool): Promise<void> {
       external_id TEXT NOT NULL UNIQUE,
       label TEXT NOT NULL,
       display_url TEXT,
+      terminus_helpers_enabled BOOLEAN NOT NULL DEFAULT false,
+      terminus_helper_labels TEXT[] NOT NULL DEFAULT '{}',
       updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `);
@@ -150,6 +152,16 @@ async function ensureStationsTable(p: pg.Pool): Promise<void> {
   }
   if (await columnExists(p, "stations", "terminus_aliases")) {
     await p.query(`ALTER TABLE stations DROP COLUMN terminus_aliases`);
+  }
+  if (!(await columnExists(p, "stations", "terminus_helpers_enabled"))) {
+    await p.query(
+      `ALTER TABLE stations ADD COLUMN terminus_helpers_enabled BOOLEAN NOT NULL DEFAULT false`,
+    );
+  }
+  if (!(await columnExists(p, "stations", "terminus_helper_labels"))) {
+    await p.query(
+      `ALTER TABLE stations ADD COLUMN terminus_helper_labels TEXT[] NOT NULL DEFAULT '{}'`,
+    );
   }
 }
 

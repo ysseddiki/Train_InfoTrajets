@@ -1,7 +1,7 @@
 import type { JourneyConfig } from "@sncf-alerts/shared";
 import { departuresCache, TtlCache } from "../domain/departures-cache.js";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
-import { matchesDestinationFilter } from "../domain/matching.js";
+import { matchesDestinationFilterAsync } from "../domain/matching.js";
 import type { DeparturesPort } from "../ports/departures.js";
 import { store } from "../domain/store.js";
 
@@ -108,7 +108,7 @@ export async function navitiaDepartureMatchesFilter(
     "";
   const destId = dep.route?.direction?.id ?? null;
 
-  if (matchesDestinationFilter(journey, directionText, destId)) {
+  if (await matchesDestinationFilterAsync(journey, directionText, destId)) {
     return true;
   }
 

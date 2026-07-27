@@ -144,17 +144,41 @@ function normalizeDisplayUrl(value: string | null | undefined): string | null {
   return trimmed === "" ? null : trimmed;
 }
 
+function normalizeTerminusHelperLabels(
+  value: string[] | null | undefined,
+): string[] {
+  if (!value || !Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of value) {
+    const t = String(raw ?? "").trim();
+    if (!t) continue;
+    const key = t.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(t.slice(0, 80));
+    if (out.length >= 20) break;
+  }
+  return out;
+}
+
 function mapStation(row: Record<string, unknown>): Station {
   const rawUrl = row.display_url;
   const displayUrl =
     rawUrl === null || rawUrl === undefined || String(rawUrl).trim() === ""
       ? null
       : String(rawUrl).trim();
+  const labelsRaw = row.terminus_helper_labels;
+  const terminusHelperLabels = Array.isArray(labelsRaw)
+    ? labelsRaw.map((x) => String(x)).filter(Boolean)
+    : [];
   return {
     id: String(row.id),
     externalId: String(row.external_id),
     label: String(row.label),
     displayUrl,
+    terminusHelpersEnabled: Boolean(row.terminus_helpers_enabled),
+    terminusHelperLabels,
     updatedAt: new Date(String(row.updated_at)).toISOString(),
   };
 }
@@ -1803,10 +1827,26 @@ export class PgStore {
     return mapStation(res.rows[0]);
   }
 
+  async getStationByExternalId(externalId: string): Promise<Station | null> {
+    const id = String(externalId ?? "").trim();
+    if (!id) return null;
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT * FROM stations WHERE external_id = $1`,
+      [id],
+    );
+    if (res.rowCount === 0) return null;
+    return mapStation(res.rows[0]);
+  }
+
   async createStation(body: StationUpsertBody): Promise<Station> {
     const externalId = String(body.externalId ?? "").trim();
     const label = String(body.label ?? "").trim();
     const displayUrl = normalizeDisplayUrl(body.displayUrl);
+    const terminusHelpersEnabled = body.terminusHelpersEnabled === true;
+    const terminusHelperLabels = normalizeTerminusHelperLabels(
+      body.terminusHelperLabels,
+    );
     if (!externalId || !label) {
       throw Object.assign(new Error("label and externalId are required"), {
         statusCode: 400,
@@ -1815,10 +1855,19 @@ export class PgStore {
     const pool = getPool();
     try {
       const res = await pool.query(
-        `INSERT INTO stations (external_id, label, display_url, updated_at)
-         VALUES ($1, $2, $3, now())
+        `INSERT INTO stations (
+           external_id, label, display_url,
+           terminus_helpers_enabled, terminus_helper_labels, updated_at
+         )
+         VALUES ($1, $2, $3, $4, $5, now())
          RETURNING *`,
-        [externalId, label, displayUrl],
+        [
+          externalId,
+          label,
+          displayUrl,
+          terminusHelpersEnabled,
+          terminusHelperLabels,
+        ],
       );
       return mapStation(res.rows[0]);
     } catch (err) {
@@ -1847,6 +1896,14 @@ export class PgStore {
       body.displayUrl !== undefined
         ? normalizeDisplayUrl(body.displayUrl)
         : current.displayUrl;
+    const terminusHelpersEnabled =
+      body.terminusHelpersEnabled !== undefined
+        ? body.terminusHelpersEnabled === true
+        : current.terminusHelpersEnabled;
+    const terminusHelperLabels =
+      body.terminusHelperLabels !== undefined
+        ? normalizeTerminusHelperLabels(body.terminusHelperLabels)
+        : current.terminusHelperLabels;
     if (!externalId || !label) {
       throw Object.assign(new Error("label and externalId are required"), {
         statusCode: 400,
@@ -1856,10 +1913,22 @@ export class PgStore {
     try {
       const res = await pool.query(
         `UPDATE stations
-         SET external_id = $2, label = $3, display_url = $4, updated_at = now()
+         SET external_id = $2,
+             label = $3,
+             display_url = $4,
+             terminus_helpers_enabled = $5,
+             terminus_helper_labels = $6,
+             updated_at = now()
          WHERE id = $1
          RETURNING *`,
-        [id, externalId, label, displayUrl],
+        [
+          id,
+          externalId,
+          label,
+          displayUrl,
+          terminusHelpersEnabled,
+          terminusHelperLabels,
+        ],
       );
       return mapStation(res.rows[0]);
     } catch (err) {

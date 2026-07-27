@@ -1,6 +1,6 @@
 import type { Station } from "@sncf-alerts/shared";
-import { ExternalLink, Pencil, Plus, Trash2 } from "lucide-react";
-import { useMemo, useState, type FormEvent } from "react";
+import { ExternalLink, Pencil, Plus, Trash2, X } from "lucide-react";
+import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import { apiSend } from "../api/client";
 
 export function StationsPanel({
@@ -14,6 +14,12 @@ export function StationsPanel({
   const [label, setLabel] = useState("");
   const [externalId, setExternalId] = useState("");
   const [displayUrl, setDisplayUrl] = useState("");
+  const [terminusHelpersEnabled, setTerminusHelpersEnabled] = useState(false);
+  const [terminusHelperLabels, setTerminusHelperLabels] = useState<string[]>(
+    [],
+  );
+  const [helperDraft, setHelperDraft] = useState("");
+  const [helperPickId, setHelperPickId] = useState("");
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [busy, setBusy] = useState(false);
   const [searchDraft, setSearchDraft] = useState("");
@@ -29,11 +35,27 @@ export function StationsPanel({
     );
   }, [stations, searchApplied]);
 
+  const pickableStations = useMemo(
+    () =>
+      stations.filter(
+        (s) =>
+          s.id !== editingId &&
+          !terminusHelperLabels.some(
+            (l) => l.toLowerCase() === s.label.toLowerCase(),
+          ),
+      ),
+    [stations, editingId, terminusHelperLabels],
+  );
+
   function startCreate() {
     setEditingId(null);
     setLabel("");
     setExternalId("");
     setDisplayUrl("");
+    setTerminusHelpersEnabled(false);
+    setTerminusHelperLabels([]);
+    setHelperDraft("");
+    setHelperPickId("");
     setMsg(null);
   }
 
@@ -42,12 +64,46 @@ export function StationsPanel({
     setLabel(s.label);
     setExternalId(s.externalId);
     setDisplayUrl(s.displayUrl ?? "");
+    setTerminusHelpersEnabled(s.terminusHelpersEnabled);
+    setTerminusHelperLabels([...s.terminusHelperLabels]);
+    setHelperDraft("");
+    setHelperPickId("");
     setMsg(null);
   }
 
   function onSearchSubmit(e: FormEvent) {
     e.preventDefault();
     setSearchApplied(searchDraft);
+  }
+
+  function addHelperLabel(raw: string) {
+    const t = raw.trim();
+    if (!t) return;
+    setTerminusHelperLabels((prev) => {
+      if (prev.some((x) => x.toLowerCase() === t.toLowerCase())) return prev;
+      return [...prev, t].slice(0, 20);
+    });
+    setHelperDraft("");
+  }
+
+  function removeHelperLabel(labelToRemove: string) {
+    setTerminusHelperLabels((prev) =>
+      prev.filter((x) => x.toLowerCase() !== labelToRemove.toLowerCase()),
+    );
+  }
+
+  function onHelperKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      addHelperLabel(helperDraft);
+    }
+  }
+
+  function addHelperFromCatalog() {
+    const s = stations.find((x) => x.id === helperPickId);
+    if (!s) return;
+    addHelperLabel(s.label);
+    setHelperPickId("");
   }
 
   async function onSubmit(e: FormEvent) {
@@ -58,6 +114,8 @@ export function StationsPanel({
       label,
       externalId,
       displayUrl: displayUrl.trim() || null,
+      terminusHelpersEnabled,
+      terminusHelperLabels,
     };
     try {
       if (editingId) {
@@ -68,8 +126,14 @@ export function StationsPanel({
         );
         onChange(stations.map((s) => (s.id === updated.id ? updated : s)));
         setMsg({ text: "Gare mise à jour", ok: true });
+        setTerminusHelpersEnabled(updated.terminusHelpersEnabled);
+        setTerminusHelperLabels([...updated.terminusHelperLabels]);
       } else {
-        const created = await apiSend<Station>("/v1/admin/stations", "POST", payload);
+        const created = await apiSend<Station>(
+          "/v1/admin/stations",
+          "POST",
+          payload,
+        );
         onChange(
           [...stations, created].sort((a, b) =>
             a.label.localeCompare(b.label, "fr"),
@@ -77,6 +141,8 @@ export function StationsPanel({
         );
         setMsg({ text: "Gare créée", ok: true });
         setEditingId(created.id);
+        setTerminusHelpersEnabled(created.terminusHelpersEnabled);
+        setTerminusHelperLabels([...created.terminusHelperLabels]);
       }
     } catch {
       setMsg({
@@ -115,11 +181,7 @@ export function StationsPanel({
         <aside className="card stations-list">
           <div className="stations-list-head">
             <h3>Catalogue</h3>
-            <button
-              type="button"
-              className="secondary"
-              onClick={startCreate}
-            >
+            <button type="button" className="secondary" onClick={startCreate}>
               <Plus size={16} strokeWidth={2} aria-hidden />
               Nouvelle
             </button>
@@ -154,8 +216,20 @@ export function StationsPanel({
                     className={`stations-item${editingId === s.id ? " is-active" : ""}`}
                     onClick={() => startEdit(s)}
                   >
-                    <span className="stations-item-label">{s.label}</span>
-                    <span className="muted stations-item-id">{s.externalId}</span>
+                    <span className="stations-item-label">
+                      {s.label}
+                      {s.terminusHelpersEnabled ? (
+                        <span
+                          className="pill stations-terminus-pill"
+                          title="Terminus d’aide activés"
+                        >
+                          Terminus
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="muted stations-item-id">
+                      {s.externalId}
+                    </span>
                   </button>
                   {s.displayUrl ? (
                     <a
@@ -236,10 +310,96 @@ export function StationsPanel({
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Ouvrir le lien <ExternalLink size={14} strokeWidth={2} aria-hidden />
+                Ouvrir le lien{" "}
+                <ExternalLink size={14} strokeWidth={2} aria-hidden />
               </a>
             </p>
           ) : null}
+
+          <fieldset className="stations-terminus">
+            <legend>Terminus / destinations d’aide</legend>
+            <p className="muted field-hint">
+              Quand cette gare est le filtre destination d’une liaison, ces
+              libellés aident le matching si le board n’affiche que le terminus
+              (ex. Menton / Vintimille pour Monaco).
+            </p>
+            <label className="check-inline">
+              <input
+                type="checkbox"
+                checked={terminusHelpersEnabled}
+                onChange={(e) => setTerminusHelpersEnabled(e.target.checked)}
+              />{" "}
+              Activer l’aide terminus
+            </label>
+
+            <div
+              className={`stations-terminus-body${terminusHelpersEnabled ? "" : " is-disabled"}`}
+            >
+              {terminusHelperLabels.length > 0 ? (
+                <ul className="stations-helper-chips">
+                  {terminusHelperLabels.map((h) => (
+                    <li key={h}>
+                      <span>{h}</span>
+                      <button
+                        type="button"
+                        className="stations-helper-chip-del"
+                        title={`Retirer ${h}`}
+                        onClick={() => removeHelperLabel(h)}
+                        disabled={!terminusHelpersEnabled || busy}
+                      >
+                        <X size={12} strokeWidth={2} aria-hidden />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="muted">Aucun terminus ajouté.</p>
+              )}
+
+              <label>
+                Ajouter un libellé (Entrée)
+                <input
+                  value={helperDraft}
+                  onChange={(e) => setHelperDraft(e.target.value)}
+                  onKeyDown={onHelperKeyDown}
+                  placeholder="Menton, Vintimille…"
+                  disabled={!terminusHelpersEnabled || busy}
+                  autoComplete="off"
+                />
+              </label>
+
+              {pickableStations.length > 0 ? (
+                <div className="stations-helper-pick">
+                  <label>
+                    Ou choisir une gare du catalogue
+                    <select
+                      value={helperPickId}
+                      onChange={(e) => setHelperPickId(e.target.value)}
+                      disabled={!terminusHelpersEnabled || busy}
+                    >
+                      <option value="">—</option>
+                      {pickableStations.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary"
+                    disabled={
+                      !terminusHelpersEnabled || !helperPickId || busy
+                    }
+                    onClick={addHelperFromCatalog}
+                  >
+                    Ajouter
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </fieldset>
+
           <button type="submit" disabled={busy}>
             {busy
               ? "Enregistrement…"
