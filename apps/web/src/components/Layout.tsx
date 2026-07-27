@@ -1,5 +1,5 @@
 import { Bell, LayoutDashboard, Settings2 } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet } from "react-router-dom";
 import { ApiStatusLine } from "./ApiStatusLine";
 
 const NAV = [
@@ -13,10 +13,15 @@ export function Layout() {
     <div className="app-shell">
       <aside className="sidebar" aria-label="Navigation">
         <div className="sidebar-top">
-          <div className="brand sidebar-brand">
+          <Link
+            to="/"
+            className="brand sidebar-brand"
+            aria-label="Retour au dashboard"
+            title="Dashboard"
+          >
             <span className="brand-mark" aria-hidden />
             <span className="brand-name">SNCF-Alerts</span>
-          </div>
+          </Link>
           <nav className="sidebar-nav">
             {NAV.map(({ to, label, icon: Icon, end }) => (
               <NavLink
