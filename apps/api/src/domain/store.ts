@@ -1013,17 +1013,29 @@ export class PgStore {
     opts?: { liaisonId?: string },
   ): Promise<AlertDeliveryDto[]> {
     const pool = getPool();
+    // Masquer les « suppressed » bruit (canaux OFF) — legacy + inutiles en UI
+    const noise = `NOT (
+      status = 'suppressed'
+      AND detail IN (
+        'EMAIL_ENABLED=false',
+        'TEAMS_ENABLED=false',
+        'SMTP désactivé (admin)',
+        'TEAMS_ENABLED is false'
+      )
+    )`;
     if (opts?.liaisonId) {
       const res = await pool.query(
         `SELECT * FROM alert_deliveries
-         WHERE liaison_id = $1
+         WHERE liaison_id = $1 AND ${noise}
          ORDER BY created_at DESC LIMIT $2`,
         [opts.liaisonId, limit],
       );
       return res.rows.map(mapDelivery);
     }
     const res = await pool.query(
-      `SELECT * FROM alert_deliveries ORDER BY created_at DESC LIMIT $1`,
+      `SELECT * FROM alert_deliveries
+       WHERE ${noise}
+       ORDER BY created_at DESC LIMIT $1`,
       [limit],
     );
     return res.rows.map(mapDelivery);
