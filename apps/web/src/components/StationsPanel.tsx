@@ -319,11 +319,10 @@ export function StationsPanel({
           <fieldset className="stations-terminus">
             <legend>Terminus / destinations d’aide</legend>
             <p className="muted field-hint">
-              Réservé au <strong>failover ZOU</strong> (pas Navitia). Quand cette
-              gare est le filtre destination, ces libellés matchent le{" "}
-              <strong>terminus commercial</strong> ZOU (headsign / dernier arrêt),
-              pas tous les trains qui passent simplement par ces gares. Ex.
-              Menton / Vintimille pour Monaco.
+              Champs conservés pour compatibilité catalogue —{" "}
+              <strong>non utilisés</strong> par le matching (Navitia ni failover
+              ZOU). Le failover ZOU matche uniquement par UIC origine →
+              destination sur le parcours GTFS.
             </p>
             <label className="check-inline">
               <input
@@ -331,7 +330,7 @@ export function StationsPanel({
                 checked={terminusHelpersEnabled}
                 onChange={(e) => setTerminusHelpersEnabled(e.target.checked)}
               />{" "}
-              Activer l’aide terminus (failover ZOU)
+              Aide terminus (inactif / legacy)
             </label>
 
             <div
