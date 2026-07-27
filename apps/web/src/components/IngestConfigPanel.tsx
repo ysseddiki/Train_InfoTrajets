@@ -9,8 +9,8 @@ import { apiGet, apiSend } from "../api/client";
 import { errorMessage } from "../lib/format";
 
 const LABELS: Record<IngestProviderId, string> = {
-  stub: "Stub (dev / démo)",
-  navitia: "Navitia (api.sncf.com)",
+  stub: "Stub",
+  navitia: "Navitia",
 };
 
 function CheckBadge({ slot }: { slot: IngestProviderSlotPublic }) {
@@ -67,9 +67,7 @@ function ProviderCard({
       </div>
 
       {slot.id === "stub" ? (
-        <p className="muted field-hint">
-          Aucun token. Injection debug possible. Toujours « OK » pour le check.
-        </p>
+        <p className="muted field-hint">Pas de token. OK pour les checks.</p>
       ) : (
         <>
           <p className="ingest-token-status">
@@ -266,29 +264,15 @@ export function IngestConfigPanel() {
 
   return (
     <div className="ingest-config">
-      <div className="card">
-        <h2>Sources de données</h2>
-        <p className="muted">
-          Configure chaque provider indépendamment, puis choisis celui{" "}
-          <strong>actif</strong> pour le poll. Les tokens sont write-only : seuls
-          les 5 premiers caractères restent visibles. Un check API est lancé à
-          l’enregistrement / activation (statut OK/KO affiché) mais{" "}
-          <strong>n’empêche pas</strong> la sauvegarde : si KO, pas de données
-          remontées tant que l’API ne répond pas.
-        </p>
-        <p>
-          Actif : <strong>{LABELS[config.activeProvider]}</strong>
-        </p>
-      </div>
-
       <div className="card ingest-failover-card">
-        <h3>Failover — ZOU open data (GTFS-RT)</h3>
-        <p className="muted">
-          Si Navitia échoue, quota épuisé ou token manquant, bascule sur les
-          flux open data Région Sud (TripUpdates + Service Alerts), matching
-          par UIC Navitia. Pas un provider primaire : désactiver = comportement
-          Navitia seul.
-        </p>
+        <div className="ingest-provider-head">
+          <strong>Failover ZOU</strong>
+          {config.zouFailoverEnabled ? (
+            <span className="pill pill-ok">ON</span>
+          ) : (
+            <span className="pill pill-ignored">OFF</span>
+          )}
+        </div>
         <label className="check-inline">
           <input
             type="checkbox"
@@ -296,20 +280,8 @@ export function IngestConfigPanel() {
             disabled={busy}
             onChange={(e) => void setZouFailover(e.target.checked)}
           />{" "}
-          Activer le failover GTFS-RT ZOU
+          Basculer si Navitia KO / quota / sans token
         </label>
-        <p className="muted field-hint">
-          Dataset{" "}
-          <a
-            href="https://transport.data.gouv.fr/datasets/trains-zou-en-provence-alpes-cote-dazur"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Trains régionaux ZOU !
-          </a>
-          . Matching renforcé via GTFS static (stop_times) + multi-feeds
-          TripUpdates si configurés.
-        </p>
       </div>
 
       <div className="ingest-provider-grid">

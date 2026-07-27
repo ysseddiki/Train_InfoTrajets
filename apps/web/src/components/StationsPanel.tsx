@@ -197,15 +197,13 @@ export function StationsPanel({
                 autoComplete="off"
               />
             </label>
-            <p className="muted field-hint">
-              Pas de recherche live : valide avec Entrée.
-            </p>
+          <p className="muted field-hint">
+            Entrée pour filtrer.
+          </p>
           </form>
           {filtered.length === 0 ? (
             <p className="muted">
-              {stations.length === 0
-                ? "Aucune gare — créez-en une."
-                : "Aucun résultat — Entrée pour relancer."}
+              {stations.length === 0 ? "Aucune gare." : "Aucun résultat."}
             </p>
           ) : (
             <ul className="stations-items">
@@ -280,7 +278,7 @@ export function StationsPanel({
             />
           </label>
           <label>
-            Id technique (Navitia)
+            Id Navitia
             <input
               value={externalId}
               onChange={(e) => setExternalId(e.target.value)}
@@ -288,21 +286,15 @@ export function StationsPanel({
               required
             />
           </label>
-          <p className="muted field-hint">
-            Identifiant <code>stop_area</code> utilisé pour les appels départs.
-          </p>
           <label>
-            Lien affichage gare
+            Lien affichage
             <input
               type="url"
               value={displayUrl}
               onChange={(e) => setDisplayUrl(e.target.value)}
-              placeholder="https://www.garesetconnexions.sncf/fr/gare/…"
+              placeholder="https://…"
             />
           </label>
-          <p className="muted field-hint">
-            URL Gares &amp; Connexions (ou autre page d’affichage) — optionnel.
-          </p>
           {displayUrl.trim() ? (
             <p className="stations-display-preview">
               <a
@@ -310,27 +302,21 @@ export function StationsPanel({
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                Ouvrir le lien{" "}
+                Ouvrir{" "}
                 <ExternalLink size={14} strokeWidth={2} aria-hidden />
               </a>
             </p>
           ) : null}
 
-          <fieldset className="stations-terminus">
-            <legend>Terminus / destinations d’aide</legend>
-            <p className="muted field-hint">
-              Champs conservés pour compatibilité catalogue —{" "}
-              <strong>non utilisés</strong> par le matching (Navitia ni failover
-              ZOU). Le failover ZOU matche uniquement par UIC origine →
-              destination sur le parcours GTFS.
-            </p>
+          <details className="stations-terminus">
+            <summary>Aide terminus (legacy)</summary>
             <label className="check-inline">
               <input
                 type="checkbox"
                 checked={terminusHelpersEnabled}
                 onChange={(e) => setTerminusHelpersEnabled(e.target.checked)}
               />{" "}
-              Aide terminus (inactif / legacy)
+              Activer
             </label>
 
             <div
@@ -354,16 +340,16 @@ export function StationsPanel({
                   ))}
                 </ul>
               ) : (
-                <p className="muted">Aucun terminus ajouté.</p>
+                <p className="muted">Aucun.</p>
               )}
 
               <label>
-                Ajouter un libellé (Entrée)
+                Libellé
                 <input
                   value={helperDraft}
                   onChange={(e) => setHelperDraft(e.target.value)}
                   onKeyDown={onHelperKeyDown}
-                  placeholder="Menton, Vintimille…"
+                  placeholder="Menton…"
                   disabled={!terminusHelpersEnabled || busy}
                   autoComplete="off"
                 />
@@ -372,7 +358,7 @@ export function StationsPanel({
               {pickableStations.length > 0 ? (
                 <div className="stations-helper-pick">
                   <label>
-                    Ou choisir une gare du catalogue
+                    Depuis catalogue
                     <select
                       value={helperPickId}
                       onChange={(e) => setHelperPickId(e.target.value)}
@@ -399,7 +385,7 @@ export function StationsPanel({
                 </div>
               ) : null}
             </div>
-          </fieldset>
+          </details>
 
           <button type="submit" disabled={busy}>
             {busy

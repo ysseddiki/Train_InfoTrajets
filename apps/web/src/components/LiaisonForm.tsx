@@ -128,11 +128,11 @@ function StationPicker({
       <div className="station-picker-row">
         <div className="station-picker-fields">
           <label>
-            Rechercher
+            Recherche
             <input
               type="search"
               value={filter}
-              placeholder="Filtrer la liste…"
+              placeholder="Filtrer…"
               onChange={(e) => setFilter(e.target.value)}
               autoComplete="off"
             />
@@ -146,10 +146,10 @@ function StationPicker({
             >
               <option value="" disabled>
                 {stations.length === 0
-                  ? "Aucune gare — créez-en une"
+                  ? "Aucune gare"
                   : options.length === 0
-                    ? "Aucun résultat pour ce filtre"
-                    : "Choisir une gare…"}
+                    ? "Aucun résultat"
+                    : "Choisir…"}
               </option>
               {options.map((s) => (
                 <option key={s.id} value={s.id}>
@@ -179,14 +179,9 @@ function StationPicker({
         name={`station${name}Label`}
         value={selected?.label ?? ""}
       />
-      {selected && (
+      {selected ? (
         <p className="muted field-hint station-id-hint">
-          Id : <code>{selected.externalId}</code>
-        </p>
-      )}
-      {filter.trim() ? (
-        <p className="muted field-hint">
-          {filtered.length} gare{filtered.length > 1 ? "s" : ""} dans le menu
+          <code>{selected.externalId}</code>
         </p>
       ) : null}
     </div>
@@ -218,7 +213,7 @@ function WatchFields({
         Veille continue
       </label>
       <label className={watchAlways ? "is-disabled" : undefined}>
-        Commencer la veille
+        Veille
         <select
           name={`${prefix}WatchLead`}
           value={String(watchLeadHours)}
@@ -228,7 +223,7 @@ function WatchFields({
         >
           {LEAD_OPTIONS.map((h) => (
             <option key={h} value={h}>
-              {h === 0 ? "0 h avant (début trajet)" : `${h} h avant`}
+              {h === 0 ? "Au début du trajet" : `${h} h avant`}
             </option>
           ))}
         </select>
@@ -238,10 +233,6 @@ function WatchFields({
         name={`${prefix}WatchLeadValue`}
         value={watchLeadHours}
       />
-      <p className="muted field-hint">
-        Fenêtre ci-dessus = trajet. La veille démarre plus tôt (ou en continu)
-        pour anticiper les annonces.
-      </p>
     </div>
   );
 }
@@ -379,30 +370,21 @@ export function LiaisonForm({
       className="card voyage-form"
       onSubmit={(e) => void onSubmit(e)}
     >
-      <p className="muted">
-        Une paire de gares : le matin on surveille les départs de{" "}
-        <strong>A vers B</strong>, le soir de <strong>B vers A</strong>. Réseau
-        TER uniquement.
-      </p>
-
       <label>
-        Nom de la liaison
+        Nom
         <input
           name="name"
           defaultValue={liaison.name}
           placeholder={autoNameHint}
         />
       </label>
-      <p className="muted field-hint">
-        Si vide → <code>{autoNameHint}</code>
-      </p>
 
       <fieldset className="voyage-section">
         <legend>Gares</legend>
         <div className="voyage-stations">
           <StationPicker
             name="A"
-            title="Gare A (départ aller / filtre retour)"
+            title="Gare A"
             stations={stations}
             selectedId={stationAId}
             onChange={setStationAId}
@@ -410,18 +392,13 @@ export function LiaisonForm({
           />
           <StationPicker
             name="B"
-            title="Gare B (filtre aller / départ retour) — gare desservie"
+            title="Gare B"
             stations={stations}
             selectedId={stationBId}
             onChange={setStationBId}
             onCreate={() => onCreateStation?.()}
           />
         </div>
-        <p className="muted field-hint">
-          Le filtre n’est pas forcément le terminus : une gare <strong>desservie</strong>{" "}
-          sur le parcours suffit (ex. Monaco sur un train Menton).
-          Renseigne l’URL Gares &amp; Connexions dans le catalogue Gares.
-        </p>
       </fieldset>
 
       <fieldset className="voyage-section">
@@ -433,7 +410,7 @@ export function LiaisonForm({
               type="checkbox"
               defaultChecked={dayFlags.weekdays}
             />{" "}
-            Semaine (lun–ven)
+            Lun–Ven
           </label>
           <label className="check-inline">
             <input
@@ -441,21 +418,22 @@ export function LiaisonForm({
               type="checkbox"
               defaultChecked={dayFlags.weekend}
             />{" "}
-            Week-end (sam–dim)
+            Sam–Dim
           </label>
         </div>
       </fieldset>
 
       <div className="voyage-windows">
         <fieldset className="voyage-section voyage-leg">
-          <legend>Aller</legend>
-          <p className="muted voyage-leg-hint">
-            Départs {stationA?.label || outbound.originLabel || "A"} →{" "}
-            {stationB?.label || outbound.destinationLabel || "B"}
-          </p>
+          <legend>
+            Aller{" "}
+            <span className="voyage-leg-route">
+              {stationA?.label || "A"} → {stationB?.label || "B"}
+            </span>
+          </legend>
           <div className="voyage-window-row">
             <label>
-              Début trajet
+              Début
               <input
                 name="outboundStart"
                 type="time"
@@ -464,7 +442,7 @@ export function LiaisonForm({
               />
             </label>
             <label>
-              Fin trajet
+              Fin
               <input
                 name="outboundEnd"
                 type="time"
@@ -486,19 +464,20 @@ export function LiaisonForm({
               type="checkbox"
               defaultChecked={outbound.active}
             />{" "}
-            Surveiller l’aller
+            Actif
           </label>
         </fieldset>
 
         <fieldset className="voyage-section voyage-leg">
-          <legend>Retour</legend>
-          <p className="muted voyage-leg-hint">
-            Départs {stationB?.label || inbound.originLabel || "B"} →{" "}
-            {stationA?.label || inbound.destinationLabel || "A"}
-          </p>
+          <legend>
+            Retour{" "}
+            <span className="voyage-leg-route">
+              {stationB?.label || "B"} → {stationA?.label || "A"}
+            </span>
+          </legend>
           <div className="voyage-window-row">
             <label>
-              Début trajet
+              Début
               <input
                 name="inboundStart"
                 type="time"
@@ -507,7 +486,7 @@ export function LiaisonForm({
               />
             </label>
             <label>
-              Fin trajet
+              Fin
               <input
                 name="inboundEnd"
                 type="time"
@@ -529,25 +508,26 @@ export function LiaisonForm({
               type="checkbox"
               defaultChecked={inbound.active}
             />{" "}
-            Surveiller le retour
+            Actif
           </label>
         </fieldset>
       </div>
 
-      <label>
-        Seuil retard (min)
-        <input
-          name="minDelayMinutes"
-          type="number"
-          min={0}
-          defaultValue={outbound.minDelayMinutes}
-          required
-        />
-      </label>
-
-      <button type="submit" disabled={saving}>
-        {saving ? "Enregistrement…" : "Enregistrer la liaison"}
-      </button>
+      <div className="voyage-footer-row">
+        <label className="voyage-threshold">
+          Seuil retard (min)
+          <input
+            name="minDelayMinutes"
+            type="number"
+            min={0}
+            defaultValue={outbound.minDelayMinutes}
+            required
+          />
+        </label>
+        <button type="submit" disabled={saving}>
+          {saving ? "…" : "Enregistrer"}
+        </button>
+      </div>
       {msg && (
         <p className={`form-msg ${msg.ok ? "ok" : "error"}`}>{msg.text}</p>
       )}

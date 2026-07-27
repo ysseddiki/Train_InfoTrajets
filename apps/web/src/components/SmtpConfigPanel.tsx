@@ -75,10 +75,6 @@ export function SmtpConfigPanel({
   return (
     <article className="card">
       <h3>SMTP</h3>
-      <p className="muted">
-        Config stockée en base (mot de passe write-only). Bootstrap possible
-        depuis <code>.env</code> au premier démarrage.
-      </p>
       <form className="stack-form" onSubmit={(e) => void save(e)}>
         <label className="check-inline">
           <input
@@ -87,7 +83,7 @@ export function SmtpConfigPanel({
             disabled={busy}
             onChange={(e) => setEnabled(e.target.checked)}
           />{" "}
-          Email activé
+          Activé
         </label>
         <label>
           Host
@@ -162,7 +158,7 @@ export function SmtpConfigPanel({
             disabled={busy}
             onClick={() => void onTest()}
           >
-            Envoyer un test email
+            Envoyer un test
           </button>
         </div>
       </form>

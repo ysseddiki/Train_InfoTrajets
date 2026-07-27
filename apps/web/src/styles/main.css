@@ -997,9 +997,18 @@ button.danger-action:disabled {
   border-radius: 10px;
 }
 
-.stations-terminus legend {
-  padding: 0 0.35rem;
+.stations-terminus > summary {
+  cursor: pointer;
   font-weight: 600;
+  list-style: none;
+}
+
+.stations-terminus > summary::-webkit-details-marker {
+  display: none;
+}
+
+.stations-terminus[open] > summary {
+  margin-bottom: 0.65rem;
 }
 
 .stations-terminus-body {
@@ -1110,6 +1119,12 @@ button.danger-action:disabled {
   font-size: 0.9rem;
 }
 
+.voyage-leg-route {
+  font-weight: 500;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
 .voyage-window-row {
   display: grid;
   gap: 0.75rem;
@@ -1127,6 +1142,18 @@ button.danger-action:disabled {
 .voyage-watch label.is-disabled select {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+.voyage-footer-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.voyage-threshold {
+  max-width: 10rem;
 }
 
 .ingest-token-status {

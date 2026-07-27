@@ -5,29 +5,12 @@ import type {
 import { useState } from "react";
 import { apiSend } from "../api/client";
 
-const EVENT_SOURCES: { id: IngestEventSource; label: string; hint: string }[] =
-  [
-    {
-      id: "stub",
-      label: "Événements stub",
-      hint: "Injections debug / ingest stub",
-    },
-    {
-      id: "navitia",
-      label: "Événements Navitia",
-      hint: "Retards / suppressions issus de l’API SNCF",
-    },
-    {
-      id: "prim",
-      label: "Événements PRIM (legacy)",
-      hint: "Ancienne source IDF — purge historique seulement",
-    },
-    {
-      id: "zou",
-      label: "Événements ZOU (failover)",
-      hint: "GTFS-RT open data Région Sud — failover Navitia",
-    },
-  ];
+const EVENT_SOURCES: { id: IngestEventSource; label: string }[] = [
+  { id: "stub", label: "Stub" },
+  { id: "navitia", label: "Navitia" },
+  { id: "prim", label: "PRIM (legacy)" },
+  { id: "zou", label: "ZOU" },
+];
 
 export function ClearStatsPanel() {
   const [sources, setSources] = useState<Record<IngestEventSource, boolean>>({
@@ -90,15 +73,10 @@ export function ClearStatsPanel() {
 
   return (
     <div className="card clear-stats-panel">
-      <p className="muted">
-        Vide les données qui alimentent les statistiques dashboard (retards,
-        suppressions, notifs). Chaque source se coche indépendamment.
-      </p>
-
       <fieldset className="clear-stats-group">
-        <legend>Événements ingest</legend>
+        <legend>Événements</legend>
         <div className="clear-stats-options">
-          {EVENT_SOURCES.map(({ id, label, hint }) => (
+          {EVENT_SOURCES.map(({ id, label }) => (
             <label key={id} className="check-inline clear-stats-option">
               <input
                 type="checkbox"
@@ -109,7 +87,6 @@ export function ClearStatsPanel() {
               />
               <span>
                 <strong>{label}</strong>
-                <span className="muted clear-stats-hint">{hint}</span>
               </span>
             </label>
           ))}
@@ -126,9 +103,6 @@ export function ClearStatsPanel() {
           />
           <span>
             <strong>Livraisons email / Teams</strong>
-            <span className="muted clear-stats-hint">
-              Historique des envois (sent / failed / suppressed)
-            </span>
           </span>
         </label>
       </fieldset>
@@ -139,7 +113,7 @@ export function ClearStatsPanel() {
         disabled={!canClear || busy}
         onClick={() => void onClear()}
       >
-        {busy ? "Effacement…" : "Effacer la sélection"}
+        {busy ? "…" : "Effacer"}
       </button>
       {msg && (
         <p className={`form-msg ${msg.ok ? "ok" : "error"}`}>{msg.text}</p>

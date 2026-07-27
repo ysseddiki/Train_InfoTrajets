@@ -6,7 +6,6 @@ import type {
   LiaisonConfig,
 } from "@sncf-alerts/shared";
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { RefreshCw, Trash2 } from "lucide-react";
 import { apiGet, apiSend } from "../api/client";
 import { errorMessage } from "../lib/format";
@@ -144,8 +143,8 @@ export function DebugPanel({
         <h3>Logs API ingest</h3>
         <p className="muted debug-logs-lead">
           {viewMode === "readable"
-            ? "Mode lecture : les lignes surlignées (retard / suppression) sont celles utilisées par l’outil. Les Service Alerts ZOU sont grisées (ignorées)."
-            : "Mode technique : dump complet. Les lignes retard / cancel outil sont surlignées."}
+            ? "Surligné = signal outil (retard / suppression). SA ZOU ignorées."
+            : "Dump technique — lignes retard / cancel surlignées."}
         </p>
 
         <div className="debug-logs-controls">
@@ -363,10 +362,7 @@ export function DebugPanel({
 
       <section className="card debug">
         <h3>Outils stub</h3>
-        <p className="muted">
-          Injecte un événement stub (matching + file notifs). Puis ouvre le{" "}
-          <Link to="/">Dashboard</Link> et actualise.
-        </p>
+        <p className="muted">Injection événement + matching / notifs.</p>
         <label>
           Liaison
           <select
@@ -405,8 +401,7 @@ export function DebugPanel({
         </button>
         <hr className="admin-sep" />
         <p className="muted">
-          Remplit ~6 mois d’événements stub (heatmap / stats).{" "}
-          <strong>Sans notifications</strong>.
+          ~6 mois d’historique (heatmap). Sans notifs.
         </p>
         <button
           type="button"

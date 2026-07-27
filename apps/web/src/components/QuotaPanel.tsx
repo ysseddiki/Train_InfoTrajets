@@ -14,11 +14,8 @@ export function QuotaPanel({ quota }: { quota: ApiQuotaStatus }) {
     <div className="card quota-panel">
       <div className="quota-head">
         <div>
-          <h3>Navitia / SNCF open data</h3>
-          <p className="muted">
-            Compteur du jour <strong>{quota.day}</strong> (Europe/Paris) ·
-            provider <code>{quota.provider}</code>
-          </p>
+          <h3>Quota Navitia</h3>
+          <p className="muted">{quota.day} · Europe/Paris</p>
         </div>
         <p className="quota-used">
           <strong>{quota.used}</strong>
@@ -40,8 +37,8 @@ export function QuotaPanel({ quota }: { quota: ApiQuotaStatus }) {
         />
       </div>
       <p className="quota-bar-caption muted">
-        {quota.percent}% utilisé · {quota.remaining} restantes
-        {quota.exhausted ? " · quota épuisé (ingest en pause)" : ""}
+        {quota.percent}% · {quota.remaining} restantes
+        {quota.exhausted ? " · épuisé" : ""}
       </p>
 
       <div className="quota-stats">
@@ -64,11 +61,6 @@ export function QuotaPanel({ quota }: { quota: ApiQuotaStatus }) {
           <strong>{quota.limit}</strong>
         </div>
       </div>
-
-      <p className="muted quota-note">
-        Une requête = un appel départs Navitia (une gare / un sens dans la
-        fenêtre). Le compteur se réinitialise à minuit (Paris).
-      </p>
     </div>
   );
 }

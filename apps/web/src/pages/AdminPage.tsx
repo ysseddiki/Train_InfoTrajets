@@ -65,13 +65,13 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         id: "liaisons",
         label: "Liaisons",
-        description: "Paires Aller/Retour : gares, fenêtres, jours, seuils.",
+        description: "Aller / retour, fenêtres et seuil.",
         icon: Route,
       },
       {
         id: "stations",
         label: "Gares",
-        description: "Catalogue (libellé + id Navitia) pour composer les liaisons.",
+        description: "Catalogue Navitia.",
         icon: MapPin,
       },
     ],
@@ -83,7 +83,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         id: "alerts",
         label: "Envoi",
-        description: "Destinataires email, SMTP et Teams — qui reçoit quoi.",
+        description: "Destinataires, SMTP, Teams.",
         icon: Radio,
       },
     ],
@@ -95,19 +95,19 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         id: "data",
         label: "Ingest",
-        description: "Source Navitia / stub, failover ZOU et quota API du jour.",
+        description: "Source, failover ZOU, quota.",
         icon: Database,
       },
       {
         id: "debug",
         label: "Debug",
-        description: "Logs API par source et outils stub.",
+        description: "Logs et stub.",
         icon: Bug,
       },
       {
         id: "clear-stats",
         label: "Clear stats",
-        description: "Effacer retards, suppressions et notifs du dashboard.",
+        description: "Purge événements / livraisons.",
         icon: Eraser,
         tone: "danger",
       },
@@ -413,16 +413,13 @@ function AdminConsole({
             onSubmit={(e) => void saveRecipients(e)}
           >
             <header className="admin-stack-card-head">
-              <h3>Destinataires email</h3>
-              <p className="muted">
-                Une adresse par ligne — seules cibles email v1.
-              </p>
+              <h3>Destinataires</h3>
             </header>
             <label>
-              Emails
+              Emails (un par ligne)
               <textarea
                 name="emails"
-                rows={5}
+                rows={4}
                 defaultValue={recipients.emails.join("\n")}
               />
             </label>
@@ -441,7 +438,6 @@ function AdminConsole({
             <article className="card admin-stack-card">
               <header className="admin-stack-card-head">
                 <h3>Teams</h3>
-                <p className="muted">Webhook via <code>.env</code> (jamais exposé).</p>
               </header>
               <ul className="admin-status-list">
                 <li>
@@ -463,7 +459,7 @@ function AdminConsole({
               </ul>
               <div className="admin-stack-actions">
                 <button type="button" onClick={() => void testTeams()}>
-                  Envoyer un test Teams
+                  Test Teams
                 </button>
               </div>
               {teamsMsg && (
@@ -477,8 +473,8 @@ function AdminConsole({
     case "data":
       panelBody = (
         <div className="admin-stack">
-          <IngestConfigPanel />
           <QuotaPanel quota={quota} />
+          <IngestConfigPanel />
         </div>
       );
       break;
