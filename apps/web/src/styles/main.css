@@ -2218,6 +2218,65 @@ td {
   border-left: 3px solid #8a6d3b;
 }
 
+.debug-log-readable.kind-ignored,
+.debug-log-entry.is-ignored-feed {
+  border-left: 3px solid #b0b0b8;
+  opacity: 0.72;
+}
+
+.debug-log-entry.is-tool-signal {
+  border-left: 4px solid #c45c26;
+  background: #fff8f3;
+}
+
+.pill-tool {
+  background: #fde8d8;
+  color: #8a3b12;
+  font-weight: 600;
+}
+
+.pill-ignored {
+  background: #eeeef0;
+  color: #5c5c66;
+}
+
+.debug-log-bullets li.hl-delay,
+.debug-log-lines li.hl-delay {
+  background: #fde8e8;
+  color: #7a1f1f;
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
+  margin-left: -0.35rem;
+  list-style-position: inside;
+  font-weight: 600;
+}
+
+.debug-log-bullets li.hl-cancel,
+.debug-log-lines li.hl-cancel {
+  background: #f3e0ff;
+  color: #5a2a75;
+  border-radius: 4px;
+  padding: 0.15rem 0.35rem;
+  margin-left: -0.35rem;
+  list-style-position: inside;
+  font-weight: 600;
+}
+
+.debug-log-bullets li.hl-ok,
+.debug-log-lines li.hl-ok {
+  background: #e8f6ef;
+  border-radius: 4px;
+  padding: 0.1rem 0.35rem;
+  margin-left: -0.35rem;
+  list-style-position: inside;
+}
+
+.debug-log-bullets li.hl-ignored,
+.debug-log-lines li.hl-ignored {
+  color: #6a6a74;
+  opacity: 0.85;
+}
+
 .pill-ok {
   background: #e4f5ec;
   color: #0b6e4f;

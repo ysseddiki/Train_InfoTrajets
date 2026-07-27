@@ -10,6 +10,7 @@ import { Link } from "react-router-dom";
 import { apiGet, apiSend } from "../api/client";
 import { errorMessage } from "../lib/format";
 import {
+  rawLineHighlight,
   toReadableLogEntry,
   type LogViewMode,
 } from "../lib/ingestLogReadable";
@@ -142,8 +143,8 @@ export function DebugPanel({
         <h3>Logs API ingest</h3>
         <p className="muted">
           {viewMode === "readable"
-            ? "Mode lecture : résumé en français. Passe en Technique pour le dump complet (utile pour ZOU)."
-            : "Mode technique : toutes les infos reçues, ligne par ligne."}
+            ? "Mode lecture : les lignes surlignées (retard / suppression) sont celles utilisées par l’outil. Les Service Alerts ZOU sont grisées (ignorées)."
+            : "Mode technique : dump complet. Les lignes retard / cancel outil sont surlignées."}
         </p>
 
         <div className="debug-log-tabs" role="tablist" aria-label="Source ingest">
@@ -223,11 +224,25 @@ export function DebugPanel({
             {readableEntries.map((entry) => (
               <article
                 key={entry.id}
-                className={`debug-log-entry debug-log-readable kind-${entry.kind}${entry.ok ? "" : " is-error"}`}
+                className={[
+                  "debug-log-entry",
+                  "debug-log-readable",
+                  `kind-${entry.kind}`,
+                  entry.ok ? "" : "is-error",
+                  entry.isToolSignal ? "is-tool-signal" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
               >
                 <header className="debug-log-entry-head">
                   <span className="debug-log-time">{formatAt(entry.at)}</span>
                   <strong>{entry.title}</strong>
+                  {entry.isToolSignal && (
+                    <span className="pill pill-tool">Signal outil</span>
+                  )}
+                  {entry.kind === "ignored" && (
+                    <span className="pill pill-ignored">Ignoré</span>
+                  )}
                   {entry.httpStatus != null && (
                     <span className="pill">HTTP {entry.httpStatus}</span>
                   )}
@@ -237,7 +252,14 @@ export function DebugPanel({
                 </header>
                 <ul className="debug-log-bullets">
                   {entry.bullets.map((b, i) => (
-                    <li key={`${entry.id}-b-${i}`}>{b}</li>
+                    <li
+                      key={`${entry.id}-b-${i}`}
+                      className={
+                        b.highlight ? `hl-${b.highlight}` : undefined
+                      }
+                    >
+                      {b.text}
+                    </li>
                   ))}
                 </ul>
                 {entry.hiddenRawLines > 0 && (
@@ -251,30 +273,57 @@ export function DebugPanel({
           </div>
         ) : (
           <div className="debug-log-list">
-            {entries.map((entry) => (
-              <article
-                key={entry.id}
-                className={`debug-log-entry${entry.ok ? "" : " is-error"}`}
-              >
-                <header className="debug-log-entry-head">
-                  <span className="debug-log-time">{formatAt(entry.at)}</span>
-                  <strong>{entry.title}</strong>
-                  {entry.httpStatus != null && (
-                    <span className="pill">HTTP {entry.httpStatus}</span>
-                  )}
-                  <span className={`pill ${entry.ok ? "pill-ok" : "pill-err"}`}>
-                    {entry.ok ? "OK" : "KO"}
-                  </span>
-                </header>
-                <ol className="debug-log-lines">
-                  {entry.lines.map((line, i) => (
-                    <li key={`${entry.id}-${i}`}>
-                      <code>{line}</code>
-                    </li>
-                  ))}
-                </ol>
-              </article>
-            ))}
+            {entries.map((entry) => {
+              const isSa =
+                /Service Alerts/i.test(entry.title) &&
+                !/TripUpdates/i.test(entry.title);
+              const isTuMatch = /^Match TripUpdates/i.test(entry.title);
+              return (
+                <article
+                  key={entry.id}
+                  className={[
+                    "debug-log-entry",
+                    entry.ok ? "" : "is-error",
+                    isTuMatch ? "is-tool-signal" : "",
+                    isSa ? "is-ignored-feed" : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  <header className="debug-log-entry-head">
+                    <span className="debug-log-time">{formatAt(entry.at)}</span>
+                    <strong>{entry.title}</strong>
+                    {isTuMatch && (
+                      <span className="pill pill-tool">Signal outil</span>
+                    )}
+                    {isSa && (
+                      <span className="pill pill-ignored">Ignoré</span>
+                    )}
+                    {entry.httpStatus != null && (
+                      <span className="pill">HTTP {entry.httpStatus}</span>
+                    )}
+                    <span
+                      className={`pill ${entry.ok ? "pill-ok" : "pill-err"}`}
+                    >
+                      {entry.ok ? "OK" : "KO"}
+                    </span>
+                  </header>
+                  <ol className="debug-log-lines">
+                    {entry.lines.map((line, i) => {
+                      const hl = rawLineHighlight(line);
+                      return (
+                        <li
+                          key={`${entry.id}-${i}`}
+                          className={hl ? `hl-${hl}` : undefined}
+                        >
+                          <code>{line}</code>
+                        </li>
+                      );
+                    })}
+                  </ol>
+                </article>
+              );
+            })}
           </div>
         )}
       </div>
