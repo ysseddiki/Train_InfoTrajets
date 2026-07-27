@@ -120,8 +120,8 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `external_id` | string | ID Navitia `stop_area` (unique) |
 | `label` | string | Affichage |
 | `display_url` | string \| null | Lien UI fiche publique (ex. G&C) — **jamais** scrapé |
-| `terminus_helpers_enabled` | bool | Défaut false — active les libellés d’aide matching |
-| `terminus_helper_labels` | string[] | Terminus / destinations d’aide (ex. Menton) |
+| `terminus_helpers_enabled` | bool | Legacy catalogue — **non utilisé** par le matching ZOU/Navitia |
+| `terminus_helper_labels` | string[] | Legacy — matching ZOU = UIC OD uniquement |
 | `updated_at` | datetime | UTC |
 
 Pas d’alias scrape G&C. Les liaisons référencent les gares via `external_id`.

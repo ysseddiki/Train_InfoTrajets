@@ -76,9 +76,12 @@ async function deliverEvent(
     .join("\n");
 
   const recipients = await store.getRecipients();
+  const smtp = await store.getSmtpRuntime();
+  const teamsEnabled = process.env.TEAMS_ENABLED === "true";
 
   if (!(await store.hasSentDelivery(event.id, "email")) || opts?.force) {
-    if (process.env.EMAIL_ENABLED === "true") {
+    // Canal désactivé : ne pas tenter d’envoi ni écrire de livraison « suppressed »
+    if (smtp.enabled) {
       const result = await emailNotifier.send({
         to: recipients.emails,
         subject: title,
@@ -93,20 +96,11 @@ async function deliverEvent(
         detail: result.detail ?? null,
         sentAt: result.ok ? new Date().toISOString() : null,
       });
-    } else {
-      await store.createDelivery({
-        eventId: event.id,
-        liaisonId: event.liaisonId,
-        direction,
-        channel: "email",
-        status: "suppressed",
-        detail: "EMAIL_ENABLED=false",
-      });
     }
   }
 
   if (!(await store.hasSentDelivery(event.id, "teams")) || opts?.force) {
-    if (process.env.TEAMS_ENABLED === "true") {
+    if (teamsEnabled) {
       const result = await teamsNotifier.send({ title, body });
       await store.createDelivery({
         eventId: event.id,
@@ -116,15 +110,6 @@ async function deliverEvent(
         status: result.ok ? "sent" : "failed",
         detail: result.detail ?? null,
         sentAt: result.ok ? new Date().toISOString() : null,
-      });
-    } else {
-      await store.createDelivery({
-        eventId: event.id,
-        liaisonId: event.liaisonId,
-        direction,
-        channel: "teams",
-        status: "suppressed",
-        detail: "TEAMS_ENABLED=false",
       });
     }
   }

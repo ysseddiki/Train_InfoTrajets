@@ -1,7 +1,6 @@
 import type { JourneyConfig, DisruptionEventDto } from "@sncf-alerts/shared";
 import { clampWatchLeadHours } from "@sncf-alerts/shared";
 import { matchesCorridorAllowlist } from "./corridor.js";
-import { store } from "./store.js";
 
 /** Helpers terminus saisis sur la gare catalogue (filtre destination). */
 export type TerminusHelpersInput = {
@@ -16,7 +15,9 @@ function normalizeText(s: string): string {
     .replace(/\p{M}/gu, "");
 }
 
-/** Match board text against admin terminus helper labels (when enabled). */
+/** Match board/headsign text against admin terminus helper labels (when enabled).
+ *  Sémantique = terminus commercial affiché, pas « n’importe quel arrêt desservi ».
+ */
 export function matchesTerminusHelpers(
   directionText: string,
   helpers: TerminusHelpersInput | null | undefined,
@@ -203,31 +204,21 @@ export function matchesDestinationFilter(
   // partial tokens: "Monaco", "Nice", etc. — covers "via Monaco" / longer headsigns
   if (tokens.some((t) => text.includes(t))) return true;
 
-  // Terminus / destinations d’aide configurés sur la gare catalogue
+  // Terminus helpers : passés explicitement par le failover ZOU seulement
   if (matchesTerminusHelpers(directionText, terminusHelpers)) return true;
 
   // Boards terminus-only : Menton au-delà de Monaco, etc.
   return matchesCorridorAllowlist(journey, directionText);
 }
 
-/** Charge les helpers terminus de la gare filtre (destination) puis matche. */
+/**
+ * Matching Navitia (source primaire) : label / id / corridor only.
+ * Les terminus helpers sont réservés au failover ZOU GTFS-RT.
+ */
 export async function matchesDestinationFilterAsync(
   journey: JourneyConfig,
   directionText: string,
   destinationId?: string | null,
 ): Promise<boolean> {
-  const station = journey.destinationId
-    ? await store.getStationByExternalId(journey.destinationId)
-    : null;
-  return matchesDestinationFilter(
-    journey,
-    directionText,
-    destinationId,
-    station
-      ? {
-          enabled: station.terminusHelpersEnabled,
-          labels: station.terminusHelperLabels,
-        }
-      : null,
-  );
+  return matchesDestinationFilter(journey, directionText, destinationId, null);
 }

@@ -78,7 +78,7 @@ La `time_window` d’un `JourneyConfig` MUST représenter la fenêtre **trajet**
 
 ### Requirement: Filtre gare desservie
 
-Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents dans la direction affichée des départs), pas uniquement le terminus commercial. L’allowlist corridor (ex. Menton au-delà de Monaco) MAY compléter le matching Navitia lorsque le headsign n’expose que le terminus. Les **terminus helpers** activés sur la gare catalogue (`terminusHelpersEnabled` + `terminusHelperLabels`) MUST aussi être pris en compte.
+Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents dans la direction affichée des départs), pas uniquement le terminus commercial. L’allowlist corridor (ex. Menton au-delà de Monaco) MAY compléter le matching **Navitia** lorsque le headsign n’expose que le terminus. Le failover ZOU MUST matcher par **paire UIC** (voir requirement Failover), sans terminus helpers.
 
 #### Scenario: Direction Menton via Monaco
 
@@ -111,14 +111,40 @@ Le pipeline d’ingest MUST NOT scraper Gares & Connexions ni exposer une source
 
 ### Requirement: Failover GTFS-RT ZOU (open data)
 
-Quand `zouFailoverEnabled` est vrai, le poll Navitia SHALL basculer vers les flux open data ZOU PACA (GTFS-RT TripUpdates + Service Alerts) si le token Navitia est absent, le quota journalier est épuisé, ou un appel Navitia échoue. Les événements / snapshots SHALL utiliser `source = zou`. ZOU MUST NOT être un `IngestProviderId` primaire sélectionnable. Le matching SHALL s’appuyer sur l’UIC, le filtre gare desservie / corridor, et le parcours GTFS static (`stop_times`) lorsque le TripUpdate est incomplet. Plusieurs URLs TripUpdates MAY être fusionnées (`ZOU_GTFSRT_TRIPS_URLS`).
+Quand `zouFailoverEnabled` est vrai, le poll Navitia SHALL basculer vers les flux open data ZOU PACA (GTFS-RT **TripUpdates** + GTFS static) si le token Navitia est absent, le quota journalier est épuisé, ou un appel Navitia échoue. Les événements / snapshots SHALL utiliser `source = zou`. ZOU MUST NOT être un `IngestProviderId` primaire sélectionnable. Plusieurs URLs TripUpdates MAY être fusionnées (`ZOU_GTFSRT_TRIPS_URLS`).
+
+L’éligibilité d’un trip MUST être la **paire UIC** origine → destination (après l’origine) via `stop_time_update` RT, sinon `stop_times` static. MUST NOT utiliser terminus helpers, corridor, ni headsign pour l’éligibilité.
+
+Les retards / suppressions MUST provenir uniquement des TripUpdates. Les Service Alerts MUST NOT créer d’événements (logs debug seulement).
+
+À chaque poll, le système SHALL évaluer **tous** les trips éligibles dans la fenêtre de veille ; le board SHALL exposer le **prochain** départ seulement.
 
 #### Scenario: Quota épuisé + failover ON
 
 - **GIVEN** provider `navitia`, quota épuisé, `zouFailoverEnabled = true`, trajet en fenêtre de veille
 - **WHEN** le poll tourne
-- **THEN** le système interroge le GTFS-RT ZOU
+- **THEN** le système interroge le GTFS-RT TripUpdates ZOU
 - **AND** MAY écrire des événements ou un board `source = zou`
+
+#### Scenario: Matching UIC sans terminus helpers
+
+- **GIVEN** liaison Nice → Monaco avec UIC origine et destination
+- **WHEN** un TripUpdate a Nice puis Monaco plus loin (RT ou static), headsign « Menton »
+- **THEN** le trip est éligible
+- **AND** les terminus helpers catalogue sont ignorés
+
+#### Scenario: Tous les trains de la fenêtre
+
+- **GIVEN** plusieurs trips OD dont le départ tombe dans la fenêtre de veille, un avec retard ≥ seuil
+- **WHEN** le poll ZOU tourne
+- **THEN** le board affiche le prochain
+- **AND** un événement `delay` MAY être créé pour le trip en retard
+
+#### Scenario: Service Alert ignorée
+
+- **GIVEN** une Service Alert ZOU (ex. canicule)
+- **WHEN** le failover poll
+- **THEN** aucun événement n’est créé depuis cette alerte
 
 ### Requirement: Board prochain train sans stub
 

@@ -407,13 +407,12 @@ export interface Station {
    */
   displayUrl: string | null;
   /**
-   * Si vrai, les `terminusHelperLabels` aident le matching
-   * (terminus / gares au-delà sur le board).
+   * Legacy catalogue — non utilisé par le matching Navitia ni failover ZOU
+   * (éligibilité ZOU = paire UIC).
    */
   terminusHelpersEnabled: boolean;
   /**
-   * Libellés board « terminus / destination d’aide »
-   * (ex. Menton, Vintimille quand la gare filtre est Monaco).
+   * Legacy — voir `terminusHelpersEnabled`.
    */
   terminusHelperLabels: string[];
   updatedAt: string;

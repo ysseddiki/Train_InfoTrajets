@@ -1,19 +1,12 @@
 import type { JourneyConfig } from "@sncf-alerts/shared";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
-import { matchesCorridorAllowlist } from "../domain/corridor.js";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
-import {
-  matchesDestinationFilter,
-  matchesTerminusHelpers,
-  type TerminusHelpersInput,
-} from "../domain/matching.js";
-import { store } from "../domain/store.js";
+import { isWithinWatchWindow } from "../domain/matching.js";
 import {
   getZouStaticIndex,
   resolveTripMeta,
   staticTripServesUicPair,
   stopNameForId,
-  tripStopIds,
   type ZouStaticIndex,
 } from "./zou-gtfs-static.js";
 import {
@@ -34,8 +27,12 @@ const FeedMessage = GtfsRealtimeBindings.transit_realtime.FeedMessage;
 const TRIP_CANCELED = 3;
 /** GTFS-RT StopTimeScheduleRelationship.SKIPPED */
 const STOP_SKIPPED = 1;
-/** Alert effect: NO_SERVICE */
-const EFFECT_NO_SERVICE = 1;
+
+/** Ignore RT points older than this (stale feed). */
+const STALE_PAST_SEC = 2 * 3600;
+/** Include dep slightly outside watch if still live while we poll. */
+const LIVE_SLACK_PAST_MS = 2 * 3600_000;
+const LIVE_SLACK_FUTURE_MS = 6 * 3600_000;
 
 const FEED_CACHE_TTL_MS = 45_000;
 
@@ -58,13 +55,6 @@ export type ZouRtDeparture = {
   realtimeEpoch: number | null;
   delayMinutes: number | null;
   cancelled: boolean;
-};
-
-export type ZouServiceAlertHit = {
-  alertId: string;
-  header: string;
-  description: string;
-  kind: "delay" | "cancellation";
 };
 
 function tripsUrls(): string[] {
@@ -165,7 +155,9 @@ function formatServiceAlertLines(
 ): string[] {
   const entities = feed.entity ?? [];
   if (entities.length === 0) return ["0 Service Alert"];
-  const lines: string[] = [`${entities.length} alerte(s)`];
+  const lines: string[] = [
+    `${entities.length} alerte(s) — debug only (pas d’événements retard)`,
+  ];
   let i = 0;
   for (const entity of entities) {
     const alert = entity.alert;
@@ -179,10 +171,6 @@ function formatServiceAlertLines(
       .map((e) => e.stopId)
       .filter(Boolean)
       .slice(0, 8);
-    const routes = (alert.informedEntity ?? [])
-      .map((e) => e.routeId)
-      .filter(Boolean)
-      .slice(0, 4);
     lines.push(
       [
         `#${++i}`,
@@ -191,7 +179,6 @@ function formatServiceAlertLines(
         `header=${header || "—"}`,
         description ? `desc=${description.slice(0, 240)}` : null,
         stops.length ? `stops=${stops.join(",")}` : null,
-        routes.length ? `routes=${routes.join(",")}` : null,
       ]
         .filter(Boolean)
         .join(" · "),
@@ -261,11 +248,12 @@ async function getTripsFeed(): Promise<CachedFeed> {
   return tripsFeedCache;
 }
 
-async function getSaFeed(): Promise<CachedFeed> {
-  if (saFeedCache && Date.now() - saFeedCache.at < FEED_CACHE_TTL_MS) {
-    return saFeedCache;
-  }
+/** Charge le feed SA pour logs debug uniquement (aucun événement métier). */
+async function logSaFeedForDebug(): Promise<void> {
   try {
+    if (saFeedCache && Date.now() - saFeedCache.at < FEED_CACHE_TTL_MS) {
+      return;
+    }
     const { feed, httpStatus } = await fetchFeedRaw(saUrl());
     saFeedCache = {
       at: Date.now(),
@@ -275,25 +263,19 @@ async function getSaFeed(): Promise<CachedFeed> {
     };
     appendIngestApiLog({
       source: "zou",
-      title: "GTFS-RT Service Alerts (feed brut)",
+      title: "GTFS-RT Service Alerts (debug, ignoré pour retards)",
       httpStatus,
       ok: true,
       lines: formatServiceAlertLines(feed),
     });
-    return saFeedCache;
   } catch (err) {
-    const httpStatus =
-      err && typeof err === "object" && "httpStatus" in err
-        ? Number((err as { httpStatus: number }).httpStatus)
-        : null;
     appendIngestApiLog({
       source: "zou",
-      title: "GTFS-RT Service Alerts (feed brut)",
-      httpStatus,
+      title: "GTFS-RT Service Alerts (debug, ignoré pour retards)",
+      httpStatus: null,
       ok: false,
       lines: [err instanceof Error ? err.message : String(err)],
     });
-    throw err;
   }
 }
 
@@ -316,47 +298,44 @@ function directionTextForTrip(
   return "";
 }
 
-function tripServesDestination(
+/**
+ * Éligibilité ZOU : le trip dessert dest UIC **après** origin UIC.
+ * RT d’abord ; sinon parcours GTFS static. Pas de headsign / terminus / corridor.
+ */
+export function tripServesUicOd(
   index: ZouStaticIndex,
-  journey: JourneyConfig,
   tripId: string,
-  directionText: string,
   stopIds: string[],
   originUic: string,
-  destUic: string | null,
-  terminusHelpers: TerminusHelpersInput | null,
+  destUic: string,
 ): boolean {
-  if (destUic) {
-    const originIdx = stopIds.findIndex((id) => stopIdMatchesUic(id, originUic));
-    const destIdx = stopIds.findIndex((id) => stopIdMatchesUic(id, destUic));
-    if (originIdx >= 0 && destIdx >= 0) {
-      return destIdx > originIdx;
-    }
-    // RT incomplet : parcours GTFS static (stop_times)
-    if (staticTripServesUicPair(index, tripId, originUic, destUic)) {
-      return true;
-    }
-  }
-  if (matchesDestinationFilter(journey, directionText, null, terminusHelpers)) {
-    return true;
-  }
-  if (matchesCorridorAllowlist(journey, directionText)) return true;
-  // Headsign / stops static names
-  const staticStops = tripStopIds(index, tripId);
-  for (const sid of staticStops) {
-    const name = stopNameForId(index, sid);
-    if (
-      name &&
-      matchesDestinationFilter(journey, name, null, terminusHelpers)
-    ) {
-      return true;
-    }
-  }
-  return false;
+  const originIdx = stopIds.findIndex((id) => stopIdMatchesUic(id, originUic));
+  const destIdx = stopIds.findIndex((id) => stopIdMatchesUic(id, destUic));
+  if (originIdx >= 0 && destIdx > originIdx) return true;
+  return staticTripServesUicPair(index, tripId, originUic, destUic);
 }
 
 /**
- * Départs GTFS-RT pour un trajet (origine UIC + filtre destination / corridor).
+ * Départ dans la tranche de veille, ou encore « live » pendant un poll en veille.
+ */
+export function isZouDepartureInSurveillanceWindow(
+  journey: JourneyConfig,
+  epochSec: number | null,
+  now = new Date(),
+): boolean {
+  if (epochSec == null) {
+    return isWithinWatchWindow(journey, now);
+  }
+  const at = new Date(epochSec * 1000);
+  if (isWithinWatchWindow(journey, at)) return true;
+  if (!isWithinWatchWindow(journey, now)) return false;
+  const ageMs = now.getTime() - at.getTime();
+  return ageMs >= -LIVE_SLACK_FUTURE_MS && ageMs <= LIVE_SLACK_PAST_MS;
+}
+
+/**
+ * Départs GTFS-RT pour un trajet : UIC origine → UIC destination, TripUpdates only.
+ * Retourne **tous** les trips éligibles dans la fenêtre de surveillance (triés).
  */
 export async function fetchZouDeparturesForJourney(
   journey: JourneyConfig,
@@ -368,25 +347,26 @@ export async function fetchZouDeparturesForJourney(
       `UIC origine introuvable pour ${journey.originId || journey.originLabel}`,
     );
   }
+  if (!destUic) {
+    throw new Error(
+      `UIC destination introuvable pour ${journey.destinationId || journey.destinationLabel}`,
+    );
+  }
 
-  const [index, cached, destStation] = await Promise.all([
+  const [index, cached] = await Promise.all([
     getZouStaticIndex(),
     getTripsFeed(),
-    journey.destinationId
-      ? store.getStationByExternalId(journey.destinationId)
-      : Promise.resolve(null),
   ]);
-  const feed = cached.feed;
-  const terminusHelpers: TerminusHelpersInput | null = destStation
-    ? {
-        enabled: destStation.terminusHelpersEnabled,
-        labels: destStation.terminusHelperLabels,
-      }
-    : null;
+  // SA : log debug only, never drives delay events
+  void logSaFeedForDebug();
 
+  const feed = cached.feed;
   const out: ZouRtDeparture[] = [];
-  const nowSec = Math.floor(Date.now() / 1000);
+  const now = new Date();
+  const nowSec = Math.floor(now.getTime() / 1000);
   const matchLines: string[] = [];
+  let skippedOd = 0;
+  let skippedWindow = 0;
 
   for (const entity of feed.entity ?? []) {
     const tu = entity.tripUpdate;
@@ -406,24 +386,16 @@ export async function fetchZouDeparturesForJourney(
     const originStu = stops.find((s) =>
       stopIdMatchesUic(String(s.stopId ?? ""), originUic),
     );
+    // Cancelled trips may omit stop updates — OD via static only
     if (!originStu && !tripCanceled) continue;
-
-    const directionText = directionTextForTrip(index, tripId, stopIds);
     if (
-      !tripServesDestination(
-        index,
-        journey,
-        tripId,
-        directionText,
-        stopIds,
-        originUic,
-        destUic,
-        terminusHelpers,
-      )
+      !tripServesUicOd(index, tripId, stopIds, originUic, destUic)
     ) {
+      skippedOd += 1;
       continue;
     }
 
+    const directionText = directionTextForTrip(index, tripId, stopIds);
     const meta = resolveTripMeta(index, tripId);
     const trainNumber =
       meta?.shortName ||
@@ -432,6 +404,10 @@ export async function fetchZouDeparturesForJourney(
         : null);
 
     if (tripCanceled) {
+      if (!isZouDepartureInSurveillanceWindow(journey, null, now)) {
+        skippedWindow += 1;
+        continue;
+      }
       out.push({
         tripId,
         trainNumber,
@@ -442,7 +418,7 @@ export async function fetchZouDeparturesForJourney(
         cancelled: true,
       });
       matchLines.push(
-        `MATCH trip=${tripId} train=${trainNumber ?? "—"} CANCELED dir=${directionText}`,
+        `MATCH trip=${tripId} train=${trainNumber ?? "—"} CANCELED dir=${directionText || "—"}`,
       );
       continue;
     }
@@ -462,7 +438,14 @@ export async function fetchZouDeparturesForJourney(
         ? realtimeEpoch - delaySec
         : realtimeEpoch;
 
-    if (realtimeEpoch != null && realtimeEpoch < nowSec - 2 * 3600) {
+    if (realtimeEpoch != null && realtimeEpoch < nowSec - STALE_PAST_SEC) {
+      skippedWindow += 1;
+      continue;
+    }
+
+    const epochForWindow = realtimeEpoch ?? scheduledEpoch;
+    if (!isZouDepartureInSurveillanceWindow(journey, epochForWindow, now)) {
+      skippedWindow += 1;
       continue;
     }
 
@@ -500,100 +483,17 @@ export async function fetchZouDeparturesForJourney(
 
   appendIngestApiLog({
     source: "zou",
-    title: `Match TripUpdates — ${journey.originLabel} → ${journey.destinationLabel} [${journey.direction}]`,
+    title: `Match TripUpdates UIC — ${journey.originLabel} → ${journey.destinationLabel} [${journey.direction}]`,
     ok: true,
-    lines:
-      matchLines.length > 0
+    lines: [
+      `UIC ${originUic} → ${destUic} · ${out.length} éligible(s) · skip OD=${skippedOd} fenêtre=${skippedWindow}`,
+      ...(matchLines.length > 0
         ? matchLines
-        : [
-            `0 match — UIC origine ${originUic}` +
-              (destUic ? ` / dest ${destUic}` : ""),
-          ],
+        : ["0 trip OD dans la fenêtre de veille"]),
+    ],
   });
 
   return out;
-}
-
-function matchesZouAlertText(
-  journey: JourneyConfig,
-  text: string,
-  terminusHelpers: TerminusHelpersInput | null,
-): boolean {
-  if (matchesDestinationFilter(journey, text, null, terminusHelpers)) {
-    return true;
-  }
-  if (matchesTerminusHelpers(text, terminusHelpers)) return true;
-  return matchesCorridorAllowlist(journey, text);
-}
-
-/**
- * Service Alerts ZOU pertinentes pour le trajet (texte destination / corridor / stops).
- */
-export async function fetchZouAlertsForJourney(
-  journey: JourneyConfig,
-): Promise<ZouServiceAlertHit[]> {
-  const originUic = extractUic(journey.originId);
-  const destUic = extractUic(journey.destinationId);
-  const [{ feed }, destStation] = await Promise.all([
-    getSaFeed(),
-    journey.destinationId
-      ? store.getStationByExternalId(journey.destinationId)
-      : Promise.resolve(null),
-  ]);
-  const terminusHelpers: TerminusHelpersInput | null = destStation
-    ? {
-        enabled: destStation.terminusHelpersEnabled,
-        labels: destStation.terminusHelperLabels,
-      }
-    : null;
-  const hits: ZouServiceAlertHit[] = [];
-  const matchLines: string[] = [];
-
-  for (const entity of feed.entity ?? []) {
-    const alert = entity.alert;
-    if (!alert) continue;
-    const { header, description } = alertText(alert);
-    const blob = `${header} ${description}`;
-    const informedStops = (alert.informedEntity ?? [])
-      .map((e) => String(e.stopId ?? ""))
-      .filter(Boolean);
-
-    const stopHit =
-      (originUic != null &&
-        informedStops.some((id) => stopIdMatchesUic(id, originUic))) ||
-      (destUic != null &&
-        informedStops.some((id) => stopIdMatchesUic(id, destUic)));
-
-    const textHit = matchesZouAlertText(journey, blob, terminusHelpers);
-
-    if (!stopHit && !textHit) continue;
-
-    const effect = Number(alert.effect ?? 0);
-    const kind: "delay" | "cancellation" =
-      effect === EFFECT_NO_SERVICE ? "cancellation" : "delay";
-
-    hits.push({
-      alertId: String(entity.id ?? header).slice(0, 120),
-      header: header || "Alerte ZOU",
-      description: description.slice(0, 500),
-      kind,
-    });
-    matchLines.push(
-      `MATCH kind=${kind} · ${header || "—"} · ${description.slice(0, 200)}`,
-    );
-  }
-
-  appendIngestApiLog({
-    source: "zou",
-    title: `Match Service Alerts — ${journey.originLabel} → ${journey.destinationLabel} [${journey.direction}]`,
-    ok: true,
-    lines:
-      matchLines.length > 0
-        ? matchLines
-        : ["0 alerte matchée pour ce trajet"],
-  });
-
-  return hits;
 }
 
 /** Probe léger : feed TripUpdates joignable. */

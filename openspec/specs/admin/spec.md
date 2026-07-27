@@ -74,7 +74,7 @@ Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`la
 
 `displayUrl` SHALL servir uniquement de lien UI (fiche publique) ; le système MUST NOT l’utiliser pour un scrape.
 
-Chaque gare MAY exposer des **terminus / destinations d’aide** (`terminusHelperLabels`) activables via `terminusHelpersEnabled`. Quand la gare est le filtre destination d’une liaison et que l’option est active, le matching SHALL accepter un headsign / direction board contenant l’un de ces libellés (en plus du matching label / corridor).
+Chaque gare MAY encore exposer des champs **terminus / destinations d’aide** (`terminusHelperLabels`, `terminusHelpersEnabled`) en catalogue, mais le failover ZOU MUST NOT les utiliser pour l’éligibilité (matching UIC uniquement). Navitia MUST NOT les utiliser non plus.
 
 #### Scenario: Création depuis la liaison
 
@@ -89,11 +89,12 @@ Chaque gare MAY exposer des **terminus / destinations d’aide** (`terminusHelpe
 - **THEN** l’URL est persistée pour l’UI
 - **AND** aucun job d’ingest ne lit cette URL comme source de départs
 
-#### Scenario: Terminus d’aide activés
+#### Scenario: Helpers terminus non utilisés par ZOU
 
-- **GIVEN** la gare Monaco avec `terminusHelpersEnabled = true` et labels `Menton`, `Vintimille`
-- **WHEN** un départ affiche la direction « Menton »
-- **THEN** le matching accepte le départ pour une liaison filtrée sur Monaco
+- **GIVEN** la gare Monaco avec helpers Menton activés
+- **WHEN** le failover ZOU match un trip
+- **THEN** l’éligibilité dépend uniquement des UIC origine/destination sur le parcours
+- **AND** les helpers n’élargissent pas le matching
 
 ### Requirement: Destinataires email saisis par l’admin
 
