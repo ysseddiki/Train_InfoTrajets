@@ -7,6 +7,7 @@ import type {
 } from "@sncf-alerts/shared";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { RefreshCw, Trash2 } from "lucide-react";
 import { apiGet, apiSend } from "../api/client";
 import { errorMessage } from "../lib/format";
 import {
@@ -141,73 +142,105 @@ export function DebugPanel({
     <div className="debug-panel">
       <div className="card debug-logs-card">
         <h3>Logs API ingest</h3>
-        <p className="muted">
+        <p className="muted debug-logs-lead">
           {viewMode === "readable"
             ? "Mode lecture : les lignes surlignées (retard / suppression) sont celles utilisées par l’outil. Les Service Alerts ZOU sont grisées (ignorées)."
             : "Mode technique : dump complet. Les lignes retard / cancel outil sont surlignées."}
         </p>
 
-        <div className="debug-log-tabs" role="tablist" aria-label="Source ingest">
-          {SOURCES.map((s) => (
+        <div className="debug-logs-controls">
+          <div className="debug-logs-filters">
+            <div className="debug-control-group">
+              <span className="debug-control-label" id="debug-source-label">
+                Source
+              </span>
+              <div
+                className="debug-segment"
+                role="tablist"
+                aria-labelledby="debug-source-label"
+              >
+                {SOURCES.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={source === s.id}
+                    className={`debug-segment-btn${source === s.id ? " is-active" : ""}`}
+                    onClick={() => setSource(s.id)}
+                  >
+                    {s.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="debug-control-group">
+              <span className="debug-control-label" id="debug-view-label">
+                Affichage
+              </span>
+              <div
+                className="debug-segment"
+                role="group"
+                aria-labelledby="debug-view-label"
+              >
+                <button
+                  type="button"
+                  className={`debug-segment-btn${viewMode === "readable" ? " is-active" : ""}`}
+                  aria-pressed={viewMode === "readable"}
+                  onClick={() => setViewMode("readable")}
+                >
+                  Lecture
+                </button>
+                <button
+                  type="button"
+                  className={`debug-segment-btn${viewMode === "raw" ? " is-active" : ""}`}
+                  aria-pressed={viewMode === "raw"}
+                  onClick={() => setViewMode("raw")}
+                >
+                  Technique
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="debug-logs-actions">
             <button
-              key={s.id}
               type="button"
-              role="tab"
-              aria-selected={source === s.id}
-              className={`debug-log-tab${source === s.id ? " is-active" : ""}`}
-              onClick={() => setSource(s.id)}
+              className="debug-action-btn"
+              disabled={loading}
+              onClick={() => void reload()}
             >
-              {s.label}
+              <RefreshCw
+                size={15}
+                strokeWidth={2}
+                className={loading ? "is-spinning" : undefined}
+                aria-hidden
+              />
+              Actualiser
             </button>
-          ))}
-        </div>
-
-        <div
-          className="debug-view-modes"
-          role="group"
-          aria-label="Mode d’affichage"
-        >
-          <button
-            type="button"
-            className={`debug-view-mode${viewMode === "readable" ? " is-active" : ""}`}
-            onClick={() => setViewMode("readable")}
-          >
-            Lecture
-          </button>
-          <button
-            type="button"
-            className={`debug-view-mode${viewMode === "raw" ? " is-active" : ""}`}
-            onClick={() => setViewMode("raw")}
-          >
-            Technique
-          </button>
-        </div>
-
-        <div className="debug-log-toolbar">
-          <button
-            type="button"
-            className="secondary"
-            disabled={loading}
-            onClick={() => void reload()}
-          >
-            Actualiser
-          </button>
-          <button
-            type="button"
-            className="secondary"
-            onClick={() => void clearLogs()}
-          >
-            Vider cet onglet
-          </button>
-          <label className="check-inline">
-            <input
-              type="checkbox"
-              checked={auto}
-              onChange={(e) => setAuto(e.target.checked)}
-            />{" "}
-            Auto 5 s
-          </label>
-          {loading && <span className="muted">Chargement…</span>}
+            <button
+              type="button"
+              className="debug-action-btn debug-action-danger"
+              onClick={() => void clearLogs()}
+            >
+              <Trash2 size={15} strokeWidth={2} aria-hidden />
+              Vider
+            </button>
+            <label
+              className={`debug-auto-toggle${auto ? " is-on" : ""}`}
+              title="Rafraîchir automatiquement toutes les 5 secondes"
+            >
+              <input
+                type="checkbox"
+                checked={auto}
+                onChange={(e) => setAuto(e.target.checked)}
+              />
+              <span className="debug-auto-track" aria-hidden>
+                <span className="debug-auto-knob" />
+              </span>
+              <span className="debug-auto-text">Auto 5 s</span>
+            </label>
+          </div>
         </div>
 
         {msg && (
