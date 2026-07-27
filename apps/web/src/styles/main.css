@@ -649,6 +649,8 @@ button.danger-ghost {
 }
 
 .quota-bar {
+  display: flex;
+  width: 100%;
   height: 0.85rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--line) 65%, white);
@@ -657,19 +659,16 @@ button.danger-ghost {
 
 .quota-bar-fill {
   height: 100%;
-  border-radius: inherit;
+  flex-shrink: 0;
+  min-width: 0;
   transition: width 0.45s ease;
 }
 
-.quota-fill-ok {
+.quota-fill-success {
   background: linear-gradient(90deg, #1a9a6e, var(--accent));
 }
 
-.quota-fill-mid {
-  background: linear-gradient(90deg, #c98512, #e0a020);
-}
-
-.quota-fill-high {
+.quota-fill-failed {
   background: linear-gradient(90deg, #b43333, var(--danger));
 }
 
@@ -844,13 +843,6 @@ button.danger-action:disabled {
   margin-bottom: 0.35rem;
 }
 
-.station-picker-fields {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 0.5rem;
-}
-
 .station-picker-select {
   flex: 1;
   min-width: 0;
@@ -861,8 +853,6 @@ button.danger-action:disabled {
   align-items: center;
   gap: 0.3rem;
   flex-shrink: 0;
-  margin-bottom: 0.75rem;
-  align-self: flex-end;
 }
 
 .station-id-hint {

@@ -1,14 +1,12 @@
 import type { ApiQuotaStatus } from "@sncf-alerts/shared";
 
-function barTone(percent: number, exhausted: boolean): string {
-  if (exhausted || percent >= 90) return "quota-fill-high";
-  if (percent >= 70) return "quota-fill-mid";
-  return "quota-fill-ok";
-}
-
 export function QuotaPanel({ quota }: { quota: ApiQuotaStatus }) {
-  const fill = Math.min(100, Math.max(0, quota.percent));
-  const tone = barTone(quota.percent, quota.exhausted);
+  const limit = Math.max(1, quota.limit);
+  const successPct = Math.min(100, Math.max(0, (quota.success / limit) * 100));
+  const failedPct = Math.min(
+    100 - successPct,
+    Math.max(0, (quota.failed / limit) * 100),
+  );
 
   return (
     <div className="card quota-panel">
@@ -29,11 +27,17 @@ export function QuotaPanel({ quota }: { quota: ApiQuotaStatus }) {
         aria-valuemin={0}
         aria-valuemax={quota.limit}
         aria-valuenow={quota.used}
-        aria-label="Utilisation du quota API journalier"
+        aria-label={`Quota : ${quota.success} réussies, ${quota.failed} échouées`}
       >
         <div
-          className={`quota-bar-fill ${tone}`}
-          style={{ width: `${fill}%` }}
+          className="quota-bar-fill quota-fill-success"
+          style={{ width: `${successPct}%` }}
+          title={`${quota.success} réussies`}
+        />
+        <div
+          className="quota-bar-fill quota-fill-failed"
+          style={{ width: `${failedPct}%` }}
+          title={`${quota.failed} échouées`}
         />
       </div>
       <p className="quota-bar-caption muted">

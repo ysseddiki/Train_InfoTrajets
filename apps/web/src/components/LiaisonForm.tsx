@@ -104,61 +104,28 @@ function StationPicker({
   onCreate: () => void;
 }) {
   const selected = stations.find((s) => s.id === selectedId);
-  const [filter, setFilter] = useState("");
-
-  const filtered = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    if (!q) return stations;
-    return stations.filter(
-      (s) =>
-        s.label.toLowerCase().includes(q) ||
-        s.externalId.toLowerCase().includes(q),
-    );
-  }, [stations, filter]);
-
-  // Garde la sélection visible même si hors filtre courant
-  const options =
-    selected && !filtered.some((s) => s.id === selected.id)
-      ? [selected, ...filtered]
-      : filtered;
 
   return (
     <div className="voyage-station">
       <h3>{title}</h3>
       <div className="station-picker-row">
-        <div className="station-picker-fields">
-          <label>
-            Recherche
-            <input
-              type="search"
-              value={filter}
-              placeholder="Filtrer…"
-              onChange={(e) => setFilter(e.target.value)}
-              autoComplete="off"
-            />
-          </label>
-          <label className="station-picker-select">
-            Gare
-            <select
-              value={selectedId}
-              onChange={(e) => onChange(e.target.value)}
-              required
-            >
-              <option value="" disabled>
-                {stations.length === 0
-                  ? "Aucune gare"
-                  : options.length === 0
-                    ? "Aucun résultat"
-                    : "Choisir…"}
+        <label className="station-picker-select">
+          Gare
+          <select
+            value={selectedId}
+            onChange={(e) => onChange(e.target.value)}
+            required
+          >
+            <option value="" disabled>
+              {stations.length === 0 ? "Aucune gare" : "Choisir…"}
+            </option>
+            {stations.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
               </option>
-              {options.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
+            ))}
+          </select>
+        </label>
         <button
           type="button"
           className="secondary station-create-btn"
