@@ -320,8 +320,10 @@ export function StationsPanel({
             <legend>Terminus / destinations d’aide</legend>
             <p className="muted field-hint">
               Quand cette gare est le filtre destination d’une liaison, ces
-              libellés aident le matching si le board n’affiche que le terminus
-              (ex. Menton / Vintimille pour Monaco).
+              libellés matchent le <strong>terminus commercial</strong> (headsign
+              / direction board), pas tous les trains qui passent simplement par
+              ces gares. Ex. Menton / Vintimille pour Monaco, depuis ta gare
+              d’origine.
             </p>
             <label className="check-inline">
               <input
