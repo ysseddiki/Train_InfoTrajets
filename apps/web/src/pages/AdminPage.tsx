@@ -9,9 +9,7 @@ import {
   Bug,
   Database,
   Eraser,
-  Gauge,
   LogOut,
-  Mail,
   MapPin,
   Plus,
   Radio,
@@ -40,70 +38,84 @@ type AdminMe = { username: string };
 type AdminSectionId =
   | "liaisons"
   | "stations"
-  | "ingest"
-  | "recipients"
-  | "channels"
-  | "quota"
-  | "clear-stats"
-  | "debug";
+  | "alerts"
+  | "data"
+  | "debug"
+  | "clear-stats";
 
-const ADMIN_SECTIONS: {
+type AdminNavItem = {
   id: AdminSectionId;
   label: string;
   description: string;
   icon: typeof Route;
-}[] = [
+  tone?: "danger";
+};
+
+type AdminNavGroup = {
+  id: string;
+  label: string;
+  items: AdminNavItem[];
+};
+
+const ADMIN_NAV: AdminNavGroup[] = [
   {
-    id: "liaisons",
-    label: "Liaisons",
-    description: "Paires Aller/Retour surveillées (gares, fenêtres, jours).",
-    icon: Route,
+    id: "watch",
+    label: "Surveillance",
+    items: [
+      {
+        id: "liaisons",
+        label: "Liaisons",
+        description: "Paires Aller/Retour : gares, fenêtres, jours, seuils.",
+        icon: Route,
+      },
+      {
+        id: "stations",
+        label: "Gares",
+        description: "Catalogue (libellé + id Navitia) pour composer les liaisons.",
+        icon: MapPin,
+      },
+    ],
   },
   {
-    id: "stations",
-    label: "Gares",
-    description: "Catalogue des gares (nom + id Navitia) pour les liaisons.",
-    icon: MapPin,
+    id: "notify",
+    label: "Alertes",
+    items: [
+      {
+        id: "alerts",
+        label: "Envoi",
+        description: "Destinataires email, SMTP et Teams — qui reçoit quoi.",
+        icon: Radio,
+      },
+    ],
   },
   {
-    id: "ingest",
-    label: "Ingest",
-    description: "Source de données (stub / Navitia / PRIM) et token.",
-    icon: Database,
-  },
-  {
-    id: "recipients",
-    label: "Destinataires",
-    description: "Adresses email qui reçoivent les alertes.",
-    icon: Mail,
-  },
-  {
-    id: "channels",
-    label: "Canaux",
-    description: "État SMTP et Teams, tests d’envoi.",
-    icon: Radio,
-  },
-  {
-    id: "quota",
-    label: "Quota API",
-    description: "Consommation journalière des appels Navitia (limite 5000).",
-    icon: Gauge,
-  },
-  {
-    id: "clear-stats",
-    label: "Clear stats",
-    description:
-      "Effacer les stats dashboard (retards, suppressions, notifs) par source.",
-    icon: Eraser,
-  },
-  {
-    id: "debug",
-    label: "Debug",
-    description:
-      "Logs API ingest (onglet par source) et injection d’événements stub.",
-    icon: Bug,
+    id: "ops",
+    label: "Données & ops",
+    items: [
+      {
+        id: "data",
+        label: "Ingest",
+        description: "Source Navitia / stub, failover ZOU et quota API du jour.",
+        icon: Database,
+      },
+      {
+        id: "debug",
+        label: "Debug",
+        description: "Logs API par source et outils stub.",
+        icon: Bug,
+      },
+      {
+        id: "clear-stats",
+        label: "Clear stats",
+        description: "Effacer retards, suppressions et notifs du dashboard.",
+        icon: Eraser,
+        tone: "danger",
+      },
+    ],
   },
 ];
+
+const ALL_SECTIONS = ADMIN_NAV.flatMap((g) => g.items);
 
 function AdminConsole({
   username,
@@ -167,7 +179,7 @@ function AdminConsole({
   }, []);
 
   useEffect(() => {
-    if (section !== "quota") return;
+    if (section !== "data") return;
     let cancelled = false;
     void (async () => {
       try {
@@ -191,7 +203,8 @@ function AdminConsole({
       .filter(Boolean);
     try {
       await apiSend("/v1/admin/channels/recipients", "PUT", { emails });
-      setRecipientsMsg({ text: "Enregistré", ok: true });
+      setRecipients({ emails });
+      setRecipientsMsg({ text: "Destinataires enregistrés", ok: true });
     } catch {
       setRecipientsMsg({ text: "Erreur", ok: false });
     }
@@ -267,9 +280,7 @@ function AdminConsole({
       );
       setLiaisons((prev) =>
         prev.map((l) =>
-          l.id === updated.id
-            ? updated
-            : { ...l, isDefault: false },
+          l.id === updated.id ? updated : { ...l, isDefault: false },
         ),
       );
       setLiaisonActionMsg({
@@ -297,8 +308,8 @@ function AdminConsole({
 
   if ((section === "liaisons" || section === "debug") && !selected) {
     return (
-      <div className="page-enter">
-        <p className="muted">Aucune liaison — créez-en une depuis Admin.</p>
+      <div className="page-enter admin-empty">
+        <p className="muted">Aucune liaison — créez-en une pour continuer.</p>
         <button type="button" onClick={() => void addLiaison()}>
           Ajouter une liaison
         </button>
@@ -306,7 +317,7 @@ function AdminConsole({
     );
   }
 
-  const active = ADMIN_SECTIONS.find((s) => s.id === section)!;
+  const active = ALL_SECTIONS.find((s) => s.id === section)!;
 
   let panelBody: ReactNode;
   switch (section) {
@@ -320,8 +331,8 @@ function AdminConsole({
                   key={l.id}
                   type="button"
                   role="tab"
-                  aria-selected={l.id === selected.id}
-                  className={`liaison-chip${l.id === selected.id ? " is-active" : ""}`}
+                  aria-selected={l.id === selected!.id}
+                  className={`liaison-chip${l.id === selected!.id ? " is-active" : ""}`}
                   onClick={() => setSelectedId(l.id)}
                 >
                   {l.displayName}
@@ -332,7 +343,11 @@ function AdminConsole({
               ))}
             </div>
             <div className="liaison-actions">
-              <button type="button" className="secondary" onClick={() => void addLiaison()}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => void addLiaison()}
+              >
                 <Plus size={16} strokeWidth={2} aria-hidden />
                 Ajouter
               </button>
@@ -340,9 +355,9 @@ function AdminConsole({
                 type="button"
                 className="secondary"
                 onClick={() => void makeDefaultLiaison()}
-                disabled={selected.isDefault}
+                disabled={selected!.isDefault}
                 title={
-                  selected.isDefault
+                  selected!.isDefault
                     ? "Déjà la liaison par défaut"
                     : "Ouvrir cette liaison par défaut sur le dashboard"
                 }
@@ -373,7 +388,7 @@ function AdminConsole({
             </p>
           )}
           <LiaisonForm
-            liaison={selected}
+            liaison={selected!}
             stations={stations}
             onCreateStation={() => setSection("stations")}
             onSaved={(next) => {
@@ -390,56 +405,82 @@ function AdminConsole({
         <StationsPanel stations={stations} onChange={setStations} />
       );
       break;
-    case "ingest":
-      panelBody = <IngestConfigPanel />;
-      break;
-    case "recipients":
+    case "alerts":
       panelBody = (
-        <form className="card" onSubmit={(e) => void saveRecipients(e)}>
-          <label>
-            Emails (un par ligne)
-            <textarea
-              name="emails"
-              rows={6}
-              defaultValue={recipients.emails.join("\n")}
-            />
-          </label>
-          <button type="submit">Enregistrer</button>
-          {recipientsMsg && (
-            <p className={`form-msg ${recipientsMsg.ok ? "ok" : "error"}`}>
-              {recipientsMsg.text}
-            </p>
-          )}
-        </form>
-      );
-      break;
-    case "channels":
-      panelBody = (
-        <div className="grid">
-          <SmtpConfigPanel onTest={() => testEmail()} testMsg={emailMsg} />
-          <article className="card">
-            <h3>Teams</h3>
-            <ul>
-              <li>Activé : {teams.enabled ? "oui" : "non"}</li>
-              <li>
-                Webhook : {teams.webhookConfigured ? "configuré" : "manquant"}
-              </li>
-            </ul>
-            <p className="muted">
-              URL webhook via <code>.env</code>.
-            </p>
-            <button type="button" onClick={() => void testTeams()}>
-              Envoyer un test Teams
-            </button>
-            {teamsMsg && (
-              <p className={teamsMsg.ok ? "ok" : "error"}>{teamsMsg.text}</p>
+        <div className="admin-stack">
+          <form
+            className="card admin-stack-card"
+            onSubmit={(e) => void saveRecipients(e)}
+          >
+            <header className="admin-stack-card-head">
+              <h3>Destinataires email</h3>
+              <p className="muted">
+                Une adresse par ligne — seules cibles email v1.
+              </p>
+            </header>
+            <label>
+              Emails
+              <textarea
+                name="emails"
+                rows={5}
+                defaultValue={recipients.emails.join("\n")}
+              />
+            </label>
+            <div className="admin-stack-actions">
+              <button type="submit">Enregistrer</button>
+            </div>
+            {recipientsMsg && (
+              <p className={`form-msg ${recipientsMsg.ok ? "ok" : "error"}`}>
+                {recipientsMsg.text}
+              </p>
             )}
-          </article>
+          </form>
+
+          <div className="admin-stack-grid">
+            <SmtpConfigPanel onTest={() => testEmail()} testMsg={emailMsg} />
+            <article className="card admin-stack-card">
+              <header className="admin-stack-card-head">
+                <h3>Teams</h3>
+                <p className="muted">Webhook via <code>.env</code> (jamais exposé).</p>
+              </header>
+              <ul className="admin-status-list">
+                <li>
+                  <span className="muted">Activé</span>
+                  <span
+                    className={`pill ${teams.enabled ? "pill-ok" : "pill-ignored"}`}
+                  >
+                    {teams.enabled ? "oui" : "non"}
+                  </span>
+                </li>
+                <li>
+                  <span className="muted">Webhook</span>
+                  <span
+                    className={`pill ${teams.webhookConfigured ? "pill-ok" : "pill-ignored"}`}
+                  >
+                    {teams.webhookConfigured ? "configuré" : "manquant"}
+                  </span>
+                </li>
+              </ul>
+              <div className="admin-stack-actions">
+                <button type="button" onClick={() => void testTeams()}>
+                  Envoyer un test Teams
+                </button>
+              </div>
+              {teamsMsg && (
+                <p className={teamsMsg.ok ? "ok" : "error"}>{teamsMsg.text}</p>
+              )}
+            </article>
+          </div>
         </div>
       );
       break;
-    case "quota":
-      panelBody = <QuotaPanel quota={quota} />;
+    case "data":
+      panelBody = (
+        <div className="admin-stack">
+          <IngestConfigPanel />
+          <QuotaPanel quota={quota} />
+        </div>
+      );
       break;
     case "clear-stats":
       panelBody = <ClearStatsPanel />;
@@ -453,6 +494,7 @@ function AdminConsole({
     <div className="page-enter admin-shell">
       <header className="admin-shell-head">
         <div>
+          <p className="eyebrow">SNCF-Alerts</p>
           <h1>Console admin</h1>
           <p className="muted admin-user">
             Connecté : <strong>{username}</strong>
@@ -466,22 +508,32 @@ function AdminConsole({
 
       <div className="admin-layout">
         <nav className="admin-nav" aria-label="Paramètres admin">
-          <p className="admin-nav-label">Paramètres</p>
-          <ul className="admin-nav-list">
-            {ADMIN_SECTIONS.map(({ id, label, icon: Icon }) => (
-              <li key={id}>
-                <button
-                  type="button"
-                  className={`admin-nav-item${section === id ? " is-active" : ""}`}
-                  onClick={() => setSection(id)}
-                  aria-current={section === id ? "page" : undefined}
-                >
-                  <Icon size={18} strokeWidth={2} aria-hidden />
-                  <span>{label}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+          {ADMIN_NAV.map((group) => (
+            <div key={group.id} className="admin-nav-group">
+              <p className="admin-nav-label">{group.label}</p>
+              <ul className="admin-nav-list">
+                {group.items.map(({ id, label, icon: Icon, tone }) => (
+                  <li key={id}>
+                    <button
+                      type="button"
+                      className={[
+                        "admin-nav-item",
+                        section === id ? "is-active" : "",
+                        tone === "danger" ? "is-danger" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      onClick={() => setSection(id)}
+                      aria-current={section === id ? "page" : undefined}
+                    >
+                      <Icon size={18} strokeWidth={2} aria-hidden />
+                      <span>{label}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </nav>
 
         <section className="admin-panel" aria-labelledby="admin-panel-title">
@@ -509,30 +561,34 @@ function LoginForm({ onSuccess }: { onSuccess: () => void }) {
       });
       onSuccess();
     } catch {
-      setError("Échec login");
+      setError("Identifiants incorrects");
     }
   }
 
   return (
-    <div className="page-enter">
-      <h1>Console admin</h1>
-      <form className="card" onSubmit={(e) => void onSubmit(e)}>
-        <label>
-          Username{" "}
-          <input name="username" autoComplete="username" required />
-        </label>
-        <label>
-          Password{" "}
-          <input
-            name="password"
-            type="password"
-            autoComplete="current-password"
-            required
-          />
-        </label>
-        <button type="submit">Se connecter</button>
-        {error && <p className="error">{error}</p>}
-      </form>
+    <div className="page-enter admin-login">
+      <div className="admin-login-card card">
+        <p className="eyebrow">SNCF-Alerts</p>
+        <h1>Console admin</h1>
+        <p className="muted">Accès réservé à l’opérateur.</p>
+        <form className="admin-login-form" onSubmit={(e) => void onSubmit(e)}>
+          <label>
+            Identifiant
+            <input name="username" autoComplete="username" required />
+          </label>
+          <label>
+            Mot de passe
+            <input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              required
+            />
+          </label>
+          <button type="submit">Se connecter</button>
+          {error && <p className="error">{error}</p>}
+        </form>
+      </div>
     </div>
   );
 }
