@@ -319,11 +319,11 @@ export function StationsPanel({
           <fieldset className="stations-terminus">
             <legend>Terminus / destinations d’aide</legend>
             <p className="muted field-hint">
-              Quand cette gare est le filtre destination d’une liaison, ces
-              libellés matchent le <strong>terminus commercial</strong> (headsign
-              / direction board), pas tous les trains qui passent simplement par
-              ces gares. Ex. Menton / Vintimille pour Monaco, depuis ta gare
-              d’origine.
+              Réservé au <strong>failover ZOU</strong> (pas Navitia). Quand cette
+              gare est le filtre destination, ces libellés matchent le{" "}
+              <strong>terminus commercial</strong> ZOU (headsign / dernier arrêt),
+              pas tous les trains qui passent simplement par ces gares. Ex.
+              Menton / Vintimille pour Monaco.
             </p>
             <label className="check-inline">
               <input
@@ -331,7 +331,7 @@ export function StationsPanel({
                 checked={terminusHelpersEnabled}
                 onChange={(e) => setTerminusHelpersEnabled(e.target.checked)}
               />{" "}
-              Activer l’aide terminus
+              Activer l’aide terminus (failover ZOU)
             </label>
 
             <div
