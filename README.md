@@ -156,7 +156,8 @@ La source active (`stub` | `navitia` | `prim`) et le token se configurent dans *
 
 Choisir `stub` dans l’admin. Aucune clé. Idéal pour dashboard, admin et notifiers.
 
-Intervalle de poll (reste en env) :
+Intervalle de poll : configurable **par provider** dans Admin → Ingest (60–3600 s).  
+Défaut / bootstrap : `INGEST_INTERVAL_MS` (env), sinon 300 s.
 
 ```env
 INGEST_INTERVAL_MS=300000

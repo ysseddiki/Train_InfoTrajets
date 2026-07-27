@@ -1,6 +1,7 @@
 /**
  * Worker ingest seul (systemd : sncf-alerts-ingest.service).
  * Poll + file notify_jobs — pas de serveur HTTP.
+ * Intervalle lu en base selon le provider actif (admin).
  */
 import { createIngestAdapter } from "./adapters/ingest.js";
 import { migrate } from "./db/pool.js";
@@ -10,29 +11,30 @@ import { store } from "./domain/store.js";
 
 loadRepoEnv();
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function main() {
   await migrate();
   await store.seed();
 
   const ingest = createIngestAdapter();
-  const intervalMs = Number(process.env.INGEST_INTERVAL_MS ?? 300_000);
 
-  const tick = async () => {
+  console.log(
+    `[ingest] worker started — provider=${await store.getIngestProvider()} poll=${await store.getIngestPollIntervalSeconds()}s`,
+  );
+
+  for (;;) {
     try {
       await ingest.poll();
       await processNotifyJobs();
     } catch (err) {
       console.error("[ingest]", err);
     }
-  };
-
-  console.log(
-    `[ingest] worker started — interval ${intervalMs}ms provider=${await store.getIngestProvider()}`,
-  );
-  await tick();
-  setInterval(() => {
-    void tick();
-  }, intervalMs);
+    const waitMs = await store.getIngestPollIntervalMs();
+    await sleep(waitMs);
+  }
 }
 
 main().catch((err) => {

@@ -1,8 +1,14 @@
 import type {
   IngestConfigPublic,
+  IngestConfigUpdate,
   IngestProbeResult,
   IngestProviderId,
   IngestProviderSlotPublic,
+} from "@sncf-alerts/shared";
+import {
+  clampIngestPollSeconds,
+  INGEST_POLL_SECONDS_MAX,
+  INGEST_POLL_SECONDS_MIN,
 } from "@sncf-alerts/shared";
 import { useEffect, useState } from "react";
 import { apiGet, apiSend } from "../api/client";
@@ -38,6 +44,7 @@ function ProviderCard({
   active,
   onActivate,
   onSaveToken,
+  onSavePoll,
   onProbe,
   busy,
 }: {
@@ -45,10 +52,21 @@ function ProviderCard({
   active: boolean;
   onActivate: () => void;
   onSaveToken: (token: string) => Promise<void>;
+  onSavePoll: (seconds: number) => Promise<void>;
   onProbe: (token?: string) => Promise<void>;
   busy: boolean;
 }) {
   const [token, setToken] = useState("");
+  const [pollSeconds, setPollSeconds] = useState(
+    String(slot.pollIntervalSeconds),
+  );
+
+  useEffect(() => {
+    setPollSeconds(String(slot.pollIntervalSeconds));
+  }, [slot.pollIntervalSeconds, slot.id]);
+
+  const pollDirty =
+    clampIngestPollSeconds(pollSeconds) !== slot.pollIntervalSeconds;
 
   return (
     <article className={`card ingest-provider-card${active ? " is-active" : ""}`}>
@@ -65,6 +83,31 @@ function ProviderCard({
           {active && <span className="pill">Actif</span>}
         </label>
       </div>
+
+      <label className="ingest-poll-field">
+        Poll (s)
+        <input
+          type="number"
+          min={INGEST_POLL_SECONDS_MIN}
+          max={INGEST_POLL_SECONDS_MAX}
+          step={30}
+          value={pollSeconds}
+          disabled={busy}
+          onChange={(e) => setPollSeconds(e.target.value)}
+        />
+      </label>
+      {pollDirty ? (
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy}
+          onClick={() =>
+            void onSavePoll(clampIngestPollSeconds(pollSeconds))
+          }
+        >
+          Sauver intervalle
+        </button>
+      ) : null}
 
       {slot.id === "stub" ? (
         <p className="muted field-hint">Pas de token. OK pour les checks.</p>
@@ -104,7 +147,9 @@ function ProviderCard({
             <button
               type="button"
               disabled={busy || !token.trim()}
-              onClick={() => void onSaveToken(token.trim()).then(() => setToken(""))}
+              onClick={() =>
+                void onSaveToken(token.trim()).then(() => setToken(""))
+              }
             >
               Enregistrer + vérifier
             </button>
@@ -169,7 +214,7 @@ export function IngestConfigPanel() {
       setMsg({
         text: checkOk
           ? `Provider actif : ${LABELS[provider]}`
-          : `Provider actif : ${LABELS[provider]} — check KO (${slot.lastCheckDetail ?? "API indisponible"}). Pas de données tant que le check échoue.`,
+          : `Provider actif : ${LABELS[provider]} — check KO (${slot.lastCheckDetail ?? "API indisponible"}).`,
         ok: checkOk,
       });
     } catch (err) {
@@ -193,9 +238,32 @@ export function IngestConfigPanel() {
       });
       setConfig(next);
       setMsg({
-        text: enabled
-          ? "Failover ZOU (GTFS-RT) activé"
-          : "Failover ZOU désactivé",
+        text: enabled ? "Failover ZOU activé" : "Failover ZOU désactivé",
+        ok: true,
+      });
+    } catch (err) {
+      setMsg({ text: errorMessage(err), ok: false });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function savePoll(provider: IngestProviderId, seconds: number) {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const body: IngestConfigUpdate =
+        provider === "stub"
+          ? { stubPollIntervalSeconds: seconds }
+          : { navitiaPollIntervalSeconds: seconds };
+      const next = await apiSend<IngestConfigPublic>(
+        "/v1/admin/ingest",
+        "PUT",
+        body,
+      );
+      setConfig(next);
+      setMsg({
+        text: `${LABELS[provider]} : poll ${seconds}s`,
         ok: true,
       });
     } catch (err) {
@@ -217,8 +285,8 @@ export function IngestConfigPanel() {
       const checkOk = slot.lastCheckOk === true;
       setMsg({
         text: checkOk
-          ? `${LABELS[provider]} : token enregistré (check API OK)`
-          : `${LABELS[provider]} : token enregistré — check KO (${slot.lastCheckDetail ?? "API indisponible"}). Pas de données tant que le check échoue.`,
+          ? `${LABELS[provider]} : token OK`
+          : `${LABELS[provider]} : token enregistré — check KO`,
         ok: checkOk,
       });
     } catch (err) {
@@ -293,6 +361,7 @@ export function IngestConfigPanel() {
             busy={busy}
             onActivate={() => void activate(id)}
             onSaveToken={(t) => saveToken("navitia", t)}
+            onSavePoll={(s) => savePoll(id, s)}
             onProbe={(t) => probe(id, t)}
           />
         ))}

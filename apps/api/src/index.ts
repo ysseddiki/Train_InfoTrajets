@@ -61,15 +61,24 @@ async function main() {
   const ingestInProcess = process.env.INGEST_IN_PROCESS !== "false";
   if (ingestInProcess) {
     const ingest = createIngestAdapter();
-    const intervalMs = Number(process.env.INGEST_INTERVAL_MS ?? 300_000);
-    const tick = () => {
-      void ingest.poll().catch((err) => {
+    const tick = async () => {
+      try {
+        await ingest.poll();
+      } catch (err) {
         app.log.error({ err }, "ingest poll failed");
-      });
+      }
+      const waitMs = await store.getIngestPollIntervalMs();
+      setTimeout(() => {
+        void tick();
+      }, waitMs);
     };
-    tick();
-    setInterval(tick, intervalMs);
-    app.log.info("Ingest loop running in API process");
+    void tick();
+    app.log.info(
+      {
+        pollSeconds: await store.getIngestPollIntervalSeconds(),
+      },
+      "Ingest loop running in API process (interval per provider)",
+    );
   } else {
     app.log.info(
       "INGEST_IN_PROCESS=false — use sncf-alerts-ingest.service for polling",

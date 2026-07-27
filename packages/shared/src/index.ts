@@ -338,6 +338,8 @@ export interface IngestProviderSlotPublic {
   lastCheckOk: boolean | null;
   lastCheckAt: string | null;
   lastCheckDetail: string | null;
+  /** Intervalle de poll pour ce provider (secondes). */
+  pollIntervalSeconds: number;
 }
 
 /** Config ingest : stub | navitia + failover ZOU. */
@@ -358,6 +360,24 @@ export interface IngestConfigUpdate {
   navitiaToken?: string;
   /** Active / désactive le failover GTFS-RT ZOU */
   zouFailoverEnabled?: boolean;
+  /** Intervalle poll stub (secondes) */
+  stubPollIntervalSeconds?: number;
+  /** Intervalle poll Navitia (secondes) */
+  navitiaPollIntervalSeconds?: number;
+}
+
+/** Bornes poll ingest (secondes). */
+export const INGEST_POLL_SECONDS_MIN = 60;
+export const INGEST_POLL_SECONDS_MAX = 3600;
+export const DEFAULT_INGEST_POLL_SECONDS = 300;
+
+export function clampIngestPollSeconds(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_INGEST_POLL_SECONDS;
+  return Math.min(
+    INGEST_POLL_SECONDS_MAX,
+    Math.max(INGEST_POLL_SECONDS_MIN, Math.round(n)),
+  );
 }
 
 export interface IngestProbeRequest {

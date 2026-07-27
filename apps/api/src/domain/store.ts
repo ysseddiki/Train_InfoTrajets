@@ -33,7 +33,9 @@ import type {
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
 import {
+  clampIngestPollSeconds,
   clampWatchLeadHours,
+  DEFAULT_INGEST_POLL_SECONDS,
   DEFAULT_WATCH_LEAD_HOURS,
   ingestTokenPreview,
   resolveLiaisonDisplayName,
@@ -50,6 +52,8 @@ const META_NAVITIA_TOKEN = "ingest_navitia_token";
 const META_NAVITIA_CHECK = "ingest_navitia_check";
 const META_STUB_CHECK = "ingest_stub_check";
 const META_ZOU_FAILOVER = "ingest_zou_failover_enabled";
+const META_POLL_STUB = "ingest_poll_seconds_stub";
+const META_POLL_NAVITIA = "ingest_poll_seconds_navitia";
 
 const META_SMTP_ENABLED = "smtp_enabled";
 const META_SMTP_HOST = "smtp_host";
@@ -542,7 +546,32 @@ export class PgStore {
       lastCheckOk: check?.ok ?? null,
       lastCheckAt: check?.at ?? null,
       lastCheckDetail: check?.detail ?? null,
+      pollIntervalSeconds: await this.getIngestPollIntervalSeconds(id),
     };
+  }
+
+  defaultPollSecondsFromEnv(): number {
+    const fromEnv = Number(process.env.INGEST_INTERVAL_MS ?? NaN);
+    if (Number.isFinite(fromEnv) && fromEnv > 0) {
+      return clampIngestPollSeconds(fromEnv / 1000);
+    }
+    return DEFAULT_INGEST_POLL_SECONDS;
+  }
+
+  async getIngestPollIntervalSeconds(
+    provider?: IngestProviderId,
+  ): Promise<number> {
+    const p = provider ?? (await this.getIngestProvider());
+    const key = p === "stub" ? META_POLL_STUB : META_POLL_NAVITIA;
+    const raw = await this.getMeta(key);
+    if (raw == null || raw === "") return this.defaultPollSecondsFromEnv();
+    return clampIngestPollSeconds(raw);
+  }
+
+  async getIngestPollIntervalMs(
+    provider?: IngestProviderId,
+  ): Promise<number> {
+    return (await this.getIngestPollIntervalSeconds(provider)) * 1000;
   }
 
   async getIngestConfigPublic(): Promise<IngestConfigPublic> {
@@ -585,6 +614,18 @@ export class PgStore {
       await this.setMeta(
         META_ZOU_FAILOVER,
         body.zouFailoverEnabled ? "1" : "0",
+      );
+    }
+    if (body.stubPollIntervalSeconds !== undefined) {
+      await this.setMeta(
+        META_POLL_STUB,
+        String(clampIngestPollSeconds(body.stubPollIntervalSeconds)),
+      );
+    }
+    if (body.navitiaPollIntervalSeconds !== undefined) {
+      await this.setMeta(
+        META_POLL_NAVITIA,
+        String(clampIngestPollSeconds(body.navitiaPollIntervalSeconds)),
       );
     }
     return this.getIngestConfigPublic();

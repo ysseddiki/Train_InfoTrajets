@@ -108,13 +108,14 @@ function StationPicker({
   return (
     <div className="voyage-station">
       <h3>{title}</h3>
-      <div className="station-picker-row">
-        <label className="station-picker-select">
-          Gare
+      <div className="station-picker-block">
+        <span className="station-picker-label">Gare</span>
+        <div className="station-picker-row">
           <select
             value={selectedId}
             onChange={(e) => onChange(e.target.value)}
             required
+            aria-label={`Gare ${name}`}
           >
             <option value="" disabled>
               {stations.length === 0 ? "Aucune gare" : "Choisir…"}
@@ -125,16 +126,16 @@ function StationPicker({
               </option>
             ))}
           </select>
-        </label>
-        <button
-          type="button"
-          className="secondary station-create-btn"
-          onClick={onCreate}
-          title="Créer une gare"
-        >
-          <Plus size={16} strokeWidth={2} aria-hidden />
-          Créer
-        </button>
+          <button
+            type="button"
+            className="secondary station-create-btn"
+            onClick={onCreate}
+            title="Créer une gare"
+          >
+            <Plus size={16} strokeWidth={2} aria-hidden />
+            Créer
+          </button>
+        </div>
       </div>
       <input
         type="hidden"
