@@ -19,40 +19,42 @@ const LABELS: Record<IngestProviderId, string> = {
   navitia: "Navitia",
 };
 
-function CheckBadge({ slot }: { slot: IngestProviderSlotPublic }) {
+function CheckStatus({ slot }: { slot: IngestProviderSlotPublic }) {
   if (slot.lastCheckOk === true) {
     return (
-      <p className="ok ingest-check">
-        Dernier check OK
+      <p className="ingest-status ingest-status-ok" role="status">
+        Check OK
         {slot.lastCheckDetail ? ` — ${slot.lastCheckDetail}` : ""}
       </p>
     );
   }
   if (slot.lastCheckOk === false) {
     return (
-      <p className="error ingest-check">
-        Dernier check KO
+      <p className="ingest-status ingest-status-ko" role="status">
+        Check KO
         {slot.lastCheckDetail ? ` — ${slot.lastCheckDetail}` : ""}
       </p>
     );
   }
-  return <p className="muted ingest-check">Pas encore de check API</p>;
+  return (
+    <p className="ingest-status ingest-status-muted" role="status">
+      Pas encore de check
+    </p>
+  );
 }
 
 function ProviderCard({
   slot,
   active,
   onActivate,
-  onSaveToken,
-  onSavePoll,
+  onSave,
   onProbe,
   busy,
 }: {
   slot: IngestProviderSlotPublic;
   active: boolean;
   onActivate: () => void;
-  onSaveToken: (token: string) => Promise<void>;
-  onSavePoll: (seconds: number) => Promise<void>;
+  onSave: (input: { pollSeconds: number; token?: string }) => Promise<void>;
   onProbe: (token?: string) => Promise<void>;
   busy: boolean;
 }) {
@@ -65,12 +67,26 @@ function ProviderCard({
     setPollSeconds(String(slot.pollIntervalSeconds));
   }, [slot.pollIntervalSeconds, slot.id]);
 
-  const pollDirty =
-    clampIngestPollSeconds(pollSeconds) !== slot.pollIntervalSeconds;
+  const pollValue = clampIngestPollSeconds(pollSeconds);
+  const pollDirty = pollValue !== slot.pollIntervalSeconds;
+  const tokenDirty = Boolean(token.trim());
+  const canSave = pollDirty || tokenDirty;
+  const canProbe =
+    slot.id === "stub" || tokenDirty || slot.tokenConfigured;
+
+  async function handleSave() {
+    await onSave({
+      pollSeconds: pollValue,
+      token: token.trim() || undefined,
+    });
+    setToken("");
+  }
 
   return (
-    <article className={`card ingest-provider-card${active ? " is-active" : ""}`}>
-      <div className="ingest-provider-head">
+    <article
+      className={`card ingest-provider-card${active ? " is-active" : ""}`}
+    >
+      <header className="ingest-provider-head">
         <label className="check-inline ingest-active-radio">
           <input
             type="radio"
@@ -80,56 +96,46 @@ function ProviderCard({
             onChange={() => onActivate()}
           />
           <strong>{LABELS[slot.id]}</strong>
-          {active && <span className="pill">Actif</span>}
+          {active ? <span className="pill">Actif</span> : null}
         </label>
-      </div>
+      </header>
 
-      <label className="ingest-poll-field">
-        Poll (s)
-        <input
-          type="number"
-          min={INGEST_POLL_SECONDS_MIN}
-          max={INGEST_POLL_SECONDS_MAX}
-          step={30}
-          value={pollSeconds}
-          disabled={busy}
-          onChange={(e) => setPollSeconds(e.target.value)}
-        />
-      </label>
-      {pollDirty ? (
-        <button
-          type="button"
-          className="secondary"
-          disabled={busy}
-          onClick={() =>
-            void onSavePoll(clampIngestPollSeconds(pollSeconds))
-          }
-        >
-          Sauver intervalle
-        </button>
-      ) : null}
+      <div className="ingest-provider-fields">
+        <label className="ingest-field ingest-field-poll">
+          <span className="ingest-field-label">
+            Intervalle de poll
+            <span className="muted"> ({INGEST_POLL_SECONDS_MIN}–{INGEST_POLL_SECONDS_MAX} s)</span>
+          </span>
+          <div className="ingest-poll-input">
+            <input
+              type="number"
+              min={INGEST_POLL_SECONDS_MIN}
+              max={INGEST_POLL_SECONDS_MAX}
+              step={30}
+              value={pollSeconds}
+              disabled={busy}
+              onChange={(e) => setPollSeconds(e.target.value)}
+              aria-label={`Intervalle de poll ${LABELS[slot.id]}`}
+            />
+            <span className="muted">s</span>
+          </div>
+        </label>
 
-      {slot.id === "stub" ? (
-        <p className="muted field-hint">Pas de token. OK pour les checks.</p>
-      ) : (
-        <>
-          <p className="ingest-token-status">
+        {slot.id === "stub" ? (
+          <p className="muted field-hint">Pas de token — checks toujours OK.</p>
+        ) : (
+          <label className="ingest-field">
+            <span className="ingest-field-label">
+              {slot.tokenConfigured ? "Token API" : "Token / clé API"}
+            </span>
             {slot.tokenConfigured ? (
-              <>
-                Token :{" "}
-                <code>
-                  {slot.tokenPreview}
-                  …
-                </code>
-              </>
+              <span className="ingest-token-hint muted">
+                Actuel : <code>{slot.tokenPreview}…</code> — laisser vide pour
+                conserver
+              </span>
             ) : (
-              <span className="error">Aucun token configuré</span>
+              <span className="ingest-token-hint error">Aucun token configuré</span>
             )}
-          </p>
-          <label>
-            {slot.tokenConfigured
-              ? "Nouveau token (vide = conserver)"
-              : "Token / clé API"}
             <input
               type="password"
               autoComplete="off"
@@ -138,38 +144,37 @@ function ProviderCard({
               onChange={(e) => setToken(e.target.value)}
               placeholder={
                 slot.tokenConfigured
-                  ? "•••••••• (inchangé si vide)"
+                  ? "Nouveau token (optionnel)"
                   : "Coller le secret"
               }
             />
           </label>
-          <div className="ingest-provider-actions">
-            <button
-              type="button"
-              disabled={busy || !token.trim()}
-              onClick={() =>
-                void onSaveToken(token.trim()).then(() => setToken(""))
-              }
-            >
-              Enregistrer + vérifier
-            </button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={busy || (!token.trim() && !slot.tokenConfigured)}
-              onClick={() =>
-                void onProbe(token.trim() || undefined).then(() => {
-                  if (token.trim()) setToken("");
-                })
-              }
-            >
-              Tester
-            </button>
-          </div>
-        </>
-      )}
+        )}
+      </div>
 
-      <CheckBadge slot={slot} />
+      <div className="ingest-provider-actions">
+        <button
+          type="button"
+          disabled={busy || !canSave}
+          onClick={() => void handleSave()}
+        >
+          Enregistrer
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          disabled={busy || !canProbe}
+          onClick={() =>
+            void onProbe(token.trim() || undefined).then(() => {
+              if (token.trim()) setToken("");
+            })
+          }
+        >
+          Tester
+        </button>
+      </div>
+
+      <CheckStatus slot={slot} />
     </article>
   );
 }
@@ -248,47 +253,48 @@ export function IngestConfigPanel() {
     }
   }
 
-  async function savePoll(provider: IngestProviderId, seconds: number) {
+  async function saveProvider(
+    provider: IngestProviderId,
+    input: { pollSeconds: number; token?: string },
+  ) {
     setBusy(true);
     setMsg(null);
     try {
       const body: IngestConfigUpdate =
         provider === "stub"
-          ? { stubPollIntervalSeconds: seconds }
-          : { navitiaPollIntervalSeconds: seconds };
+          ? { stubPollIntervalSeconds: input.pollSeconds }
+          : {
+              navitiaPollIntervalSeconds: input.pollSeconds,
+              ...(input.token ? { navitiaToken: input.token } : {}),
+            };
       const next = await apiSend<IngestConfigPublic>(
         "/v1/admin/ingest",
         "PUT",
         body,
       );
       setConfig(next);
-      setMsg({
-        text: `${LABELS[provider]} : poll ${seconds}s`,
-        ok: true,
-      });
-    } catch (err) {
-      setMsg({ text: errorMessage(err), ok: false });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function saveToken(provider: "navitia", token: string) {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const next = await apiSend<IngestConfigPublic>("/v1/admin/ingest", "PUT", {
-        navitiaToken: token,
-      });
-      setConfig(next);
       const slot = next.providers[provider];
-      const checkOk = slot.lastCheckOk === true;
-      setMsg({
-        text: checkOk
-          ? `${LABELS[provider]} : token OK`
-          : `${LABELS[provider]} : token enregistré — check KO`,
-        ok: checkOk,
-      });
+      if (provider === "stub") {
+        setMsg({
+          text: `Stub : poll ${input.pollSeconds}s`,
+          ok: true,
+        });
+        return;
+      }
+      if (input.token) {
+        const checkOk = slot.lastCheckOk === true;
+        setMsg({
+          text: checkOk
+            ? `Navitia : enregistré (poll ${input.pollSeconds}s) — token OK`
+            : `Navitia : enregistré (poll ${input.pollSeconds}s) — check KO`,
+          ok: checkOk,
+        });
+      } else {
+        setMsg({
+          text: `Navitia : poll ${input.pollSeconds}s`,
+          ok: true,
+        });
+      }
     } catch (err) {
       setMsg({ text: errorMessage(err), ok: false });
       try {
@@ -360,16 +366,15 @@ export function IngestConfigPanel() {
             active={config.activeProvider === id}
             busy={busy}
             onActivate={() => void activate(id)}
-            onSaveToken={(t) => saveToken("navitia", t)}
-            onSavePoll={(s) => savePoll(id, s)}
+            onSave={(input) => saveProvider(id, input)}
             onProbe={(t) => probe(id, t)}
           />
         ))}
       </div>
 
-      {msg && (
+      {msg ? (
         <p className={`form-msg ${msg.ok ? "ok" : "error"}`}>{msg.text}</p>
-      )}
+      ) : null}
     </div>
   );
 }
