@@ -8,6 +8,7 @@ alwaysApply: false
 
 - Une source active : `stub` | `prim` | `navitia` (`INGEST_PROVIDER`)
 - Failover optionnel ZOU GTFS-RT (`zouFailoverEnabled`) si Navitia KO / quota / sans token — source `zou`, pas un provider primaire
+- ZOU : **pas de poll dédié** — exécuté dans le tick Navitia (hérite de `navitiaPollIntervalSeconds`)
 - ZOU : matching **UIC origine → UIC dest** (TripUpdates + static) ; retards = TripUpdates only ; SA = debug
 - Idempotence sur `external_event_id`
 - Matching / poll : **fenêtre de veille** (`watch_always` ou `start − watch_lead_hours` … `end`), pas seulement `time_window` trajet

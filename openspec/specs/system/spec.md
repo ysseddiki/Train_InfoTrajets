@@ -63,7 +63,7 @@ Le client `apps/web` MUST être une application **Vite + React + TypeScript**. I
 
 ### Requirement: Documentation déploiement adminsys
 
-Le dépôt SHALL fournir des unités systemd d’exemple (`deploy/systemd/`) et une section README expliquant API vs ingest.
+Le dépôt SHALL fournir des unités systemd d’exemple (`deploy/systemd/` : api, ingest, web) et une section README expliquant API vs ingest vs UI.
 
 #### Scenario: Install units
 

@@ -356,6 +356,10 @@ export function IngestConfigPanel() {
           />{" "}
           Basculer si Navitia KO / quota / sans token
         </label>
+        <p className="muted field-hint">
+          Pas d’intervalle dédié : ZOU tourne dans le même poll que Navitia
+          (intervalle configuré sur la carte Navitia).
+        </p>
       </div>
 
       <div className="ingest-provider-grid">

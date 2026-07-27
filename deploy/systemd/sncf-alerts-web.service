@@ -1,0 +1,18 @@
+[Unit]
+Description=SNCF-Alerts Web UI (Vite + proxy /v1)
+After=network.target sncf-alerts-api.service
+Wants=sncf-alerts-api.service
+
+[Service]
+Type=simple
+User=debian
+WorkingDirectory=/home/debian/Train_InfoTrajets
+EnvironmentFile=-/home/debian/Train_InfoTrajets/.env
+# Port 443 (vite.config) : si bind EACCES, passer User=root ou garder cette capa
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStart=/usr/bin/npm run dev:web
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

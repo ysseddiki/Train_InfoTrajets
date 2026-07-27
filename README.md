@@ -22,22 +22,32 @@ Le client **ne fonctionne pas sans l’API**. Token Navitia = **Admin → Ingest
 - Accès réseau restreint (VPN/firewall) pour le dashboard (pas d’auth app viewer en v1)
 - Compte admin pour la console
 
-## Systemd (API ≠ ingest) — recommandé en prod
+## Systemd (API ≠ ingest ≠ web) — recommandé en prod
 
-Sur le serveur (chemins à adapter) :
+Trois unités : **api** (HTTP `/v1`), **ingest** (poll), **web** (UI Vite + proxy `/v1` → api).
+
+Sur le serveur (chemins / `User=` à adapter) :
 
 ```bash
 sudo cp deploy/systemd/sncf-alerts-api.service /etc/systemd/system/
 sudo cp deploy/systemd/sncf-alerts-ingest.service /etc/systemd/system/
+sudo cp deploy/systemd/sncf-alerts-web.service /etc/systemd/system/
 # Éditer User= et WorkingDirectory= si besoin
+# Port 443 : si EACCES avec User=debian → User=root (comme souvent déjà pour api)
 sudo systemctl daemon-reload
-sudo systemctl enable --now sncf-alerts-api sncf-alerts-ingest
-sudo systemctl status sncf-alerts-api sncf-alerts-ingest
+sudo systemctl enable --now sncf-alerts-api sncf-alerts-ingest sncf-alerts-web
+sudo systemctl status sncf-alerts-api sncf-alerts-ingest sncf-alerts-web
+```
+
+Après `./scripts/update.sh` :
+
+```bash
+sudo systemctl restart sncf-alerts-api sncf-alerts-ingest sncf-alerts-web
 ```
 
 Dans `.env` : `INGEST_IN_PROCESS=false` pour que l’API ne double pas le poll.
 
-Dev local (tout-en-un) : laisser `INGEST_IN_PROCESS=true` (défaut) et `npm run dev:api`.
+Dev local (tout-en-un) : laisser `INGEST_IN_PROCESS=true` (défaut) et `npm run dev:api` + `npm run dev:web`.
 
 Sans token Navitia : `INGEST_PROVIDER=stub` + **Admin → Debug** (inject / historique) pour peupler le dashboard.
 
@@ -191,6 +201,7 @@ Filet de secours si Navitia est KO / quota / sans token. Activable dans **Admin 
 - Dataset : [Trains régionaux ZOU !](https://transport.data.gouv.fr/datasets/trains-zou-en-provence-alpes-cote-dazur)
 - Flux : TripUpdates (+ multi-URL optionnelle) + Service Alerts + GTFS static (stops / trips / stop_times)
 - Source événements / board : `zou` (pas un provider primaire)
+- **Pas d’intervalle de poll propre** : ZOU n’est pas un provider sélectionnable ; il s’exécute dans le tick Navitia et hérite donc de l’intervalle poll Navitia
 - URLs : `ZOU_GTFS_URL`, `ZOU_GTFSRT_TRIPS_URL` ou `ZOU_GTFSRT_TRIPS_URLS` (virgules), `ZOU_GTFSRT_SA_URL`
 
 > Ne pas lancer `npm audit fix --force` (casse le lockfile).

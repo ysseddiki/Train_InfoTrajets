@@ -14,4 +14,5 @@ git reset --hard "origin/${branch}"
 echo "→ npm install"
 npm install
 
-echo "Done. Redémarre API/web si besoin."
+echo "Done. Redémarre les services :"
+echo "  sudo systemctl restart sncf-alerts-api sncf-alerts-ingest sncf-alerts-web"
