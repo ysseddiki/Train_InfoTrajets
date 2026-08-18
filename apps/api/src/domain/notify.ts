@@ -12,7 +12,7 @@ export async function notifyForEvent(
   event: DisruptionEventDto,
   opts?: { force?: boolean },
 ): Promise<void> {
-  await store.enqueueNotifyJob(event.id);
+  await store.enqueueNotifyJob(event.id, opts?.force === true);
   if (opts?.force) {
     await processNotifyJobs();
   }
@@ -29,7 +29,7 @@ export async function processNotifyJobs(): Promise<number> {
         await store.completeNotifyJob(job.id, false, "event missing");
         continue;
       }
-      await deliverEvent(event);
+      await deliverEvent(event, { force: job.force });
       await store.completeNotifyJob(job.id, true);
       done += 1;
     } catch (err) {
@@ -65,9 +65,11 @@ async function deliverEvent(
     event.kind === "delay"
       ? `Retard: ${formatDelayMinutes(event.delayMinutes, event.kind)}`
       : null;
+  const reasonLine = event.delayReason ? `Motif: ${event.delayReason}` : null;
   const body = [
     event.description,
     delayLine,
+    reasonLine,
     `Sévérité: ${event.severity}`,
     `Sens: ${direction ?? "n/a"}`,
     `Détecté: ${event.detectedAt}`,

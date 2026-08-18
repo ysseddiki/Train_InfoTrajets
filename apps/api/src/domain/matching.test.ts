@@ -19,6 +19,7 @@ function journey(partial: Partial<JourneyConfig>): JourneyConfig {
     watchAlways: false,
     watchLeadHours: 4,
     minDelayMinutes: 10,
+    notifyStepMinutes: 5,
     severities: ["delay", "cancellation"],
     active: true,
     updatedAt: new Date().toISOString(),

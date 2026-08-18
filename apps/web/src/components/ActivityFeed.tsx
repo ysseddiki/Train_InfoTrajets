@@ -31,6 +31,9 @@ export function EventsActivityFeed({
               )}
             </div>
             <p className="activity-feed-title">{e.title}</p>
+            {e.delayReason ? (
+              <p className="muted activity-feed-reason">Motif : {e.delayReason}</p>
+            ) : null}
           </div>
           <time className="activity-feed-time" dateTime={e.detectedAt}>
             {formatRelative(e.detectedAt)}

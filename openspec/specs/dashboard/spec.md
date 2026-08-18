@@ -22,6 +22,16 @@ Le dashboard SHALL afficher l’état de chaque liaison (Aller `outbound` + Reto
 - **WHEN** le dashboard charge
 - **THEN** une erreur claire est affichée (pas de données inventées en prod)
 
+### Requirement: Stats motifs de retard
+
+Les agrégats période (`last24h` / `7d` / `30d`) SHALL inclure un décompte des retards **par `delay_reason_key`** (top motifs) et le nombre de retards **sans motif**. Un motif manquant MUST NOT être affiché comme une cause inventée.
+
+#### Scenario: Mix motifs
+
+- **GIVEN** 3 retards « travaux », 1 sans motif, sur 24 h
+- **WHEN** le dashboard charge
+- **THEN** les stats 24 h listent travaux (3) et un compteur sans motif (1)
+
 ### Requirement: Affichage retard unknown
 
 Pour un événement de type retard (`delay`), si `delay_minutes` est `null`, le dashboard MUST afficher `unknown` (cartes, tableaux, libellé board). MUST NOT afficher `0`, `—` ou « Retard détecté » à la place.

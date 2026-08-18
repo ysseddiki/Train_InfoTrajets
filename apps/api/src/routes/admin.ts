@@ -9,6 +9,7 @@ import type {
   RecipientsConfig,
   SmtpConfigUpdate,
   StationUpsertBody,
+  AdminPasswordUpdate,
 } from "@sncf-alerts/shared";
 import { probeIngestCredential } from "../adapters/ingest-probe.js";
 import { injectStubEvent, seedStubHistory } from "../adapters/ingest.js";
@@ -80,6 +81,35 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (!session) return;
     return { username: session.username, role: "admin" };
   });
+
+  app.put<{ Body: AdminPasswordUpdate }>(
+    "/v1/admin/account/password",
+    async (req, reply) => {
+      const session = await requireAdmin(req, reply);
+      if (!session) return;
+      try {
+        await store.changeAdminPassword(
+          session.adminId,
+          req.body?.currentPassword ?? "",
+          req.body?.newPassword ?? "",
+        );
+        return { ok: true };
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type: "/errors/password",
+          title:
+            status === 401
+              ? "Mot de passe actuel incorrect"
+              : status === 400
+                ? "Mot de passe invalide"
+                : "Erreur",
+          status,
+          detail: err instanceof Error ? err.message : "Erreur",
+        });
+      }
+    },
+  );
 
   app.get("/v1/admin/liaisons", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;

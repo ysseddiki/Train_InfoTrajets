@@ -9,6 +9,7 @@ import {
   Bug,
   Database,
   Eraser,
+  KeyRound,
   LogOut,
   MapPin,
   Plus,
@@ -24,6 +25,7 @@ import {
   type ReactNode,
 } from "react";
 import { apiGet, apiSend } from "../api/client";
+import { AdminAccountPanel } from "../components/AdminAccountPanel";
 import { ClearStatsPanel } from "../components/ClearStatsPanel";
 import { DebugPanel } from "../components/DebugPanel";
 import { IngestConfigPanel } from "../components/IngestConfigPanel";
@@ -41,7 +43,8 @@ type AdminSectionId =
   | "alerts"
   | "data"
   | "debug"
-  | "clear-stats";
+  | "clear-stats"
+  | "account";
 
 type AdminNavItem = {
   id: AdminSectionId;
@@ -110,6 +113,18 @@ const ADMIN_NAV: AdminNavGroup[] = [
         description: "Purge événements / livraisons.",
         icon: Eraser,
         tone: "danger",
+      },
+    ],
+  },
+  {
+    id: "security",
+    label: "Sécurité",
+    items: [
+      {
+        id: "account",
+        label: "Compte",
+        description: "Mot de passe du compte admin.",
+        icon: KeyRound,
       },
     ],
   },
@@ -483,6 +498,9 @@ function AdminConsole({
       break;
     case "debug":
       panelBody = <DebugPanel liaisons={liaisons} />;
+      break;
+    case "account":
+      panelBody = <AdminAccountPanel username={username} />;
       break;
   }
 

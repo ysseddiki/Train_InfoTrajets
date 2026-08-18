@@ -57,6 +57,16 @@ Si **Veille continue** est cochée, la liste MUST être désactivée (grisée) ;
 - **WHEN** le formulaire s’affiche
 - **THEN** le select 0–12 h est disabled
 
+### Requirement: Palier de notif par liaison
+
+La console SHALL exposer `notify_step_minutes` (minutes, 0–60, défaut 5) au même niveau que le seuil de retard. Les deux sens d’une liaison SHALL recevoir la même valeur à l’enregistrement (comme `min_delay_minutes`).
+
+#### Scenario: Palier 10
+
+- **GIVEN** un admin authentifié
+- **WHEN** il enregistre une liaison avec palier 10
+- **THEN** Aller et Retour ont `notify_step_minutes = 10`
+
 ### Requirement: Clear stats par source
 
 Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `zou`, `prim` (legacy), et/ou livraisons email/Teams.
@@ -139,3 +149,13 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 ### Requirement: Configuration SMTP en admin
 
 Un admin authentifié SHALL pouvoir lire et mettre à jour la config SMTP via `GET/PUT /v1/admin/channels/smtp` (host, port, secure, username, from, enabled). Le mot de passe MUST être write-only (`passwordConfigured` en lecture). La config MUST être stockée côté serveur (app_meta) ; un bootstrap depuis `.env` MAY remplir les meta vides une seule fois.
+
+### Requirement: Formulaire mot de passe admin
+
+La console SHALL exposer une section Compte permettant de changer le mot de passe (actuel, nouveau, confirmation). MUST NOT préremplir ni afficher le mot de passe existant.
+
+#### Scenario: Confirmation
+
+- **GIVEN** un admin sur la section Compte
+- **WHEN** nouveau et confirmation diffèrent
+- **THEN** le client n’envoie pas la requête

@@ -1,8 +1,10 @@
 import type { JourneyConfig, JourneyDirection } from "@sncf-alerts/shared";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
+import { delayReasonFromNavitia } from "../domain/delay-reason.js";
 import { isWithinWatchWindow } from "../domain/matching.js";
 import { buildNextDepartureStatus } from "../domain/next-departure.js";
 import { notifyForEvent, processNotifyJobs } from "../domain/notify.js";
+import { shouldNotifyDelayStep } from "../domain/notify-step.js";
 import { store } from "../domain/store.js";
 import {
   NavitiaDeparturesPort,
@@ -60,6 +62,8 @@ export async function injectStubEvent(input?: {
         : `Retard ${delayMinutes} min (stub) ${direction}`,
     description: "Événement synthétique généré par l'ingest stub / debug admin.",
     delayMinutes: kind === "delay" ? delayMinutes : null,
+    delayReason: null,
+    delayReasonKey: null,
     startsAt: now.toISOString(),
     endsAt: null,
     source: "stub",
@@ -177,6 +181,8 @@ export async function seedStubHistory(input?: {
           : `Retard ${delayMinutes} min (stub hist) ${journey.direction}`,
         description: "Historique synthétique stub — 6 mois démo.",
         delayMinutes,
+        delayReason: null,
+        delayReasonKey: null,
         startsAt: iso,
         endsAt: null,
         source: "stub",
@@ -377,6 +383,32 @@ async function saveNextFromZou(
   });
 }
 
+async function persistAlertAndMaybeNotify(input: {
+  journey: JourneyConfig;
+  event: Parameters<typeof store.upsertEvent>[0];
+}): Promise<boolean> {
+  const upserted = await store.upsertEvent(input.event);
+  const notify = shouldNotifyDelayStep({
+    created: upserted.created,
+    notifyStepMinutes: input.journey.notifyStepMinutes,
+    kind: input.event.kind,
+    previousKind: upserted.previousKind,
+    delayMinutes: input.event.delayMinutes,
+    notifiedDelayMinutes: upserted.notifiedDelayMinutes,
+    severity: input.event.severity,
+    notifiedSeverity: upserted.notifiedSeverity,
+  });
+  if (notify) {
+    await notifyForEvent(upserted.event, { force: !upserted.created });
+    await store.markEventNotified(
+      upserted.event.id,
+      input.event.delayMinutes,
+      input.event.severity,
+    );
+  }
+  return upserted.created;
+}
+
 export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
   constructor(private readonly token: string) {}
 
@@ -478,7 +510,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
     token: string,
   ): Promise<number> {
     const port = new NavitiaDeparturesPort(token);
-    const { departures } = await port.fetchDepartures(journey);
+    const { departures, disruptions } = await port.fetchDepartures(journey);
     await saveNextFromNavitia(token, journey, departures);
     let createdCount = 0;
 
@@ -510,28 +542,30 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       if (!journey.severities.includes(kind)) continue;
 
       const delayLabel = delay == null ? "unknown" : `${delay} min`;
-      const { event, created } = await store.upsertEvent({
-        externalEventId,
-        journeyId: journey.id,
-        liaisonId: journey.liaisonId,
-        direction: journey.direction,
-        kind,
-        severity:
-          cancelled || (delay != null && delay >= 20) ? "critical" : "warning",
-        title: cancelled
-          ? `Suppression — ${journey.originLabel} → ${directionText || journey.destinationLabel}`
-          : `Retard ${delayLabel} — ${journey.originLabel} → ${directionText || journey.destinationLabel}`,
-        description: `Départ gare ${journey.originLabel}, sens ${directionText || journey.destinationLabel}.`,
-        delayMinutes: cancelled ? null : delay,
-        startsAt: new Date().toISOString(),
-        endsAt: null,
-        source: "navitia",
+      const reason = delayReasonFromNavitia(dep, disruptions);
+      const created = await persistAlertAndMaybeNotify({
+        journey,
+        event: {
+          externalEventId,
+          journeyId: journey.id,
+          liaisonId: journey.liaisonId,
+          direction: journey.direction,
+          kind,
+          severity:
+            cancelled || (delay != null && delay >= 20) ? "critical" : "warning",
+          title: cancelled
+            ? `Suppression — ${journey.originLabel} → ${directionText || journey.destinationLabel}`
+            : `Retard ${delayLabel} — ${journey.originLabel} → ${directionText || journey.destinationLabel}`,
+          description: `Départ gare ${journey.originLabel}, sens ${directionText || journey.destinationLabel}.`,
+          delayMinutes: cancelled ? null : delay,
+          delayReason: reason.delayReason,
+          delayReasonKey: reason.delayReasonKey,
+          startsAt: new Date().toISOString(),
+          endsAt: null,
+          source: "navitia",
+        },
       });
-
-      if (created) {
-        createdCount += 1;
-        await notifyForEvent(event);
-      }
+      if (created) createdCount += 1;
     }
 
     return createdCount;
@@ -564,35 +598,36 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
 
       const delayLabel = delay == null ? "unknown" : `${delay} min`;
       const destLabel = dep.directionText || journey.destinationLabel;
-      const { event, created } = await store.upsertEvent({
-        externalEventId,
-        journeyId: journey.id,
-        liaisonId: journey.liaisonId,
-        direction: journey.direction,
-        kind,
-        severity:
-          cancelled || (delay != null && delay >= 20) ? "critical" : "warning",
-        title: cancelled
-          ? `Suppression — ${journey.originLabel} → ${destLabel}`
-          : `Retard ${delayLabel} — ${journey.originLabel} → ${destLabel}`,
-        description: [
-          `Failover ZOU TripUpdate`,
-          dep.trainNumber ? `train ${dep.trainNumber}` : null,
-          `trip ${dep.tripId}`,
-          `départ ${journey.originLabel} → ${destLabel}`,
-        ]
-          .filter(Boolean)
-          .join(" — "),
-        delayMinutes: cancelled ? null : delay,
-        startsAt: new Date().toISOString(),
-        endsAt: null,
-        source: "zou",
+      const created = await persistAlertAndMaybeNotify({
+        journey,
+        event: {
+          externalEventId,
+          journeyId: journey.id,
+          liaisonId: journey.liaisonId,
+          direction: journey.direction,
+          kind,
+          severity:
+            cancelled || (delay != null && delay >= 20) ? "critical" : "warning",
+          title: cancelled
+            ? `Suppression — ${journey.originLabel} → ${destLabel}`
+            : `Retard ${delayLabel} — ${journey.originLabel} → ${destLabel}`,
+          description: [
+            `Failover ZOU TripUpdate`,
+            dep.trainNumber ? `train ${dep.trainNumber}` : null,
+            `trip ${dep.tripId}`,
+            `départ ${journey.originLabel} → ${destLabel}`,
+          ]
+            .filter(Boolean)
+            .join(" — "),
+          delayMinutes: cancelled ? null : delay,
+          delayReason: dep.delayReason,
+          delayReasonKey: dep.delayReasonKey,
+          startsAt: new Date().toISOString(),
+          endsAt: null,
+          source: "zou",
+        },
       });
-
-      if (created) {
-        createdCount += 1;
-        await notifyForEvent(event);
-      }
+      if (created) createdCount += 1;
     }
 
     return createdCount;

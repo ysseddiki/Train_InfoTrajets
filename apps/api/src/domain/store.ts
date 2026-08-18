@@ -33,9 +33,12 @@ import type {
   TeamsConfigPublic,
 } from "@sncf-alerts/shared";
 import {
+  ADMIN_PASSWORD_MIN_LENGTH,
   clampIngestPollSeconds,
+  clampNotifyStepMinutes,
   clampWatchLeadHours,
   DEFAULT_INGEST_POLL_SECONDS,
+  DEFAULT_NOTIFY_STEP_MINUTES,
   DEFAULT_WATCH_LEAD_HOURS,
   ingestTokenPreview,
   resolveLiaisonDisplayName,
@@ -137,6 +140,7 @@ function emptyLeg(
     watchAlways: false,
     watchLeadHours: DEFAULT_WATCH_LEAD_HOURS,
     minDelayMinutes: 10,
+    notifyStepMinutes: DEFAULT_NOTIFY_STEP_MINUTES,
     severities: ["delay", "cancellation"],
     active: opts?.active ?? !blank,
   };
@@ -208,6 +212,7 @@ function mapJourney(row: Record<string, unknown>): JourneyConfig {
       row.watch_lead_hours ?? DEFAULT_WATCH_LEAD_HOURS,
     ),
     minDelayMinutes: Number(row.min_delay_minutes),
+    notifyStepMinutes: clampNotifyStepMinutes(row.notify_step_minutes),
     severities: (row.severities as DisruptionKind[]) ?? [],
     active: Boolean(row.active),
     updatedAt: new Date(String(row.updated_at)).toISOString(),
@@ -226,6 +231,14 @@ function mapEvent(row: Record<string, unknown>): DisruptionEventDto {
     title: String(row.title),
     description: String(row.description ?? ""),
     delayMinutes: row.delay_minutes === null ? null : Number(row.delay_minutes),
+    delayReason:
+      row.delay_reason === null || row.delay_reason === undefined
+        ? null
+        : String(row.delay_reason),
+    delayReasonKey:
+      row.delay_reason_key === null || row.delay_reason_key === undefined
+        ? null
+        : String(row.delay_reason_key),
     startsAt: new Date(String(row.starts_at)).toISOString(),
     endsAt: row.ends_at ? new Date(String(row.ends_at)).toISOString() : null,
     source: row.source as "stub" | "prim" | "navitia" | "zou",
@@ -647,6 +660,45 @@ export class PgStore {
     return { id: String(row.id), username: String(row.username) };
   }
 
+  async changeAdminPassword(
+    adminId: string,
+    currentPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const next = String(newPassword ?? "");
+    if (next.length < ADMIN_PASSWORD_MIN_LENGTH) {
+      throw Object.assign(
+        new Error(
+          `Le mot de passe doit faire au moins ${ADMIN_PASSWORD_MIN_LENGTH} caractères`,
+        ),
+        { statusCode: 400 },
+      );
+    }
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT id, password_hash FROM admin_accounts WHERE id = $1`,
+      [adminId],
+    );
+    if (res.rowCount === 0) {
+      throw Object.assign(new Error("Admin not found"), { statusCode: 404 });
+    }
+    const row = res.rows[0];
+    const ok = await bcrypt.compare(
+      String(currentPassword ?? ""),
+      String(row.password_hash),
+    );
+    if (!ok) {
+      throw Object.assign(new Error("Mot de passe actuel incorrect"), {
+        statusCode: 401,
+      });
+    }
+    const hash = await bcrypt.hash(next, 12);
+    await pool.query(
+      `UPDATE admin_accounts SET password_hash = $2 WHERE id = $1`,
+      [adminId, hash],
+    );
+  }
+
   async createSession(adminId: string): Promise<{ id: string; expiresAt: Date }> {
     const pool = getPool();
     const expiresAt = new Date(Date.now() + SESSION_TTL_HOURS * 3600 * 1000);
@@ -721,6 +773,9 @@ export class PgStore {
       watchLeadHours: clampWatchLeadHours(
         patch.watchLeadHours ?? base.watchLeadHours ?? DEFAULT_WATCH_LEAD_HOURS,
       ),
+      notifyStepMinutes: clampNotifyStepMinutes(
+        patch.notifyStepMinutes ?? base.notifyStepMinutes,
+      ),
       updatedAt: new Date().toISOString(),
     };
     const pool = getPool();
@@ -728,8 +783,8 @@ export class PgStore {
       `INSERT INTO journeys (
         liaison_id, direction, label, origin_id, destination_id, origin_label, destination_label,
         network, days_of_week, window_start, window_end, watch_always, watch_lead_hours,
-        min_delay_minutes, severities, active, updated_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        min_delay_minutes, notify_step_minutes, severities, active, updated_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
       ON CONFLICT (liaison_id, direction) DO UPDATE SET
         label = EXCLUDED.label,
         origin_id = EXCLUDED.origin_id,
@@ -743,6 +798,7 @@ export class PgStore {
         watch_always = EXCLUDED.watch_always,
         watch_lead_hours = EXCLUDED.watch_lead_hours,
         min_delay_minutes = EXCLUDED.min_delay_minutes,
+        notify_step_minutes = EXCLUDED.notify_step_minutes,
         severities = EXCLUDED.severities,
         active = EXCLUDED.active,
         updated_at = EXCLUDED.updated_at
@@ -762,6 +818,7 @@ export class PgStore {
         next.watchAlways,
         next.watchLeadHours,
         next.minDelayMinutes,
+        next.notifyStepMinutes,
         next.severities,
         next.active,
         next.updatedAt,
@@ -1067,7 +1124,10 @@ export class PgStore {
         MAX(delay_minutes) FILTER (WHERE delay_minutes IS NOT NULL)::int AS max_delay,
         COUNT(*) FILTER (WHERE direction = 'outbound')::int AS outbound,
         COUNT(*) FILTER (WHERE direction = 'inbound')::int AS inbound,
-        COUNT(*) FILTER (WHERE direction IS NULL)::int AS unmatched
+        COUNT(*) FILTER (WHERE direction IS NULL)::int AS unmatched,
+        COUNT(*) FILTER (
+          WHERE kind = 'delay' AND delay_reason_key IS NULL
+        )::int AS delays_without_reason
        FROM disruption_events
        WHERE ${eventFilter}`,
       params,
@@ -1078,6 +1138,20 @@ export class PgStore {
         COUNT(*) FILTER (WHERE status = 'failed')::int AS failed
        FROM alert_deliveries
        WHERE ${delFilter}`,
+      params,
+    );
+    const reasonRes = await pool.query(
+      `SELECT delay_reason_key AS key,
+              MIN(delay_reason) AS label,
+              COUNT(*)::int AS count
+       FROM disruption_events
+       WHERE ${eventFilter}
+         AND kind = 'delay'
+         AND delay_reason_key IS NOT NULL
+         AND delay_reason_key <> ''
+       GROUP BY delay_reason_key
+       ORDER BY count DESC, key ASC
+       LIMIT 8`,
       params,
     );
     const e = res.rows[0] ?? {};
@@ -1102,6 +1176,12 @@ export class PgStore {
         inbound: Number(e.inbound ?? 0),
         unmatched: Number(e.unmatched ?? 0),
       },
+      delayReasons: reasonRes.rows.map((row) => ({
+        key: String(row.key),
+        label: String(row.label ?? row.key),
+        count: Number(row.count ?? 0),
+      })),
+      delaysWithoutReason: Number(e.delays_without_reason ?? 0),
     };
   }
 
@@ -1307,6 +1387,7 @@ export class PgStore {
         watchAlways: j.watchAlways,
         watchLeadHours: j.watchLeadHours,
         minDelayMinutes: j.minDelayMinutes,
+        notifyStepMinutes: j.notifyStepMinutes,
         boardStatus,
         boardStatusLabel,
         nextDeparture,
@@ -1317,6 +1398,7 @@ export class PgStore {
               severity: latest.severity,
               title: latest.title,
               delayMinutes: latest.delayMinutes,
+              delayReason: latest.delayReason,
               detectedAt: latest.detectedAt,
             }
           : null,
@@ -1658,17 +1740,27 @@ export class PgStore {
 
   async upsertEvent(
     input: Omit<DisruptionEventDto, "id" | "detectedAt"> & { detectedAt?: string },
-  ): Promise<{ event: DisruptionEventDto; created: boolean }> {
+  ): Promise<{
+    event: DisruptionEventDto;
+    created: boolean;
+    previousKind: DisruptionKind | null;
+    notifiedDelayMinutes: number | null;
+    notifiedSeverity: DisruptionSeverity | null;
+  }> {
     const pool = getPool();
     const existing = await pool.query(
       `SELECT * FROM disruption_events WHERE external_event_id = $1`,
       [input.externalEventId],
     );
+    const delayReason = input.delayReason ?? null;
+    const delayReasonKey = input.delayReasonKey ?? null;
     if ((existing.rowCount ?? 0) > 0) {
+      const prev = existing.rows[0] as Record<string, unknown>;
       const res = await pool.query(
         `UPDATE disruption_events SET
           journey_id = $2, liaison_id = $3, direction = $4, kind = $5, severity = $6,
-          title = $7, description = $8, delay_minutes = $9, starts_at = $10, ends_at = $11, source = $12
+          title = $7, description = $8, delay_minutes = $9, starts_at = $10, ends_at = $11,
+          source = $12, delay_reason = $13, delay_reason_key = $14
          WHERE external_event_id = $1
          RETURNING *`,
         [
@@ -1684,15 +1776,28 @@ export class PgStore {
           input.startsAt,
           input.endsAt,
           input.source,
+          delayReason,
+          delayReasonKey,
         ],
       );
-      return { event: mapEvent(res.rows[0]), created: false };
+      return {
+        event: mapEvent(res.rows[0]),
+        created: false,
+        previousKind: (prev.kind as DisruptionKind | null) ?? null,
+        notifiedDelayMinutes:
+          prev.notified_delay_minutes === null ||
+          prev.notified_delay_minutes === undefined
+            ? null
+            : Number(prev.notified_delay_minutes),
+        notifiedSeverity:
+          (prev.notified_severity as DisruptionSeverity | null) ?? null,
+      };
     }
     const res = await pool.query(
       `INSERT INTO disruption_events (
         external_event_id, journey_id, liaison_id, direction, kind, severity, title, description,
-        delay_minutes, starts_at, ends_at, source, detected_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13::timestamptz, now()))
+        delay_minutes, starts_at, ends_at, source, detected_at, delay_reason, delay_reason_key
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13::timestamptz, now()),$14,$15)
       RETURNING *`,
       [
         input.externalEventId,
@@ -1708,9 +1813,31 @@ export class PgStore {
         input.endsAt,
         input.source,
         input.detectedAt ?? null,
+        delayReason,
+        delayReasonKey,
       ],
     );
-    return { event: mapEvent(res.rows[0]), created: true };
+    return {
+      event: mapEvent(res.rows[0]),
+      created: true,
+      previousKind: null,
+      notifiedDelayMinutes: null,
+      notifiedSeverity: null,
+    };
+  }
+
+  async markEventNotified(
+    eventId: string,
+    delayMinutes: number | null,
+    severity: DisruptionSeverity,
+  ): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `UPDATE disruption_events
+       SET notified_delay_minutes = $2, notified_severity = $3
+       WHERE id = $1`,
+      [eventId, delayMinutes, severity],
+    );
   }
 
   async hasSentDelivery(eventId: string, channel: DeliveryChannel): Promise<boolean> {
@@ -2016,15 +2143,17 @@ export class PgStore {
     }
   }
 
-  async enqueueNotifyJob(eventId: string): Promise<void> {
+  async enqueueNotifyJob(eventId: string, force = false): Promise<void> {
     const pool = getPool();
     await pool.query(
-      `INSERT INTO notify_jobs (event_id, status) VALUES ($1, 'pending')`,
-      [eventId],
+      `INSERT INTO notify_jobs (event_id, status, force) VALUES ($1, 'pending', $2)`,
+      [eventId, force],
     );
   }
 
-  async claimNotifyJobs(limit = 20): Promise<Array<{ id: string; eventId: string }>> {
+  async claimNotifyJobs(
+    limit = 20,
+  ): Promise<Array<{ id: string; eventId: string; force: boolean }>> {
     const pool = getPool();
     const res = await pool.query(
       `UPDATE notify_jobs SET status = 'processing', attempts = attempts + 1
@@ -2035,12 +2164,13 @@ export class PgStore {
          LIMIT $1
          FOR UPDATE SKIP LOCKED
        )
-       RETURNING id, event_id`,
+       RETURNING id, event_id, force`,
       [limit],
     );
     return res.rows.map((r) => ({
       id: String(r.id),
       eventId: String(r.event_id),
+      force: Boolean(r.force),
     }));
   }
 

@@ -109,6 +109,14 @@ export function JourneyCard({
           <dt>Seuil retard</dt>
           <dd>{card.minDelayMinutes} min</dd>
         </div>
+        <div>
+          <dt>Palier notif</dt>
+          <dd>
+            {card.notifyStepMinutes === 0
+              ? "Désactivé"
+              : `${card.notifyStepMinutes} min`}
+          </dd>
+        </div>
       </dl>
       <h3 className="section-sub">Dernier événement</h3>
       {ev ? (
@@ -120,6 +128,9 @@ export function JourneyCard({
             </span>
           )}
           <p>{ev.title}</p>
+          {ev.delayReason ? (
+            <p className="muted">Motif : {ev.delayReason}</p>
+          ) : null}
           <p className="muted">
             {formatWhen(ev.detectedAt)} · {formatRelative(ev.detectedAt)}
           </p>

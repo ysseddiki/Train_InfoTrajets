@@ -26,6 +26,8 @@ async function main() {
           "req.headers.authorization",
           "req.headers.cookie",
           "body.password",
+          "body.currentPassword",
+          "body.newPassword",
           "SMTP_PASSWORD",
           "TEAMS_WEBHOOK_URL",
           "body.token",

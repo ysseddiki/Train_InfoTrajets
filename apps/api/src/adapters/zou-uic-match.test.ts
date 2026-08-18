@@ -33,6 +33,7 @@ const baseJourney = {
   watchLeadHours: 0,
   watchAlways: false,
   minDelayMinutes: 5,
+  notifyStepMinutes: 5,
   severities: ["delay", "cancellation"] as JourneyConfig["severities"],
   active: true,
   updatedAt: new Date().toISOString(),

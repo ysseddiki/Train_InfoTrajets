@@ -5,6 +5,14 @@ import { matchesDestinationFilterAsync } from "../domain/matching.js";
 import type { DeparturesPort } from "../ports/departures.js";
 import { store } from "../domain/store.js";
 
+export type NavitiaDisruption = {
+  id?: string;
+  disruption_id?: string;
+  cause?: string;
+  category?: string;
+  messages?: Array<{ text?: string }>;
+};
+
 export type NavitiaDeparture = {
   display_informations?: {
     direction?: string;
@@ -129,20 +137,24 @@ export class NavitiaDeparturesPort implements DeparturesPort {
 
   async fetchDepartures(
     journey: JourneyConfig,
-  ): Promise<{ departures: NavitiaDeparture[] }> {
+  ): Promise<{
+    departures: NavitiaDeparture[];
+    disruptions: NavitiaDisruption[];
+  }> {
     const cacheKey = `dep:${journey.originId}`;
     const cached = departuresCache.get(cacheKey) as
-      | { departures?: NavitiaDeparture[] }
+      | { departures?: NavitiaDeparture[]; disruptions?: NavitiaDisruption[] }
       | undefined;
     if (cached) {
       const departures = cached.departures ?? [];
+      const disruptions = cached.disruptions ?? [];
       appendIngestApiLog({
         source: "navitia",
         title: `Départs (cache) — ${journey.originLabel || journey.originId} [${journey.direction}]`,
         ok: true,
         lines: formatNavitiaDepartureLines(departures, journey),
       });
-      return { departures };
+      return { departures, disruptions };
     }
 
     const stopId = encodeURIComponent(journey.originId);
@@ -186,9 +198,13 @@ export class NavitiaDeparturesPort implements DeparturesPort {
     }
 
     await store.recordApiRequest({ provider: "navitia", ok: true });
-    const body = (await res.json()) as { departures?: NavitiaDeparture[] };
+    const body = (await res.json()) as {
+      departures?: NavitiaDeparture[];
+      disruptions?: NavitiaDisruption[];
+    };
     departuresCache.set(cacheKey, body);
     const departures = body.departures ?? [];
+    const disruptions = body.disruptions ?? [];
     appendIngestApiLog({
       source: "navitia",
       title: `Départs — ${journey.originLabel || journey.originId} [${journey.direction}]`,
@@ -196,7 +212,7 @@ export class NavitiaDeparturesPort implements DeparturesPort {
       ok: true,
       lines: formatNavitiaDepartureLines(departures, journey),
     });
-    return { departures };
+    return { departures, disruptions };
   }
 }
 

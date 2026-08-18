@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.6.0`  
-> **Date** : 2026-07-25  
-> **Change** : `openspec/changes/ops-smtp-drop-prim`  
+> **Version** : `1.8.0`  
+> **Date** : 2026-08-18  
+> **Change** : `openspec/changes/admin-password-ui`  
 > **Format** : OpenSpec
 
 ---
@@ -14,7 +14,7 @@ SNCF-Alerts est un outil **ops interne** (quelques opérateurs) qui :
 
 1. Surveille **une ou plusieurs liaisons** (chaque liaison = **Aller** `outbound` + **Retour** `inbound`)
 2. Affiche un **dashboard** de lecture (stats, état par liaison, historique) — **sans login app**, derrière restriction réseau
-3. Expose une **console admin** (login simple) pour configurer liaisons, SMTP, destinataires email, Teams
+3. Expose une **console admin** (login simple) pour configurer liaisons, SMTP, destinataires email, Teams, mot de passe admin
 4. Envoie des notifications via **Email (SMTP custom)** et **Microsoft Teams**
 
 Le client (`apps/web`) et le serveur (`apps/api`) sont séparés. Specs détaillées : `openspec/specs/*`.
@@ -88,6 +88,7 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `watch_always` | bool | Si true : veille continue sur les `days_of_week` (ignore les heures) |
 | `watch_lead_hours` | int 0..12 | Heures avant `time_window.start` pour démarrer la veille (défaut 4 ; ignoré si `watch_always`) |
 | `min_delay_minutes` | int | Seuil retard |
+| `notify_step_minutes` | int 0..60 | Palier de re-notif (défaut 5 ; 0 = pas de re-notif sur la durée) |
 | `severities` | string[] | `delay`, `cancellation`, … |
 | `active` | bool | Surveillance on/off |
 | `updated_at` | datetime | UTC |
@@ -106,6 +107,9 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `title` | string | |
 | `description` | string | |
 | `delay_minutes` | int \| null | `null` = durée **unknown** (jamais coercée en `0`) |
+| `delay_reason` | string \| null | Motif source (best-effort, jamais inventé) |
+| `delay_reason_key` | string \| null | Clé de regroupement stats |
+| `notified_delay_minutes` | int \| null | Dernier retard pour lequel une notif a été enfilée |
 | `starts_at` / `ends_at` | datetime | |
 | `source` | `stub` \| `navitia` \| `zou` (legacy `prim` en lecture seule) | `zou` = failover GTFS-RT |
 | `detected_at` | datetime | |
@@ -179,6 +183,7 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 | POST | `/v1/admin/login` | Login |
 | POST | `/v1/admin/logout` | Logout |
 | GET | `/v1/admin/me` | Session courante |
+| PUT | `/v1/admin/account/password` | Changer le mot de passe (actuel + nouveau, min 8) |
 | GET/POST | `/v1/admin/liaisons` | Liste / créer |
 | GET/PUT/DELETE | `/v1/admin/liaisons/:id` | Lire / maj / supprimer |
 | GET/PUT | `/v1/admin/journeys/:direction` | Compat (1ʳᵉ liaison) |
@@ -220,8 +225,9 @@ Le poll ingest et le board (`outside_window`) utilisent la même fenêtre de vei
 File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non bloquée).
 ### Dédoublonnage
 
-- Idempotence ingest sur `external_event_id`
-- Au plus une livraison `sent` par `(event_id, channel)` sauf aggravation significative (retard +≥5 min ou hausse de sévérité)
+- Idempotence ingest sur `external_event_id` (update silencieux sauf palier)
+- 1re notif à la création éligible ; re-notif si hausse ≥ `notify_step_minutes` **depuis la dernière notif**, ou hausse de sévérité / suppression
+- Re-livraison canal : job `force` sur palier (nouvelle `AlertDelivery`)
 
 ### Indépendance des canaux
 
@@ -298,3 +304,5 @@ specs/system/     # Baseline narrative
 | `1.2.1` | 2026-07-24 | Fenêtre de veille (`watch_always` / `watch_lead_hours` 0–12) |
 | `1.2.2` | 2026-07-24 | Ingest config en admin (token preview 5 car.) |
 | `1.6.0` | 2026-07-25 | Drop PRIM ; SMTP en DB ; autocomplete gares ; ZOU stop_times / multi-feeds |
+| `1.7.0` | 2026-08-18 | Palier re-notif (`notify_step_minutes`) + motifs retard (stats) |
+| `1.8.0` | 2026-08-18 | Changement du mot de passe admin en console (`PUT /v1/admin/account/password`) |

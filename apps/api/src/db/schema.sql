@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS journeys (
   watch_always BOOLEAN NOT NULL DEFAULT false,
   watch_lead_hours INT NOT NULL DEFAULT 4,
   min_delay_minutes INT NOT NULL DEFAULT 10,
+  notify_step_minutes INT NOT NULL DEFAULT 5,
   severities TEXT[] NOT NULL DEFAULT '{delay,cancellation}',
   active BOOLEAN NOT NULL DEFAULT false,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -62,6 +63,10 @@ CREATE TABLE IF NOT EXISTS disruption_events (
   title TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   delay_minutes INT,
+  delay_reason TEXT,
+  delay_reason_key TEXT,
+  notified_delay_minutes INT,
+  notified_severity TEXT,
   starts_at TIMESTAMPTZ NOT NULL,
   ends_at TIMESTAMPTZ,
   source TEXT NOT NULL DEFAULT 'stub',
@@ -114,6 +119,7 @@ CREATE TABLE IF NOT EXISTS notify_jobs (
   status TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'processing', 'done', 'failed')),
   attempts INT NOT NULL DEFAULT 0,
+  force BOOLEAN NOT NULL DEFAULT false,
   last_error TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   processed_at TIMESTAMPTZ

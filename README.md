@@ -81,9 +81,9 @@ createdb -O sncf sncf_alerts
 # DATABASE_URL=postgres://sncf:MOT_DE_PASSE@127.0.0.1:5432/sncf_alerts
 ```
 
-L’API exécute automatiquement le schéma (`apps/api/src/db/schema.sql`) au démarrage et crée le compte admin (hash bcrypt) à partir de `ADMIN_USERNAME` / `ADMIN_PASSWORD`.
+L’API exécute automatiquement le schéma (`apps/api/src/db/schema.sql`) au démarrage et crée le compte admin (hash bcrypt) à partir de `ADMIN_USERNAME` / `ADMIN_PASSWORD` **au premier boot**. Ensuite, le mot de passe se change dans **Admin → Compte**.
 
-Pour **re-synchroniser** le mot de passe admin depuis `.env` vers la DB :
+Pour **ré-écraser** le hash depuis `.env` (urgence / oubli) :
 
 ```env
 ADMIN_PASSWORD_SYNC=true
@@ -139,8 +139,9 @@ npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 - Ne pas logger `Authorization`, `SMTP_PASSWORD`, `TEAMS_WEBHOOK_URL`, clés API
 - L’API admin masque les secrets (`passwordConfigured` / `webhookConfigured` / `tokenPreview` 5 caractères)
 - Mot de passe admin stocké **hashé** (bcrypt) en base ; session cookie **httpOnly**
+- Changement du mot de passe : Admin → Compte (`PUT /v1/admin/account/password`)
 - Rate-limit sur `/v1/admin/login`
-- Changer `ADMIN_PASSWORD` et `SESSION_SECRET` avant tout déploiement
+- Changer `ADMIN_PASSWORD` (premier boot) et `SESSION_SECRET` avant tout déploiement
 - Logs : cookies / passwords / webhooks redactés
 
 ## Modèle de surveillance (Aller / Retour)

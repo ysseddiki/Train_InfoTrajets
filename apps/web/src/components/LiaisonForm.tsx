@@ -1,8 +1,12 @@
 import type { LiaisonConfig, Station } from "@sncf-alerts/shared";
 import {
+  clampNotifyStepMinutes,
   clampWatchLeadHours,
+  DEFAULT_NOTIFY_STEP_MINUTES,
   DEFAULT_WATCH_LEAD_HOURS,
   defaultLiaisonName,
+  NOTIFY_STEP_MINUTES_MAX,
+  NOTIFY_STEP_MINUTES_MIN,
   WATCH_LEAD_HOURS_MAX,
   WATCH_LEAD_HOURS_MIN,
 } from "@sncf-alerts/shared";
@@ -52,6 +56,7 @@ function legPayload(
   watchAlways: boolean,
   watchLeadHours: number,
   minDelayMinutes: number,
+  notifyStepMinutes: number,
   active: boolean,
 ) {
   const a = stationOrigin;
@@ -71,6 +76,7 @@ function legPayload(
     watchAlways,
     watchLeadHours: clampWatchLeadHours(watchLeadHours),
     minDelayMinutes,
+    notifyStepMinutes,
     active,
   };
 }
@@ -269,6 +275,7 @@ export function LiaisonForm({
       fd.get("weekend") === "on",
     );
     const minDelayMinutes = Number(fd.get("minDelayMinutes") ?? 10);
+    const notifyStepMinutes = Number(fd.get("notifyStepMinutes") ?? 5);
     const name = String(fd.get("name") ?? "").trim();
 
     const body = {
@@ -289,6 +296,7 @@ export function LiaisonForm({
             outboundLead,
         ),
         minDelayMinutes,
+        clampNotifyStepMinutes(notifyStepMinutes),
         fd.get("outboundActive") === "on",
       ),
       inbound: legPayload(
@@ -307,6 +315,7 @@ export function LiaisonForm({
             inboundLead,
         ),
         minDelayMinutes,
+        clampNotifyStepMinutes(notifyStepMinutes),
         fd.get("inboundActive") === "on",
       ),
     };
@@ -492,10 +501,27 @@ export function LiaisonForm({
             required
           />
         </label>
+        <label className="voyage-threshold">
+          Palier re-notif (min)
+          <input
+            name="notifyStepMinutes"
+            type="number"
+            min={NOTIFY_STEP_MINUTES_MIN}
+            max={NOTIFY_STEP_MINUTES_MAX}
+            defaultValue={clampNotifyStepMinutes(
+              outbound.notifyStepMinutes ?? DEFAULT_NOTIFY_STEP_MINUTES,
+            )}
+            required
+          />
+        </label>
         <button type="submit" disabled={saving}>
           {saving ? "…" : "Enregistrer"}
         </button>
       </div>
+      <p className="muted field-hint">
+        Palier : nouvelle notif si le retard grimpe d’au moins N min depuis la
+        dernière alerte (0 = une seule notif, sauf suppression / sévérité).
+      </p>
       {msg && (
         <p className={`form-msg ${msg.ok ? "ok" : "error"}`}>{msg.text}</p>
       )}

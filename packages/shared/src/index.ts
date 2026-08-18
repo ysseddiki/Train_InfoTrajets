@@ -24,6 +24,20 @@ export const WATCH_LEAD_HOURS_MIN = 0;
 export const WATCH_LEAD_HOURS_MAX = 12;
 export const DEFAULT_WATCH_LEAD_HOURS = 4;
 
+/** Palier de re-notif (minutes) après la 1re alerte. 0 = pas de re-notif sur la durée. */
+export const NOTIFY_STEP_MINUTES_MIN = 0;
+export const NOTIFY_STEP_MINUTES_MAX = 60;
+export const DEFAULT_NOTIFY_STEP_MINUTES = 5;
+
+export function clampNotifyStepMinutes(value: unknown): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return DEFAULT_NOTIFY_STEP_MINUTES;
+  return Math.min(
+    NOTIFY_STEP_MINUTES_MAX,
+    Math.max(NOTIFY_STEP_MINUTES_MIN, Math.round(n)),
+  );
+}
+
 export function clampWatchLeadHours(value: unknown): number {
   const n = Number(value);
   if (!Number.isFinite(n)) return DEFAULT_WATCH_LEAD_HOURS;
@@ -56,6 +70,11 @@ export interface JourneyConfig {
   /** Heures avant time_window.start pour démarrer la veille (0–12). */
   watchLeadHours: number;
   minDelayMinutes: number;
+  /**
+   * Palier de re-notif (min) depuis la dernière notif.
+   * 0 = uniquement 1re notif + hausse de sévérité / suppression.
+   */
+  notifyStepMinutes: number;
   severities: DisruptionKind[];
   active: boolean;
   updatedAt: string;
@@ -161,6 +180,10 @@ export interface DashboardPeriodStats {
     inbound: number;
     unmatched: number;
   };
+  /** Top motifs (clé regroupée) — hors retards sans motif */
+  delayReasons: Array<{ key: string; label: string; count: number }>;
+  /** Retards `kind=delay` sans `delay_reason_key` */
+  delaysWithoutReason: number;
 }
 
 /** Jour calendaire (Europe/Paris) pour heatmap retards */
@@ -239,6 +262,7 @@ export interface JourneyStatusCard {
   watchAlways: boolean;
   watchLeadHours: number;
   minDelayMinutes: number;
+  notifyStepMinutes: number;
   /** Synthèse trafic pour le dashboard */
   boardStatus: BoardTrafficStatus;
   boardStatusLabel: string;
@@ -250,6 +274,7 @@ export interface JourneyStatusCard {
     severity: DisruptionSeverity;
     title: string;
     delayMinutes: number | null;
+    delayReason: string | null;
     detectedAt: string;
   } | null;
 }
@@ -266,6 +291,10 @@ export interface DisruptionEventDto {
   description: string;
   /** null = durée unknown (jamais coercée en 0) */
   delayMinutes: number | null;
+  /** Motif source (message / cause), null si inconnu */
+  delayReason: string | null;
+  /** Clé de regroupement stats (cause / catégorie normalisée) */
+  delayReasonKey: string | null;
   startsAt: string;
   endsAt: string | null;
   source: "stub" | "prim" | "navitia" | "zou";
@@ -297,6 +326,13 @@ export interface AlertDeliveryDto {
   detail: string | null;
   sentAt: string | null;
   createdAt: string;
+}
+
+export const ADMIN_PASSWORD_MIN_LENGTH = 8;
+
+export interface AdminPasswordUpdate {
+  currentPassword: string;
+  newPassword: string;
 }
 
 export interface SmtpConfigPublic {

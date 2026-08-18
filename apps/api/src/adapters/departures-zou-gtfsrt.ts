@@ -14,6 +14,11 @@ import {
   longToNumber,
   stopIdMatchesUic,
 } from "./zou-ids.js";
+import {
+  delayReasonFromGtfsAlert,
+  EMPTY_DELAY_REASON,
+  type DelayReason,
+} from "../domain/delay-reason.js";
 
 const DEFAULT_TRIPS_URLS = [
   "https://proxy-data.zou.maregionsud.fr/GTFS-RT/GTFS-RT_trips_ZOU_express.pb",
@@ -55,6 +60,8 @@ export type ZouRtDeparture = {
   realtimeEpoch: number | null;
   delayMinutes: number | null;
   cancelled: boolean;
+  delayReason: string | null;
+  delayReasonKey: string | null;
 };
 
 function tripsUrls(): string[] {
@@ -248,11 +255,11 @@ async function getTripsFeed(): Promise<CachedFeed> {
   return tripsFeedCache;
 }
 
-/** Charge le feed SA pour logs debug uniquement (aucun événement métier). */
-async function logSaFeedForDebug(): Promise<void> {
+/** Charge le feed SA : debug log + motifs trip_id (pas d’événements). */
+async function getSaFeed(): Promise<CachedFeed | null> {
   try {
     if (saFeedCache && Date.now() - saFeedCache.at < FEED_CACHE_TTL_MS) {
-      return;
+      return saFeedCache;
     }
     const { feed, httpStatus } = await fetchFeedRaw(saUrl());
     saFeedCache = {
@@ -263,20 +270,48 @@ async function logSaFeedForDebug(): Promise<void> {
     };
     appendIngestApiLog({
       source: "zou",
-      title: "GTFS-RT Service Alerts (debug, ignoré pour retards)",
+      title: "GTFS-RT Service Alerts (debug ; motif si trip_id)",
       httpStatus,
       ok: true,
       lines: formatServiceAlertLines(feed),
     });
+    return saFeedCache;
   } catch (err) {
     appendIngestApiLog({
       source: "zou",
-      title: "GTFS-RT Service Alerts (debug, ignoré pour retards)",
+      title: "GTFS-RT Service Alerts (debug ; motif si trip_id)",
       httpStatus: null,
       ok: false,
       lines: [err instanceof Error ? err.message : String(err)],
     });
+    return saFeedCache;
   }
+}
+
+function tripDelayReasonsFromSa(
+  feed: InstanceType<typeof FeedMessage>,
+): Map<string, DelayReason> {
+  const map = new Map<string, DelayReason>();
+  for (const entity of feed.entity ?? []) {
+    const alert = entity.alert;
+    if (!alert) continue;
+    const { header, description } = alertText(alert);
+    const reason = delayReasonFromGtfsAlert({
+      cause: alert.cause != null ? String(alert.cause) : null,
+      header,
+      description,
+    });
+    if (!reason.delayReason && !reason.delayReasonKey) continue;
+    for (const inf of alert.informedEntity ?? []) {
+      const trip = inf as {
+        tripId?: string | null;
+        trip?: { tripId?: string | null } | null;
+      };
+      const tripId = (trip.tripId ?? trip.trip?.tripId ?? "").trim();
+      if (tripId) map.set(tripId, reason);
+    }
+  }
+  return map;
 }
 
 function delayMinutesFromSeconds(sec: number | null | undefined): number | null {
@@ -353,12 +388,14 @@ export async function fetchZouDeparturesForJourney(
     );
   }
 
-  const [index, cached] = await Promise.all([
+  const [index, cached, sa] = await Promise.all([
     getZouStaticIndex(),
     getTripsFeed(),
+    getSaFeed(),
   ]);
-  // SA : log debug only, never drives delay events
-  void logSaFeedForDebug();
+  const tripReasons = sa
+    ? tripDelayReasonsFromSa(sa.feed)
+    : new Map<string, DelayReason>();
 
   const feed = cached.feed;
   const out: ZouRtDeparture[] = [];
@@ -416,6 +453,7 @@ export async function fetchZouDeparturesForJourney(
         realtimeEpoch: null,
         delayMinutes: null,
         cancelled: true,
+        ...(tripReasons.get(tripId) ?? EMPTY_DELAY_REASON),
       });
       matchLines.push(
         `MATCH trip=${tripId} train=${trainNumber ?? "—"} CANCELED dir=${directionText || "—"}`,
@@ -460,6 +498,7 @@ export async function fetchZouDeparturesForJourney(
       realtimeEpoch,
       delayMinutes,
       cancelled: stopSkipped,
+      ...(tripReasons.get(tripId) ?? EMPTY_DELAY_REASON),
     });
     matchLines.push(
       [

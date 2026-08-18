@@ -133,6 +133,45 @@ async function ensureWatchColumns(p: pg.Pool): Promise<void> {
       `ALTER TABLE journeys ADD COLUMN watch_lead_hours INT NOT NULL DEFAULT 4`,
     );
   }
+  if (!(await columnExists(p, "journeys", "notify_step_minutes"))) {
+    await p.query(
+      `ALTER TABLE journeys ADD COLUMN notify_step_minutes INT NOT NULL DEFAULT 5`,
+    );
+  }
+}
+
+async function ensureDelayReasonColumns(p: pg.Pool): Promise<void> {
+  if (!(await tableExists(p, "disruption_events"))) return;
+  if (!(await columnExists(p, "disruption_events", "delay_reason"))) {
+    await p.query(`ALTER TABLE disruption_events ADD COLUMN delay_reason TEXT`);
+  }
+  if (!(await columnExists(p, "disruption_events", "delay_reason_key"))) {
+    await p.query(
+      `ALTER TABLE disruption_events ADD COLUMN delay_reason_key TEXT`,
+    );
+  }
+  const addedNotifiedDelay = !(await columnExists(
+    p,
+    "disruption_events",
+    "notified_delay_minutes",
+  ));
+  if (addedNotifiedDelay) {
+    await p.query(
+      `ALTER TABLE disruption_events ADD COLUMN notified_delay_minutes INT`,
+    );
+  }
+  if (!(await columnExists(p, "disruption_events", "notified_severity"))) {
+    await p.query(
+      `ALTER TABLE disruption_events ADD COLUMN notified_severity TEXT`,
+    );
+  }
+  if (addedNotifiedDelay) {
+    await p.query(
+      `UPDATE disruption_events
+       SET notified_delay_minutes = delay_minutes, notified_severity = severity
+       WHERE notified_delay_minutes IS NULL`,
+    );
+  }
 }
 
 async function ensureStationsTable(p: pg.Pool): Promise<void> {
@@ -216,6 +255,7 @@ export async function migrate(): Promise<void> {
   await ensureEventLiaisonColumns(p);
   await ensureApiQuotaTable(p);
   await ensureWatchColumns(p);
+  await ensureDelayReasonColumns(p);
   await ensureStationsTable(p);
   await ensureLiaisonDefaultColumn(p);
   await ensureDeliveryLiaisonColumn(p);
@@ -231,6 +271,11 @@ export async function migrate(): Promise<void> {
       processed_at TIMESTAMPTZ
     )
   `);
+  if (!(await columnExists(p, "notify_jobs", "force"))) {
+    await p.query(
+      `ALTER TABLE notify_jobs ADD COLUMN force BOOLEAN NOT NULL DEFAULT false`,
+    );
+  }
   await p.query(`
     CREATE INDEX IF NOT EXISTS notify_jobs_pending_idx
       ON notify_jobs (created_at)
