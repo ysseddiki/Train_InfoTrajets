@@ -43,6 +43,27 @@ function navitiaAuthHeader(token: string): string {
   return `Basic ${Buffer.from(`${token}:`).toString("base64")}`;
 }
 
+/** Lookback pour ne pas rater une base déjà passée (retard croissant). */
+const NAVITIA_DEPARTURES_LOOKBACK_MS = 60 * 60_000;
+/** Fenêtre demandée depuis from_datetime (1 h passé + ~5 h futur). */
+const NAVITIA_DEPARTURES_DURATION_SEC = 6 * 3600;
+
+/** Datetime Navitia `YYYYMMDDThhmmss` en Europe/Paris. */
+export function formatNavitiaLocalDateTime(at: Date): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Paris",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(at);
+  const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
+  return `${g("year")}${g("month")}${g("day")}T${g("hour")}${g("minute")}${g("second")}`;
+}
+
 export function extractVehicleJourneyId(dep: NavitiaDeparture): string | null {
   for (const link of dep.links ?? []) {
     if (link.type === "vehicle_journey" && link.id) return link.id;
@@ -158,7 +179,13 @@ export class NavitiaDeparturesPort implements DeparturesPort {
     }
 
     const stopId = encodeURIComponent(journey.originId);
-    const url = `https://api.sncf.com/v1/coverage/sncf/stop_areas/${stopId}/departures?count=20&data_freshness=realtime`;
+    const fromDatetime = formatNavitiaLocalDateTime(
+      new Date(Date.now() - NAVITIA_DEPARTURES_LOOKBACK_MS),
+    );
+    const url =
+      `https://api.sncf.com/v1/coverage/sncf/stop_areas/${stopId}/departures` +
+      `?from_datetime=${fromDatetime}&duration=${NAVITIA_DEPARTURES_DURATION_SEC}` +
+      `&count=40&data_freshness=realtime`;
 
     let res: Response;
     try {

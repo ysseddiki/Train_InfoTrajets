@@ -1,5 +1,5 @@
 import type { JourneyStatusCard } from "@sncf-alerts/shared";
-import { formatDelayMinutes } from "@sncf-alerts/shared";
+import { DEFAULT_WATCH_LAG_HOURS, formatDelayMinutes } from "@sncf-alerts/shared";
 import { ExternalLink } from "lucide-react";
 import { boardClass } from "../lib/boardStatus";
 import {
@@ -97,8 +97,8 @@ export function JourneyCard({
             {card.watchAlways
               ? "Continue"
               : card.watchLeadHours === 0
-                ? "Dès le début trajet"
-                : `${card.watchLeadHours} h avant`}
+                ? `Dès le début trajet · ${DEFAULT_WATCH_LAG_HOURS} h après`
+                : `${card.watchLeadHours} h avant · ${DEFAULT_WATCH_LAG_HOURS} h après`}
           </dd>
         </div>
         <div>

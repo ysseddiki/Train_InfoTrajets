@@ -24,6 +24,9 @@ export const WATCH_LEAD_HOURS_MIN = 0;
 export const WATCH_LEAD_HOURS_MAX = 12;
 export const DEFAULT_WATCH_LEAD_HOURS = 4;
 
+/** Lag veille après time_window.end (trains théoriques passés encore en gare). */
+export const DEFAULT_WATCH_LAG_HOURS = 2;
+
 /** Palier de re-notif (minutes) après la 1re alerte. 0 = pas de re-notif sur la durée. */
 export const NOTIFY_STEP_MINUTES_MIN = 0;
 export const NOTIFY_STEP_MINUTES_MAX = 60;

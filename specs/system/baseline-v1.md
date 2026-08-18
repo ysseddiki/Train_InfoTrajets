@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.8.0`  
+> **Version** : `1.9.0`  
 > **Date** : 2026-08-18  
-> **Change** : `openspec/changes/admin-password-ui`  
+> **Change** : `openspec/changes/watch-lag-delayed-departures`  
 > **Format** : OpenSpec
 
 ---
@@ -86,7 +86,7 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `days_of_week` | int[1..7] | 1=lundi |
 | `time_window` | `{ start, end }` | HH:mm, TZ `Europe/Paris` — **fenêtre trajet** |
 | `watch_always` | bool | Si true : veille continue sur les `days_of_week` (ignore les heures) |
-| `watch_lead_hours` | int 0..12 | Heures avant `time_window.start` pour démarrer la veille (défaut 4 ; ignoré si `watch_always`) |
+| `watch_lead_hours` | int 0..12 | Heures avant `time_window.start` pour démarrer la veille (défaut 4 ; ignoré si `watch_always`). Après `end`, lag fixe **2 h** pour les retards encore en gare. |
 | `min_delay_minutes` | int | Seuil retard |
 | `notify_step_minutes` | int 0..60 | Palier de re-notif (défaut 5 ; 0 = pas de re-notif sur la durée) |
 | `severities` | string[] | `delay`, `cancellation`, … |
@@ -216,11 +216,12 @@ Notifier seulement si :
 
 1. `JourneyConfig.active` pour le sens
 2. Événement match gare surveillée + **filtre gare desservie** (direction / id, pas seulement terminus)
-3. Jour + **fenêtre de veille** (TZ Paris) : `watch_always` ou `[start − watch_lead_hours, end]`
+3. Jour + **fenêtre de veille** (TZ Paris) : `watch_always` ou `[start − watch_lead_hours, end + 2 h]`
 4. Sévérité dans la liste configurée
 5. Si retard avec durée connue : `delay_minutes >= min_delay_minutes` ; si `delay_minutes` null (unknown), le seuil numérique ne s’applique pas
+6. Après `time_window.end` : seulement les trains dont l’heure **théorique** est dans la fenêtre trajet et dont l’heure **réelle** n’est pas encore échue
 
-Le poll ingest et le board (`outside_window`) utilisent la même fenêtre de veille. `time_window` reste l’ancre **trajet** configurée en admin.
+Le poll ingest et le board (`outside_window`) utilisent la même fenêtre de veille (`end + 2 h`). `time_window` reste l’ancre **trajet** configurée en admin.
 
 File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non bloquée).
 ### Dédoublonnage
@@ -306,3 +307,4 @@ specs/system/     # Baseline narrative
 | `1.6.0` | 2026-07-25 | Drop PRIM ; SMTP en DB ; autocomplete gares ; ZOU stop_times / multi-feeds |
 | `1.7.0` | 2026-08-18 | Palier re-notif (`notify_step_minutes`) + motifs retard (stats) |
 | `1.8.0` | 2026-08-18 | Changement du mot de passe admin en console (`PUT /v1/admin/account/password`) |
+| `1.9.0` | 2026-08-18 | Veille +2 h après la fenêtre ; trains théoriques passés encore dus |

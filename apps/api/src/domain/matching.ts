@@ -1,5 +1,8 @@
 import type { JourneyConfig, DisruptionEventDto } from "@sncf-alerts/shared";
-import { clampWatchLeadHours } from "@sncf-alerts/shared";
+import {
+  clampWatchLeadHours,
+  DEFAULT_WATCH_LAG_HOURS,
+} from "@sncf-alerts/shared";
 import { matchesCorridorAllowlist } from "./corridor.js";
 
 /** Helpers terminus saisis sur la gare catalogue (filtre destination). */
@@ -68,28 +71,45 @@ export function inWindow(hm: string, start: string, end: string): boolean {
   return hm >= start || hm <= end;
 }
 
+function wrapHmMinutes(totalMinutes: number): string {
+  const total = ((totalMinutes % (24 * 60)) + 24 * 60) % (24 * 60);
+  const nh = Math.floor(total / 60);
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
 /** Soustrait N heures à un HH:mm (wrap 24 h). */
 export function subtractHoursHm(hm: string, hours: number): string {
   const [hs, ms] = hm.split(":");
   const h = Number(hs) || 0;
   const m = Number(ms) || 0;
-  let total = h * 60 + m - Math.round(hours) * 60;
-  total = ((total % (24 * 60)) + 24 * 60) % (24 * 60);
-  const nh = Math.floor(total / 60);
-  const nm = total % 60;
-  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+  return wrapHmMinutes(h * 60 + m - Math.round(hours) * 60);
 }
+
+/** Ajoute N heures à un HH:mm (wrap 24 h). */
+export function addHoursHm(hm: string, hours: number): string {
+  const [hs, ms] = hm.split(":");
+  const h = Number(hs) || 0;
+  const m = Number(ms) || 0;
+  return wrapHmMinutes(h * 60 + m + Math.round(hours) * 60);
+}
+
+/** Tolérance : un départ réel d’il y a quelques minutes est encore « en gare ». */
+export const DEPARTURE_STILL_DUE_SLACK_MS = 5 * 60_000;
 
 type WatchSchedule = Pick<
   JourneyConfig,
   "daysOfWeek" | "timeWindow" | "watchAlways" | "watchLeadHours"
 >;
 
+function yesterdayWeekday(weekday: number): number {
+  return weekday === 1 ? 7 : weekday - 1;
+}
+
 /**
- * Jour + heures de veille (sans tester `active`).
- * Veille continue → jours seulement ; sinon [start − lead, end].
+ * Veille « cœur » : [start − lead, end] (logique historique, sans lag).
  */
-export function isInWatchSchedule(
+export function isInCoreWatchSchedule(
   journey: WatchSchedule,
   at = new Date(),
 ): boolean {
@@ -105,19 +125,107 @@ export function isInWatchSchedule(
   const watchEnd = journey.timeWindow.end;
   const crossedMidnight = watchStart > travelStart;
 
-  if (journey.daysOfWeek.includes(weekday) && inWindow(hm, watchStart, watchEnd)) {
+  if (
+    journey.daysOfWeek.includes(weekday) &&
+    inWindow(hm, watchStart, watchEnd)
+  ) {
     return true;
   }
 
   // Lead qui traverse minuit : veille en fin de journée si demain = jour trajet
   if (crossedMidnight) {
-    const yesterday = weekday === 1 ? 7 : weekday - 1;
+    const yesterday = yesterdayWeekday(weekday);
     if (journey.daysOfWeek.includes(yesterday) && hm >= watchStart) {
       return true;
     }
   }
 
   return false;
+}
+
+/** Après `time_window.end`, jusqu’à +lagHours (trains théoriques encore en gare). */
+function isInLagWindow(
+  journey: WatchSchedule,
+  at: Date,
+  lagHours: number,
+): boolean {
+  if (lagHours <= 0 || journey.watchAlways) return false;
+  const { weekday, hm } = parisParts(at);
+  const travelEnd = journey.timeWindow.end;
+  const lagEnd = addHoursHm(travelEnd, lagHours);
+  const wrapped = lagEnd < travelEnd;
+
+  if (!wrapped) {
+    if (!journey.daysOfWeek.includes(weekday)) return false;
+    return hm > travelEnd && hm <= lagEnd;
+  }
+
+  if (journey.daysOfWeek.includes(weekday) && hm > travelEnd) {
+    return true;
+  }
+  const yesterday = yesterdayWeekday(weekday);
+  return journey.daysOfWeek.includes(yesterday) && hm <= lagEnd;
+}
+
+/**
+ * Jour + heures de veille (sans tester `active`).
+ * Veille continue → jours seulement ; sinon [start − lead, end + 2 h].
+ */
+export function isInWatchSchedule(
+  journey: WatchSchedule,
+  at = new Date(),
+): boolean {
+  if (isInCoreWatchSchedule(journey, at)) return true;
+  return isInLagWindow(journey, at, DEFAULT_WATCH_LAG_HOURS);
+}
+
+export function isDepartureStillDue(
+  realtime: Date | null,
+  scheduled: Date | null,
+  now = new Date(),
+): boolean {
+  const t = realtime ?? scheduled;
+  if (!t) return true;
+  return t.getTime() >= now.getTime() - DEPARTURE_STILL_DUE_SLACK_MS;
+}
+
+export function isScheduledInTravelWindow(
+  journey: WatchSchedule,
+  scheduled: Date,
+): boolean {
+  const { weekday, hm } = parisParts(scheduled);
+  if (!journey.daysOfWeek.includes(weekday)) return false;
+  return inWindow(hm, journey.timeWindow.start, journey.timeWindow.end);
+}
+
+/**
+ * Départ à suivre : encore dû en temps réel.
+ * Après la fin de fenêtre trajet (lag) : seulement si l’heure théorique est dans la fenêtre.
+ */
+export function isWatchedDeparture(
+  journey: Pick<
+    JourneyConfig,
+    | "active"
+    | "daysOfWeek"
+    | "timeWindow"
+    | "watchAlways"
+    | "watchLeadHours"
+  >,
+  scheduled: Date | null,
+  realtime: Date | null,
+  now = new Date(),
+  cancelled = false,
+): boolean {
+  if (!journey.active) return false;
+  if (!cancelled && !isDepartureStillDue(realtime, scheduled, now)) {
+    return false;
+  }
+  if (journey.watchAlways || isInCoreWatchSchedule(journey, now)) {
+    return true;
+  }
+  if (!isInWatchSchedule(journey, now)) return false;
+  if (!scheduled) return true;
+  return isScheduledInTravelWindow(journey, scheduled);
 }
 
 /** True if now is inside the journey watch window (days + veille, Europe/Paris). */

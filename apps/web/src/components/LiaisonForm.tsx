@@ -3,6 +3,7 @@ import {
   clampNotifyStepMinutes,
   clampWatchLeadHours,
   DEFAULT_NOTIFY_STEP_MINUTES,
+  DEFAULT_WATCH_LAG_HOURS,
   DEFAULT_WATCH_LEAD_HOURS,
   defaultLiaisonName,
   NOTIFY_STEP_MINUTES_MAX,
@@ -202,6 +203,13 @@ function WatchFields({
           ))}
         </select>
       </label>
+      {!watchAlways ? (
+        <p className="muted field-hint">
+          La veille continue {DEFAULT_WATCH_LAG_HOURS} h après la fin du
+          trajet pour les trains théoriques déjà passés mais pas encore
+          partis (retard).
+        </p>
+      ) : null}
       <input
         type="hidden"
         name={`${prefix}WatchLeadValue`}

@@ -81,3 +81,9 @@ Hors fenêtre de veille (et trajet actif), le board MUST indiquer un statut `out
 - **GIVEN** Aller actif, trajet 07:00–09:30, lead 4 h, pas de veille continue
 - **WHEN** il est 02:00 Europe/Paris un jour surveillé
 - **THEN** le board Aller est `outside_window`
+
+#### Scenario: Pendant le lag
+
+- **GIVEN** Aller actif, trajet 07:00–09:30, pas de veille continue
+- **WHEN** il est 10:00 Europe/Paris
+- **THEN** le board n’est pas `outside_window` (lag 2 h)

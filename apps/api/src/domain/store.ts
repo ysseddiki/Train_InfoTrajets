@@ -44,7 +44,7 @@ import {
   resolveLiaisonDisplayName,
 } from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
-import { isWithinWatchWindow } from "./matching.js";
+import { isDepartureStillDue, isWithinWatchWindow } from "./matching.js";
 import { formatHmParis } from "./next-departure.js";
 
 const SESSION_COOKIE = "sncf_admin_session";
@@ -1639,6 +1639,14 @@ export class PgStore {
     );
   }
 
+  async clearJourneyBoardSnapshot(journeyId: string): Promise<void> {
+    const pool = getPool();
+    await pool.query(
+      `DELETE FROM journey_board_snapshots WHERE journey_id = $1`,
+      [journeyId],
+    );
+  }
+
   async upsertJourneyBoardSnapshot(input: {
     journeyId: string;
     trainNumber: string | null;
@@ -1718,6 +1726,16 @@ export class PgStore {
       const realtimeAt = row.realtime_at
         ? new Date(String(row.realtime_at)).toISOString()
         : null;
+      const cancelled = Boolean(row.cancelled);
+      if (
+        !cancelled &&
+        !isDepartureStillDue(
+          realtimeAt ? new Date(realtimeAt) : null,
+          scheduledAt ? new Date(scheduledAt) : null,
+        )
+      ) {
+        continue;
+      }
       const scheduledTime = formatHmParis(scheduledAt);
       const realtimeTime = formatHmParis(realtimeAt);
       map.set(String(row.journey_id), {

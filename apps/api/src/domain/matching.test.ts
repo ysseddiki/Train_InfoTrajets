@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import type { JourneyConfig } from "@sncf-alerts/shared";
-import { matchesDestinationFilter } from "./matching.js";
+import {
+  isInCoreWatchSchedule,
+  isInWatchSchedule,
+  isWatchedDeparture,
+  matchesDestinationFilter,
+} from "./matching.js";
 
 function journey(partial: Partial<JourneyConfig>): JourneyConfig {
   return {
@@ -83,5 +88,63 @@ describe("matchesDestinationFilter (gare desservie)", () => {
       }),
       false,
     );
+  });
+});
+
+describe("watch window + delayed leftover trains", () => {
+  const tueMorning = (hm: string) =>
+    new Date(`2026-08-18T${hm}:00+02:00`);
+
+  it("keeps polling 2 h after travel window end", () => {
+    const j = journey({});
+    assert.equal(isInWatchSchedule(j, tueMorning("04:30")), true);
+    assert.equal(isInWatchSchedule(j, tueMorning("08:00")), true);
+    assert.equal(isInWatchSchedule(j, tueMorning("10:00")), true);
+    assert.equal(isInWatchSchedule(j, tueMorning("11:31")), false);
+  });
+
+  it("does not shrink a 00:00–23:59 window", () => {
+    const j = journey({
+      timeWindow: { start: "00:00", end: "23:59" },
+      watchLeadHours: 0,
+    });
+    assert.equal(isInWatchSchedule(j, tueMorning("10:00")), true);
+  });
+
+  it("core watch ends at travel window end", () => {
+    const j = journey({});
+    assert.equal(isInCoreWatchSchedule(j, tueMorning("09:30")), true);
+    assert.equal(isInCoreWatchSchedule(j, tueMorning("09:31")), false);
+  });
+
+  it("keeps a theoretically-passed train still due during lag", () => {
+    const j = journey({});
+    const now = tueMorning("09:40");
+    const scheduled = tueMorning("09:20");
+    const realtime = tueMorning("09:55");
+    assert.equal(isWatchedDeparture(j, scheduled, realtime, now), true);
+  });
+
+  it("drops a train scheduled after the travel window during lag", () => {
+    const j = journey({});
+    const now = tueMorning("09:40");
+    const scheduled = tueMorning("10:20");
+    assert.equal(isWatchedDeparture(j, scheduled, scheduled, now), false);
+  });
+
+  it("drops a train whose realtime departure already elapsed", () => {
+    const j = journey({});
+    const now = tueMorning("08:30");
+    const scheduled = tueMorning("08:00");
+    const realtime = tueMorning("08:10");
+    assert.equal(isWatchedDeparture(j, scheduled, realtime, now), false);
+  });
+
+  it("keeps a delayed leftover during the travel window", () => {
+    const j = journey({});
+    const now = tueMorning("08:05");
+    const scheduled = tueMorning("07:50");
+    const realtime = tueMorning("08:20");
+    assert.equal(isWatchedDeparture(j, scheduled, realtime, now), true);
   });
 });

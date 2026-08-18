@@ -1,7 +1,7 @@
 import type { JourneyConfig, JourneyDirection } from "@sncf-alerts/shared";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
 import { delayReasonFromNavitia } from "../domain/delay-reason.js";
-import { isWithinWatchWindow } from "../domain/matching.js";
+import { isWatchedDeparture, isWithinWatchWindow } from "../domain/matching.js";
 import { buildNextDepartureStatus } from "../domain/next-departure.js";
 import { notifyForEvent, processNotifyJobs } from "../domain/notify.js";
 import { shouldNotifyDelayStep } from "../domain/notify-step.js";
@@ -302,18 +302,33 @@ async function saveNextFromNavitia(
   journey: JourneyConfig,
   departures: NavitiaDeparture[],
 ): Promise<void> {
+  const now = new Date();
   const matched: NavitiaDeparture[] = [];
   for (const dep of departures) {
-    if (await navitiaDepartureMatchesFilter(token, journey, dep)) {
-      matched.push(dep);
+    if (!(await navitiaDepartureMatchesFilter(token, journey, dep))) {
+      continue;
     }
+    const cancelled = isCancelled(dep);
+    const baseDate = navitiaLocalToDate(
+      dep.stop_date_time?.base_departure_date_time,
+    );
+    const realDate = navitiaLocalToDate(
+      dep.stop_date_time?.departure_date_time,
+    );
+    if (!isWatchedDeparture(journey, baseDate, realDate, now, cancelled)) {
+      continue;
+    }
+    matched.push(dep);
   }
   matched.sort((a, b) => departureSortKey(a) - departureSortKey(b));
 
   // Prochain valide : non supprimé en priorité, sinon premier match
   const next =
     matched.find((d) => !isCancelled(d)) ?? matched[0] ?? null;
-  if (!next) return;
+  if (!next) {
+    await store.clearJourneyBoardSnapshot(journey.id);
+    return;
+  }
 
   const cancelled = isCancelled(next);
   const delay = delayMinutesFromDeparture(next);
@@ -347,22 +362,40 @@ function epochToIso(epoch: number | null): string | null {
   return new Date(epoch * 1000).toISOString();
 }
 
+function epochToDate(epoch: number | null): Date | null {
+  if (epoch == null || !Number.isFinite(epoch)) return null;
+  return new Date(epoch * 1000);
+}
+
 async function saveNextFromZou(
   journey: JourneyConfig,
   departures: ZouRtDeparture[],
 ): Promise<void> {
-  const nowSec = Math.floor(Date.now() / 1000);
+  const now = new Date();
+  const nowSec = Math.floor(now.getTime() / 1000);
+  const eligible = departures.filter((d) =>
+    isWatchedDeparture(
+      journey,
+      epochToDate(d.scheduledEpoch),
+      epochToDate(d.realtimeEpoch),
+      now,
+      d.cancelled,
+    ),
+  );
   // Prochain = premier non passé ; sinon premier cancelled ; sinon premier
   const next =
-    departures.find((d) => {
+    eligible.find((d) => {
       if (d.cancelled) return false;
       const t = d.realtimeEpoch ?? d.scheduledEpoch;
       return t == null || t >= nowSec - 5 * 60;
     }) ??
-    departures.find((d) => !d.cancelled) ??
-    departures[0] ??
+    eligible.find((d) => !d.cancelled) ??
+    eligible[0] ??
     null;
-  if (!next) return;
+  if (!next) {
+    await store.clearJourneyBoardSnapshot(journey.id);
+    return;
+  }
 
   const { status, statusLabel } = buildNextDepartureStatus({
     cancelled: next.cancelled,
@@ -527,6 +560,15 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
 
       const cancelled = isCancelled(dep);
       const delay = delayMinutesFromDeparture(dep);
+      const baseDate = navitiaLocalToDate(
+        dep.stop_date_time?.base_departure_date_time,
+      );
+      const realDate = navitiaLocalToDate(
+        dep.stop_date_time?.departure_date_time,
+      );
+      if (!isWatchedDeparture(journey, baseDate, realDate, new Date(), cancelled)) {
+        continue;
+      }
 
       if (!cancelled) {
         if (delay === null) continue;
@@ -580,6 +622,17 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
     for (const dep of departures) {
       const cancelled = dep.cancelled;
       const delay = dep.delayMinutes;
+      if (
+        !isWatchedDeparture(
+          journey,
+          epochToDate(dep.scheduledEpoch),
+          epochToDate(dep.realtimeEpoch),
+          new Date(),
+          cancelled,
+        )
+      ) {
+        continue;
+      }
 
       if (!cancelled) {
         if (delay === null) continue;
