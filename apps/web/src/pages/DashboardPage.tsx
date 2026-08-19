@@ -1,4 +1,4 @@
-import type { DashboardOverview } from "@sncf-alerts/shared";
+import type { DashboardOverview, DashboardPeriodStats } from "@sncf-alerts/shared";
 import { RefreshCw } from "lucide-react";
 import {
   useCallback,
@@ -13,6 +13,11 @@ import {
   DeliveriesActivityFeed,
   EventsActivityFeed,
 } from "../components/ActivityFeed";
+import {
+  INDICATOR_PERIODS,
+  IndicatorPeriodSwitch,
+  type IndicatorPeriodKey,
+} from "../components/IndicatorPeriodSwitch";
 import { JourneyCard } from "../components/JourneyCard";
 import {
   LiaisonScopePicker,
@@ -22,6 +27,7 @@ import { StatCard } from "../components/StatCard";
 import { errorMessage, formatRelative, formatWhen } from "../lib/format";
 
 const STORAGE_KEY = "sncf.dashboard.liaisonScope";
+const PERIOD_KEY = "sncf.dashboard.indicatorPeriod";
 
 function formatLastCheckHm(iso: string | null): string | null {
   if (!iso) return null;
@@ -90,6 +96,35 @@ function writeStoredScope(value: LiaisonScopeValue): void {
   }
 }
 
+function isPeriodKey(v: string): v is IndicatorPeriodKey {
+  return INDICATOR_PERIODS.some((p) => p.id === v);
+}
+
+function readStoredPeriod(): IndicatorPeriodKey {
+  try {
+    const v = localStorage.getItem(PERIOD_KEY);
+    if (v && isPeriodKey(v)) return v;
+  } catch {
+    /* ignore */
+  }
+  return "today";
+}
+
+function writeStoredPeriod(value: IndicatorPeriodKey): void {
+  try {
+    localStorage.setItem(PERIOD_KEY, value);
+  } catch {
+    /* ignore */
+  }
+}
+
+function pickPeriodStats(
+  periods: DashboardOverview["stats"]["periods"],
+  key: IndicatorPeriodKey,
+): DashboardPeriodStats {
+  return periods[key] ?? periods.last24h;
+}
+
 function overviewPath(scope: LiaisonScopeValue | null): string {
   if (scope === "all") return "/v1/dashboard/overview?liaisonId=all";
   if (scope) return `/v1/dashboard/overview?liaisonId=${encodeURIComponent(scope)}`;
@@ -99,6 +134,9 @@ function overviewPath(scope: LiaisonScopeValue | null): string {
 export function DashboardPage() {
   const [scope, setScope] = useState<LiaisonScopeValue | null>(() =>
     readStoredScope(),
+  );
+  const [period, setPeriod] = useState<IndicatorPeriodKey>(() =>
+    readStoredPeriod(),
   );
   const [data, setData] = useState<DashboardOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +189,11 @@ export function DashboardPage() {
     void load(next);
   }
 
+  function onPeriodChange(next: IndicatorPeriodKey) {
+    setPeriod(next);
+    writeStoredPeriod(next);
+  }
+
   if (error && !data) {
     return (
       <div className="page-enter">
@@ -170,9 +213,9 @@ export function DashboardPage() {
     return <p className="muted page-enter">Chargement…</p>;
   }
 
-  const p24 = data.stats.periods.last24h;
-  const p7 = data.stats.periods.last7d;
-  const p30 = data.stats.periods.last30d;
+  const periodMeta =
+    INDICATOR_PERIODS.find((p) => p.id === period) ?? INDICATOR_PERIODS[0];
+  const p = pickPeriodStats(data.stats.periods, period);
   const scopeHint =
     data.scope === "all" ? "toutes les liaisons" : "liaison sélectionnée";
   const sourceLabel = formatIngestSourceLabel(data);
@@ -255,52 +298,65 @@ export function DashboardPage() {
         className="dash-section dash-reveal"
         style={{ "--reveal-delay": "120ms" } as CSSProperties}
       >
-        <h2 className="dash-section-title">Indicateurs 24 h</h2>
-        <p className="muted section-hint">Vue rapide · {scopeHint}</p>
+        <div className="dash-section-head dash-section-head-wrap">
+          <h2 className="dash-section-title">Indicateurs</h2>
+          <IndicatorPeriodSwitch value={period} onChange={onPeriodChange} />
+        </div>
+        <p className="muted section-hint">
+          {periodMeta.label} · {periodMeta.hint} · {scopeHint}
+        </p>
         <div className="stat-card-grid">
-          <StatCard label="Événements" value={p24.events} hint="détectés" />
+          <StatCard label="Événements" value={p.events} hint="détectés" />
           <StatCard
             label="Retards"
-            value={p24.delays}
+            value={p.delays}
             hint={
-              p24.avgDelayMinutes != null
-                ? `moy. ${p24.avgDelayMinutes} min`
+              p.avgDelayMinutes != null
+                ? `moy. ${p.avgDelayMinutes} min`
                 : undefined
             }
-            tone={p24.delays > 0 ? "warn" : "default"}
+            tone={p.delays > 0 ? "warn" : "default"}
           />
           <StatCard
             label="Suppressions"
-            value={p24.cancellations}
-            tone={p24.cancellations > 0 ? "danger" : "default"}
+            value={p.cancellations}
+            tone={p.cancellations > 0 ? "danger" : "default"}
           />
           <StatCard
             label="Notifs envoyées"
-            value={p24.deliveriesSent}
+            value={p.deliveriesSent}
             hint={
-              p24.deliveriesFailed > 0
-                ? `${p24.deliveriesFailed} échec${p24.deliveriesFailed > 1 ? "s" : ""}`
+              p.deliveriesFailed > 0
+                ? `${p.deliveriesFailed} échec${p.deliveriesFailed > 1 ? "s" : ""}`
                 : "0 échec"
             }
-            tone={p24.deliveriesFailed > 0 ? "danger" : "accent"}
+            tone={p.deliveriesFailed > 0 ? "danger" : "accent"}
           />
         </div>
         <div className="stat-card-grid stat-card-grid-secondary">
           <StatCard
-            label="7 jours"
-            value={p7.events}
-            hint={`${p7.delays} retards · ${p7.deliveriesSent} notifs`}
+            label="Retard max"
+            value={p.maxDelayMinutes != null ? `${p.maxDelayMinutes} min` : "—"}
+            hint={`Aller ${p.byDirection.outbound} · Retour ${p.byDirection.inbound}`}
             compact
           />
           <StatCard
-            label="30 jours"
-            value={p30.events}
-            hint={`${p30.delays} retards · ${p30.deliveriesSent} notifs`}
-            compact
-          />
-          <StatCard
-            label="Retard max 24 h"
-            value={p24.maxDelayMinutes != null ? `${p24.maxDelayMinutes} min` : "—"}
+            label="Motifs"
+            value={
+              (p.delayReasons?.length ?? 0) === 0
+                ? p.delaysWithoutReason
+                  ? "Non renseignés"
+                  : "—"
+                : (p.delayReasons ?? [])
+                    .slice(0, 2)
+                    .map((r) => `${r.label} (${r.count})`)
+                    .join(" · ")
+            }
+            hint={
+              (p.delaysWithoutReason ?? 0) > 0
+                ? `${p.delaysWithoutReason} sans motif`
+                : undefined
+            }
             compact
           />
         </div>

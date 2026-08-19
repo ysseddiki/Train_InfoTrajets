@@ -46,6 +46,7 @@ import {
 import { getPool } from "../db/pool.js";
 import { isDepartureStillDue, isWithinWatchWindow } from "./matching.js";
 import { formatHmParis } from "./next-departure.js";
+import { dashboardPeriodStarts } from "./paris-calendar.js";
 
 const SESSION_COOKIE = "sncf_admin_session";
 const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12);
@@ -1283,21 +1284,24 @@ export class PgStore {
     ]);
     const pool = getPool();
     const now = Date.now();
-    const since24h = new Date(now - 24 * 3600 * 1000).toISOString();
-    const since7d = new Date(now - 7 * 24 * 3600 * 1000).toISOString();
-    const since30d = new Date(now - 30 * 24 * 3600 * 1000).toISOString();
+    const since = dashboardPeriodStarts(new Date(now));
     const sinceHeatmap = new Date(now - 53 * 7 * 24 * 3600 * 1000).toISOString();
 
-    const [metaRes, last24h, last7d, last30d, activityHeatmap] = await Promise.all([
+    const [metaRes, today, last24h, week, month, year, last7d, last30d, activityHeatmap] =
+      await Promise.all([
       pool.query(
         `SELECT
           (SELECT value FROM app_meta WHERE key = 'last_ingest_at') AS last_ingest,
           (SELECT value FROM app_meta WHERE key = 'last_ingest_status') AS last_ingest_status,
           (SELECT value FROM app_meta WHERE key = 'last_ingest_detail') AS last_ingest_detail`,
       ),
-      this.periodStats(since24h, filterLiaisonId),
-      this.periodStats(since7d, filterLiaisonId),
-      this.periodStats(since30d, filterLiaisonId),
+      this.periodStats(since.today, filterLiaisonId),
+      this.periodStats(since.last24h, filterLiaisonId),
+      this.periodStats(since.week, filterLiaisonId),
+      this.periodStats(since.month, filterLiaisonId),
+      this.periodStats(since.year, filterLiaisonId),
+      this.periodStats(since.last7d, filterLiaisonId),
+      this.periodStats(since.last30d, filterLiaisonId),
       this.activityHeatmapDays(sinceHeatmap, filterLiaisonId),
     ]);
 
@@ -1426,7 +1430,7 @@ export class PgStore {
         ingestProvider: await this.getIngestProvider(),
         zouFailoverEnabled: await this.isZouFailoverEnabled(),
         lastIngestAt,
-        periods: { last24h, last7d, last30d },
+        periods: { today, last24h, week, month, year, last7d, last30d },
       },
       lastIngest: {
         at: lastIngestAt,

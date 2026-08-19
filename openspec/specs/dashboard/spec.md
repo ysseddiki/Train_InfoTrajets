@@ -24,13 +24,19 @@ Le dashboard SHALL afficher l’état de chaque liaison (Aller `outbound` + Reto
 
 ### Requirement: Stats motifs de retard
 
-Les agrégats période (`last24h` / `7d` / `30d`) SHALL inclure un décompte des retards **par `delay_reason_key`** (top motifs) et le nombre de retards **sans motif**. Un motif manquant MUST NOT être affiché comme une cause inventée.
+Les agrégats période SHALL exposer `today` (jour civil Europe/Paris depuis 00:00), `last24h` (glissant), `week` (lundi 00:00 Paris), `month` (1er du mois 00:00 Paris) et `year` (1er janvier 00:00 Paris). Chaque agrégat SHALL inclure un décompte des retards **par `delay_reason_key`** (top motifs) et le nombre de retards **sans motif**. Un motif manquant MUST NOT être affiché comme une cause inventée. Les champs `last7d` / `last30d` MAY rester en rolling pour compat.
 
 #### Scenario: Mix motifs
 
-- **GIVEN** 3 retards « travaux », 1 sans motif, sur 24 h
-- **WHEN** le dashboard charge
-- **THEN** les stats 24 h listent travaux (3) et un compteur sans motif (1)
+- **GIVEN** 3 retards « travaux », 1 sans motif, sur la journée en cours
+- **WHEN** le dashboard charge la période Journée
+- **THEN** les stats listent travaux (3) et un compteur sans motif (1)
+
+#### Scenario: Sélecteur de période
+
+- **GIVEN** des événements aujourd’hui et d’hier
+- **WHEN** l’opérateur passe de « Journée » à « 24 h »
+- **THEN** les KPI reflètent la fenêtre choisie (calendaire vs glissante)
 
 ### Requirement: Affichage retard unknown
 

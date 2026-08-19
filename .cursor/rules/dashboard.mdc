@@ -13,6 +13,6 @@ alwaysApply: false
 - Deux cartes sens (`outbound` / `inbound`) par liaison ; plusieurs liaisons possibles
 - Stack React : `DashboardPage` + `LiaisonScopePicker`, `JourneyCard`, `StatCard`, `ActivityFeed`, `ActivityHeatmap`
 - Shell : sidebar sombre (`Layout`) + zone contenu ; statut API en bas de sidebar
-- Composition : hero status A/R → KPI 24h + heatmap 53 sem. → feeds activité
+- Composition : hero status A/R → KPI (journée / 24 h / semaine / mois / année) + heatmap 53 sem. → feeds activité
 - Polish : reveal staggered, hover soft, refresh semi-opaque, `prefers-reduced-motion`
 - Ne jamais inventer de données si l’API est down

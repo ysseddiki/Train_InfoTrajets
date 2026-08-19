@@ -168,7 +168,7 @@ export interface NextDepartureInfo {
 export type IngestRunStatus = "ok" | "error" | "skipped";
 
 
-/** Agrégats sur une fenêtre glissante (UTC côté API, affichage Paris côté UI) */
+/** Agrégats sur une fenêtre (bornes calculées côté API, TZ Europe/Paris pour le calendaire) */
 export interface DashboardPeriodStats {
   events: number;
   delays: number;
@@ -229,8 +229,18 @@ export interface DashboardOverview {
     zouFailoverEnabled?: boolean;
     lastIngestAt: string | null;
     periods: {
+      /** Depuis 00:00 Europe/Paris du jour civil */
+      today: DashboardPeriodStats;
       last24h: DashboardPeriodStats;
+      /** Semaine civile lundi 00:00 Paris → maintenant */
+      week: DashboardPeriodStats;
+      /** Mois civil 1er 00:00 Paris → maintenant */
+      month: DashboardPeriodStats;
+      /** Année civile 1er janv. 00:00 Paris → maintenant */
+      year: DashboardPeriodStats;
+      /** @deprecated rolling 7 j — préférer `week` */
       last7d: DashboardPeriodStats;
+      /** @deprecated rolling 30 j — préférer `month` */
       last30d: DashboardPeriodStats;
     };
   };
