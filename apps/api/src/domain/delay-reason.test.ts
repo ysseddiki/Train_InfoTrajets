@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
-  delayReasonFromGtfsAlert,
   delayReasonFromNavitia,
   delayReasonFromParts,
 } from "./delay-reason.js";
@@ -44,22 +43,6 @@ describe("delayReasonFromNavitia", () => {
       { links: [{ type: "vehicle_journey", id: "vj" }] },
       [{ id: "d1", cause: "travaux" }],
     );
-    assert.equal(r.delayReason, null);
-  });
-});
-
-describe("delayReasonFromGtfsAlert", () => {
-  it("maps construction cause", () => {
-    const r = delayReasonFromGtfsAlert({
-      cause: "CONSTRUCTION",
-      header: "Travaux Nice",
-    });
-    assert.equal(r.delayReason, "Travaux Nice");
-    assert.equal(r.delayReasonKey, "travaux");
-  });
-
-  it("skips unknown cause without text", () => {
-    const r = delayReasonFromGtfsAlert({ cause: "UNKNOWN_CAUSE" });
     assert.equal(r.delayReason, null);
   });
 });

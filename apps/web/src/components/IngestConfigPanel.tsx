@@ -234,25 +234,6 @@ export function IngestConfigPanel() {
     }
   }
 
-  async function setZouFailover(enabled: boolean) {
-    setBusy(true);
-    setMsg(null);
-    try {
-      const next = await apiSend<IngestConfigPublic>("/v1/admin/ingest", "PUT", {
-        zouFailoverEnabled: enabled,
-      });
-      setConfig(next);
-      setMsg({
-        text: enabled ? "Failover ZOU activé" : "Failover ZOU désactivé",
-        ok: true,
-      });
-    } catch (err) {
-      setMsg({ text: errorMessage(err), ok: false });
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function saveProvider(
     provider: IngestProviderId,
     input: { pollSeconds: number; token?: string },
@@ -338,30 +319,6 @@ export function IngestConfigPanel() {
 
   return (
     <div className="ingest-config">
-      <div className="card ingest-failover-card">
-        <div className="ingest-provider-head">
-          <strong>Failover ZOU</strong>
-          {config.zouFailoverEnabled ? (
-            <span className="pill pill-ok">ON</span>
-          ) : (
-            <span className="pill pill-ignored">OFF</span>
-          )}
-        </div>
-        <label className="check-inline">
-          <input
-            type="checkbox"
-            checked={config.zouFailoverEnabled}
-            disabled={busy}
-            onChange={(e) => void setZouFailover(e.target.checked)}
-          />{" "}
-          Basculer si Navitia KO / quota / sans token
-        </label>
-        <p className="muted field-hint">
-          Pas d’intervalle dédié : ZOU tourne dans le même poll que Navitia
-          (intervalle configuré sur la carte Navitia).
-        </p>
-      </div>
-
       <div className="ingest-provider-grid">
         {order.map((id) => (
           <ProviderCard

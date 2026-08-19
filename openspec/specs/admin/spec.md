@@ -91,14 +91,14 @@ La console SHALL exposer `notify_step_minutes` (minutes, 0–60, défaut 5) au m
 
 ### Requirement: Clear stats par source
 
-Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `zou`, `prim` (legacy), et/ou livraisons email/Teams.
+Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `zou` (legacy), `prim` (legacy), et/ou livraisons email/Teams.
 
 #### Scenario: Clear événements stub seulement
 
 - **GIVEN** un admin authentifié
 - **WHEN** il envoie `POST /v1/admin/stats/clear` avec `eventSources: ["stub"]`
 - **THEN** seuls les événements `source=stub` (et livraisons liées) sont supprimés
-- **AND** les événements Navitia / ZOU restent
+- **AND** les événements Navitia restent
 
 ### Requirement: Catalogue de gares
 
@@ -106,7 +106,7 @@ Un admin authentifié SHALL pouvoir créer, modifier et supprimer des gares (`la
 
 `displayUrl` SHALL servir uniquement de lien UI (fiche publique) ; le système MUST NOT l’utiliser pour un scrape.
 
-Chaque gare MAY encore exposer des champs **terminus / destinations d’aide** (`terminusHelperLabels`, `terminusHelpersEnabled`) en catalogue, mais le failover ZOU MUST NOT les utiliser pour l’éligibilité (matching UIC uniquement). Navitia MUST NOT les utiliser non plus.
+Chaque gare MAY encore exposer des champs **terminus / destinations d’aide** (`terminusHelperLabels`, `terminusHelpersEnabled`) en catalogue. Navitia MUST NOT les utiliser pour l’éligibilité.
 
 #### Scenario: Création depuis la liaison
 
@@ -120,13 +120,6 @@ Chaque gare MAY encore exposer des champs **terminus / destinations d’aide** (
 - **WHEN** l’admin enregistre la gare
 - **THEN** l’URL est persistée pour l’UI
 - **AND** aucun job d’ingest ne lit cette URL comme source de départs
-
-#### Scenario: Helpers terminus non utilisés par ZOU
-
-- **GIVEN** la gare Monaco avec helpers Menton activés
-- **WHEN** le failover ZOU match un trip
-- **THEN** l’éligibilité dépend uniquement des UIC origine/destination sur le parcours
-- **AND** les helpers n’élargissent pas le matching
 
 ### Requirement: Destinataires email saisis par l’admin
 
@@ -145,8 +138,7 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 - Secret Navitia : **write-only** ; `tokenPreview` = 5 premiers caractères
 - `POST /v1/admin/ingest/probe` : test API sans forcément activer
 - À l’enregistrement d’un token (ou à l’activation), le serveur MUST appeler l’API cible et MUST persister le résultat du check (`lastCheckOk` / détail). MUST NOT bloquer la sauvegarde si le check échoue
-- MAY exposer un toggle `zouFailoverEnabled` (failover GTFS-RT ZOU open data)
-- MUST NOT exposer de provider `prim` (Île-de-France)
+- MUST NOT exposer de toggle failover ZOU ni de provider `prim` (Île-de-France)
 
 #### Scenario: Deux slots indépendants
 
@@ -154,11 +146,11 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 - **WHEN** l’admin active `stub`
 - **THEN** le secret Navitia reste configuré
 
-#### Scenario: Toggle failover ZOU
+#### Scenario: Pas de toggle ZOU
 
-- **GIVEN** un admin connecté
-- **WHEN** il active le failover ZOU via `PUT /v1/admin/ingest` `{ zouFailoverEnabled: true }`
-- **THEN** `GET /v1/admin/ingest` renvoie `zouFailoverEnabled: true`
+- **GIVEN** un admin sur Ingest
+- **WHEN** `GET /v1/admin/ingest` est appelé
+- **THEN** la réponse n’inclut pas `zouFailoverEnabled`
 
 #### Scenario: Token Navitia invalide
 

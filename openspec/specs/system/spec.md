@@ -25,7 +25,7 @@ Hors scope v1 explicite : scrape / failover G&C (Datadome) ; `displayUrl` catalo
 
 ### Requirement: Séparation client/serveur
 
-Le client web MUST n’appeler que l’API HTTP `/v1` ; les intégrations Navitia / ZOU, SMTP et Teams MUST s’exécuter uniquement côté serveur.
+Le client web MUST n’appeler que l’API HTTP `/v1` ; les intégrations Navitia, SMTP et Teams MUST s’exécuter uniquement côté serveur.
 
 #### Scenario: Pas de secret dans le front
 

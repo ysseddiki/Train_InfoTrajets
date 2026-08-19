@@ -395,7 +395,8 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       return store.updateIngestConfig({
         activeProvider: body.activeProvider,
         navitiaToken,
-        zouFailoverEnabled: body.zouFailoverEnabled,
+        stubPollIntervalSeconds: body.stubPollIntervalSeconds,
+        navitiaPollIntervalSeconds: body.navitiaPollIntervalSeconds,
       });
     },
   );
@@ -489,7 +490,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (raw && raw !== "all" && !isIngestApiLogSource(raw)) {
       return reply.code(400).send({
         type: "/errors/validation",
-        title: "source must be navitia | zou | stub | all",
+        title: "source must be navitia | stub | all",
         status: 400,
       });
     }
@@ -509,7 +510,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     if (raw && raw !== "all" && !isIngestApiLogSource(raw)) {
       return reply.code(400).send({
         type: "/errors/validation",
-        title: "source must be navitia | zou | stub | all",
+        title: "source must be navitia | stub | all",
         status: 400,
       });
     }

@@ -10,11 +10,11 @@ alwaysApply: false
 - Layout : **nav gauche** par catégorie + panneau contenu ; nav filtrée (`liaison_editor` = Liaisons + Compte)
 - Catégories admin : Liaisons, **Gares**, Ingest, Destinataires, Canaux, Quota API, Clear stats, Debug, **Comptes**, **Accès**
 - Gares : catalogue (label + externalId Navitia) ; terminus / destinations d’aide optionnels (toggle) ; select dans Liaisons + bouton Créer
-- Ingest : 3 providers configurables indépendamment ; un actif ; token write-only + preview 5 car. ; check API à l’enregistrement (statut OK/KO, n’empêche pas save/activation) ; failover optionnel ZOU GTFS-RT
+- Ingest : providers `stub` / `navitia` ; un actif ; token write-only + preview 5 car. ; check API à l’enregistrement (n’empêche pas save)
 - Liaisons : plusieurs paires A/R possibles ; nom custom ou auto `départ <-> arrivée` ; au moins une
 - Quota API : compteur journalier Navitia (réussi/échoué), barre 0–`NAVITIA_DAILY_QUOTA` (défaut 5000)
-- Clear stats : sources décorrélées (événements stub / navitia / prim / zou, livraisons)
-- Debug : logs API ingest (onglet par source, lignes reçues) + injection stub
+- Clear stats : sources décorrélées (événements stub / navitia / prim / zou legacy, livraisons)
+- Debug : logs API ingest (Navitia / stub) + injection stub
 - Destinataires = liste saisie par l’admin (pas d’auto-inscription)
 - Champs secrets : write-only / masked après sauvegarde
 - Boutons test d’envoi par canal

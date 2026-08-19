@@ -44,25 +44,12 @@ function formatLastCheckHm(iso: string | null): string | null {
 
 function formatIngestSourceLabel(data: DashboardOverview): string {
   const provider = data.stats.ingestProvider;
-  const failover = data.stats.zouFailoverEnabled === true;
-  const detail = data.lastIngest.detail ?? "";
-  const usedZou = /\bzou\b|GTFS-RT|failover/i.test(detail);
-
-  const base =
+  const source =
     provider === "navitia"
       ? "Navitia"
       : provider === "stub"
         ? "Stub"
         : provider;
-
-  let source: string;
-  if (usedZou && provider !== "stub") {
-    source = "ZOU (failover)";
-  } else if (failover && provider === "navitia") {
-    source = `${base} · ZOU secours`;
-  } else {
-    source = base;
-  }
 
   const hm = formatLastCheckHm(data.lastIngest.at);
   return hm ? `${source} · ${hm}` : source;

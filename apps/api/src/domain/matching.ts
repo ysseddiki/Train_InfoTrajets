@@ -312,7 +312,7 @@ export function matchesDestinationFilter(
   // partial tokens: "Monaco", "Nice", etc. — covers "via Monaco" / longer headsigns
   if (tokens.some((t) => text.includes(t))) return true;
 
-  // Terminus helpers : passés explicitement par le failover ZOU seulement
+  // Terminus helpers (legacy catalogue) — Navitia n’en passe pas
   if (matchesTerminusHelpers(directionText, terminusHelpers)) return true;
 
   // Boards terminus-only : Menton au-delà de Monaco, etc.
@@ -321,7 +321,7 @@ export function matchesDestinationFilter(
 
 /**
  * Matching Navitia (source primaire) : label / id / corridor only.
- * Les terminus helpers sont réservés au failover ZOU GTFS-RT.
+ * Les terminus helpers catalogue ne sont pas utilisés.
  */
 export async function matchesDestinationFilterAsync(
   journey: JourneyConfig,

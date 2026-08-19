@@ -162,7 +162,7 @@ export interface NextDepartureInfo {
   status: NextDepartureStatus;
   statusLabel: string;
   fetchedAt: string;
-  source: "navitia" | "stub" | "zou";
+  source: "navitia" | "stub";
 }
 
 export type IngestRunStatus = "ok" | "error" | "skipped";
@@ -225,8 +225,6 @@ export interface DashboardOverview {
     deliveriesSentLast24h: number;
     deliveriesFailedLast24h: number;
     ingestProvider: string;
-    /** Failover ZOU GTFS-RT actif (secours si Navitia KO) */
-    zouFailoverEnabled?: boolean;
     lastIngestAt: string | null;
     periods: {
       /** Depuis 00:00 Europe/Paris du jour civil */
@@ -440,15 +438,10 @@ export interface IngestProviderSlotPublic {
   pollIntervalSeconds: number;
 }
 
-/** Config ingest : stub | navitia + failover ZOU. */
+/** Config ingest : stub | navitia. */
 export interface IngestConfigPublic {
   activeProvider: IngestProviderId;
   providers: Record<IngestProviderId, IngestProviderSlotPublic>;
-  /**
-   * Failover open data ZOU PACA (GTFS-RT) si Navitia KO / quota / token manquant.
-   * Défaut : false.
-   */
-  zouFailoverEnabled: boolean;
 }
 
 export interface IngestConfigUpdate {
@@ -456,8 +449,6 @@ export interface IngestConfigUpdate {
   activeProvider?: IngestProviderId;
   /** Remplace le token Navitia si non vide */
   navitiaToken?: string;
-  /** Active / désactive le failover GTFS-RT ZOU */
-  zouFailoverEnabled?: boolean;
   /** Intervalle poll stub (secondes) */
   stubPollIntervalSeconds?: number;
   /** Intervalle poll Navitia (secondes) */
@@ -525,8 +516,7 @@ export interface Station {
    */
   displayUrl: string | null;
   /**
-   * Legacy catalogue — non utilisé par le matching Navitia ni failover ZOU
-   * (éligibilité ZOU = paire UIC).
+   * Legacy catalogue — non utilisé par le matching Navitia.
    */
   terminusHelpersEnabled: boolean;
   /**
@@ -565,7 +555,7 @@ export interface ApiQuotaStatus {
 export type IngestEventSource = "stub" | "navitia" | "zou" | "prim";
 
 /** Source de log debug API ingest (onglets Admin → Debug). */
-export type IngestApiLogSource = "stub" | "navitia" | "zou";
+export type IngestApiLogSource = "stub" | "navitia";
 
 export interface IngestApiLogEntry {
   id: string;

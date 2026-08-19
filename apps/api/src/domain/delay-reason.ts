@@ -80,38 +80,3 @@ export function delayReasonFromNavitia(
     message: message ?? null,
   });
 }
-
-const GTFS_CAUSE_LABEL: Record<string, string> = {
-  TECHNICAL_PROBLEM: "problème technique",
-  STRIKE: "grève",
-  DEMONSTRATION: "manifestation",
-  ACCIDENT: "accident",
-  HOLIDAY: "jour férié",
-  WEATHER: "météo",
-  MAINTENANCE: "maintenance",
-  CONSTRUCTION: "travaux",
-  POLICE_ACTIVITY: "intervention police",
-  MEDICAL_EMERGENCY: "urgence médicale",
-  OTHER_CAUSE: "autre",
-};
-
-export function delayReasonFromGtfsAlert(input: {
-  cause?: string | number | null;
-  header?: string | null;
-  description?: string | null;
-}): DelayReason {
-  const causeRaw = String(input.cause ?? "");
-  const causeName =
-    GTFS_CAUSE_LABEL[causeRaw] ??
-    (causeRaw && causeRaw !== "UNKNOWN_CAUSE" && !/^\d+$/.test(causeRaw)
-      ? causeRaw
-      : "");
-  const header = clipReason(String(input.header ?? ""));
-  const description = clipReason(String(input.description ?? ""));
-  const message = header || description || null;
-  if (!message && !causeName) return EMPTY_DELAY_REASON;
-  return delayReasonFromParts({
-    cause: causeName || null,
-    message,
-  });
-}

@@ -103,7 +103,7 @@ const ADMIN_NAV: AdminNavGroup[] = [
       {
         id: "data",
         label: "Ingest",
-        description: "Source, failover ZOU, quota.",
+        description: "Source, quota.",
         icon: Database,
       },
       {

@@ -9,7 +9,7 @@ const EVENT_SOURCES: { id: IngestEventSource; label: string }[] = [
   { id: "stub", label: "Stub" },
   { id: "navitia", label: "Navitia" },
   { id: "prim", label: "PRIM (legacy)" },
-  { id: "zou", label: "ZOU" },
+  { id: "zou", label: "ZOU (legacy)" },
 ];
 
 export function ClearStatsPanel() {

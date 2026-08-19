@@ -17,7 +17,6 @@ import {
 
 const SOURCES: { id: IngestApiLogSource; label: string }[] = [
   { id: "navitia", label: "Navitia" },
-  { id: "zou", label: "ZOU" },
   { id: "stub", label: "Stub" },
 ];
 
@@ -143,7 +142,7 @@ export function DebugPanel({
         <h3>Logs API ingest</h3>
         <p className="muted debug-logs-lead">
           {viewMode === "readable"
-            ? "Surligné = signal outil (retard / suppression). SA ZOU ignorées."
+            ? "Surligné = signal outil (retard / suppression)."
             : "Dump technique — lignes retard / cancel surlignées."}
         </p>
 

@@ -61,7 +61,6 @@ const META_INGEST_PROVIDER = "ingest_provider";
 const META_NAVITIA_TOKEN = "ingest_navitia_token";
 const META_NAVITIA_CHECK = "ingest_navitia_check";
 const META_STUB_CHECK = "ingest_stub_check";
-const META_ZOU_FAILOVER = "ingest_zou_failover_enabled";
 const META_POLL_STUB = "ingest_poll_seconds_stub";
 const META_POLL_NAVITIA = "ingest_poll_seconds_navitia";
 
@@ -630,13 +629,7 @@ export class PgStore {
     return {
       activeProvider,
       providers: { stub, navitia },
-      zouFailoverEnabled: await this.isZouFailoverEnabled(),
     };
-  }
-
-  async isZouFailoverEnabled(): Promise<boolean> {
-    const v = await this.getMeta(META_ZOU_FAILOVER);
-    return v === "1" || v === "true";
   }
 
   /**
@@ -655,12 +648,6 @@ export class PgStore {
       if (next !== "stub") {
         await this.clearStubBoardSnapshots();
       }
-    }
-    if (body.zouFailoverEnabled !== undefined) {
-      await this.setMeta(
-        META_ZOU_FAILOVER,
-        body.zouFailoverEnabled ? "1" : "0",
-      );
     }
     if (body.stubPollIntervalSeconds !== undefined) {
       await this.setMeta(
@@ -1599,7 +1586,6 @@ export class PgStore {
         deliveriesSentLast24h: last24h.deliveriesSent,
         deliveriesFailedLast24h: last24h.deliveriesFailed,
         ingestProvider: await this.getIngestProvider(),
-        zouFailoverEnabled: await this.isZouFailoverEnabled(),
         lastIngestAt,
         periods: { today, last24h, week, month, year, last7d, last30d },
       },
@@ -1892,8 +1878,14 @@ export class PgStore {
     );
     for (const row of res.rows) {
       const source = String(row.source);
-      // Prochain train = Navitia ou failover ZOU (jamais stub ni ancien G&C)
-      if (source === "stub" || source === "garesetconnexions") continue;
+      // Prochain train = Navitia (jamais stub, G&C, ni ancien ZOU)
+      if (
+        source === "stub" ||
+        source === "garesetconnexions" ||
+        source === "zou"
+      ) {
+        continue;
+      }
 
       const scheduledAt = row.scheduled_at
         ? new Date(String(row.scheduled_at)).toISOString()

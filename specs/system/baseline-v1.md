@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.10.0`  
+> **Version** : `1.11.0`  
 > **Date** : 2026-08-19  
-> **Change** : `openspec/changes/access-control-roles`  
+> **Change** : `openspec/changes/remove-zou-failover`  
 > **Format** : OpenSpec
 
 ---
@@ -113,7 +113,7 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `delay_reason_key` | string \| null | Clé de regroupement stats |
 | `notified_delay_minutes` | int \| null | Dernier retard pour lequel une notif a été enfilée |
 | `starts_at` / `ends_at` | datetime | |
-| `source` | `stub` \| `navitia` \| `zou` (legacy `prim` en lecture seule) | `zou` = failover GTFS-RT |
+| `source` | `stub` \| `navitia` \| legacy `zou` \| `prim` | `zou`/`prim` = lecture / clear-stats seulement |
 | `detected_at` | datetime | |
 
 `raw_payload` : optionnel, rétention courte ; **pas de secrets**.
@@ -126,8 +126,8 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `external_id` | string | ID Navitia `stop_area` (unique) |
 | `label` | string | Affichage |
 | `display_url` | string \| null | Lien UI fiche publique (ex. G&C) — **jamais** scrapé |
-| `terminus_helpers_enabled` | bool | Legacy catalogue — **non utilisé** par le matching ZOU/Navitia |
-| `terminus_helper_labels` | string[] | Legacy — matching ZOU = UIC OD uniquement |
+| `terminus_helpers_enabled` | bool | Legacy catalogue — **non utilisé** par le matching Navitia |
+| `terminus_helper_labels` | string[] | Legacy |
 | `updated_at` | datetime | UTC |
 
 Pas d’alias scrape G&C. Les liaisons référencent les gares via `external_id`.
@@ -204,13 +204,13 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 
 | Port | Rôle |
 |------|------|
-| `DisruptionIngestPort` | stub \| navitia (+ failover ZOU optionnel) |
+| `DisruptionIngestPort` | stub \| navitia |
 | `DeparturesPort` | départs gare (Navitia + cache TTL) |
 | `EmailNotifierPort` | SMTP |
 | `TeamsNotifierPort` | Incoming webhook |
 | `ClockPort` | Testabilité fenêtres horaires |
 
-Pas de scrape / failover Gares & Connexions (bloqué Datadome). URL `displayUrl` catalogue → lien UI seulement. Failover optionnel : GTFS-RT ZOU (`zouFailoverEnabled`). Snapshots board : `navitia` ou `zou`.
+Pas de scrape / failover Gares & Connexions (bloqué Datadome). URL `displayUrl` catalogue → lien UI seulement. Pas de failover ZOU. Snapshots board : `navitia` uniquement.
 
 ---
 
@@ -270,7 +270,6 @@ File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non blo
 | SMTP custom | Email — config Admin (DB) ; bootstrap `.env` optionnel |
 | Teams Incoming Webhook | Notifs Teams (`.env`) |
 | Navitia | Ingest prod |
-| ZOU GTFS-RT | Failover open data Région Sud |
 | Stub | Dev / démo |
 
 ### Secrets (env)
@@ -314,3 +313,5 @@ specs/system/     # Baseline narrative
 | `1.7.0` | 2026-08-18 | Palier re-notif (`notify_step_minutes`) + motifs retard (stats) |
 | `1.8.0` | 2026-08-18 | Changement du mot de passe admin en console (`PUT /v1/admin/account/password`) |
 | `1.9.0` | 2026-08-18 | Veille +2 h après la fenêtre ; trains théoriques passés encore dus |
+| `1.10.0` | 2026-08-19 | Accès : visiteur, comptes locaux, rôles |
+| `1.11.0` | 2026-08-19 | Retrait failover ZOU (GTFS-RT) |

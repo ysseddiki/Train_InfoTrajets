@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Ingestion des perturbations SNCF via un adapter (stub / Navitia) et matching sur les trajets Aller et Retour. Failover optionnel ZOU GTFS-RT.
+Ingestion des perturbations SNCF via un adapter (stub / Navitia) et matching sur les trajets Aller et Retour.
 
 ## Requirements
 
@@ -100,7 +100,7 @@ L’appel Navitia `/departures` MUST utiliser un `from_datetime` en lookback pou
 
 ### Requirement: Filtre gare desservie
 
-Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents dans la direction affichée des départs), pas uniquement le terminus commercial. L’allowlist corridor (ex. Menton au-delà de Monaco) MAY compléter le matching **Navitia** lorsque le headsign n’expose que le terminus. Le failover ZOU MUST matcher par **paire UIC** (voir requirement Failover), sans terminus helpers.
+Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents dans la direction affichée des départs), pas uniquement le terminus commercial. L’allowlist corridor (ex. Menton au-delà de Monaco) MAY compléter le matching **Navitia** lorsque le headsign n’expose que le terminus.
 
 #### Scenario: Direction Menton via Monaco
 
@@ -122,55 +122,18 @@ Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents d
 
 ### Requirement: Pas de failover scrape Gares & Connexions
 
-Le pipeline d’ingest MUST NOT scraper Gares & Connexions ni exposer une source `garesetconnexions`. Un failover open data **ZOU GTFS-RT** MAY être activé via `zouFailoverEnabled` (voir requirement dédié). Sans ce toggle, en cas d’échec Navitia (token manquant, quota, erreur API), le poll MUST enregistrer un statut `error` ou `skipped` et MUST NOT basculer vers un board HTML tiers.
+Le pipeline d’ingest MUST NOT scraper Gares & Connexions ni exposer une source `garesetconnexions`. MUST NOT interroger les flux GTFS-RT / GTFS ZOU. En cas d’échec Navitia (token manquant, quota, erreur API), le poll MUST enregistrer un statut `error` ou `skipped` et MUST NOT basculer vers une autre source board.
 
-#### Scenario: Navitia KO sans failover ZOU
+#### Scenario: Navitia KO
 
-- **GIVEN** provider actif `navitia`, token invalide ou API en erreur, `zouFailoverEnabled = false`
+- **GIVEN** provider actif `navitia`, token invalide ou API en erreur
 - **WHEN** le poll tourne
 - **THEN** `last_ingest_status` est `error` (ou `skipped` si hors fenêtre / quota)
-- **AND** aucun appel HTTP vers `garesetconnexions.sncf` n’est effectué
-
-### Requirement: Failover GTFS-RT ZOU (open data)
-
-Quand `zouFailoverEnabled` est vrai, le poll Navitia SHALL basculer vers les flux open data ZOU PACA (GTFS-RT **TripUpdates** + GTFS static) si le token Navitia est absent, le quota journalier est épuisé, ou un appel Navitia échoue. Les événements / snapshots SHALL utiliser `source = zou`. ZOU MUST NOT être un `IngestProviderId` primaire sélectionnable. Plusieurs URLs TripUpdates MAY être fusionnées (`ZOU_GTFSRT_TRIPS_URLS`).
-
-L’éligibilité d’un trip MUST être la **paire UIC** origine → destination (après l’origine) via `stop_time_update` RT, sinon `stop_times` static. MUST NOT utiliser terminus helpers, corridor, ni headsign pour l’éligibilité.
-
-Les retards / suppressions MUST provenir uniquement des TripUpdates. Les Service Alerts MUST NOT créer d’événements (logs debug seulement).
-
-À chaque poll, le système SHALL évaluer **tous** les trips éligibles dans la fenêtre de veille ; le board SHALL exposer le **prochain** départ seulement.
-
-#### Scenario: Quota épuisé + failover ON
-
-- **GIVEN** provider `navitia`, quota épuisé, `zouFailoverEnabled = true`, trajet en fenêtre de veille
-- **WHEN** le poll tourne
-- **THEN** le système interroge le GTFS-RT TripUpdates ZOU
-- **AND** MAY écrire des événements ou un board `source = zou`
-
-#### Scenario: Matching UIC sans terminus helpers
-
-- **GIVEN** liaison Nice → Monaco avec UIC origine et destination
-- **WHEN** un TripUpdate a Nice puis Monaco plus loin (RT ou static), headsign « Menton »
-- **THEN** le trip est éligible
-- **AND** les terminus helpers catalogue sont ignorés
-
-#### Scenario: Tous les trains de la fenêtre
-
-- **GIVEN** plusieurs trips OD dont le départ tombe dans la fenêtre de veille, un avec retard ≥ seuil
-- **WHEN** le poll ZOU tourne
-- **THEN** le board affiche le prochain
-- **AND** un événement `delay` MAY être créé pour le trip en retard
-
-#### Scenario: Service Alert ignorée
-
-- **GIVEN** une Service Alert ZOU (ex. canicule)
-- **WHEN** le failover poll
-- **THEN** aucun événement n’est créé depuis cette alerte
+- **AND** aucun appel HTTP vers `garesetconnexions.sncf` ni vers les flux ZOU n’est effectué
 
 ### Requirement: Board prochain train sans stub
 
-Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir de `navitia` ou `zou` (failover). Le provider stub MUST NOT écrire ni exposer de prochain train sur le board. Les snapshots historiques `source=garesetconnexions` MUST être ignorés (comme le stub).
+Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir de `navitia`. Le provider stub MUST NOT écrire ni exposer de prochain train sur le board. Les snapshots historiques `source=garesetconnexions` et `source=zou` MUST être ignorés (comme le stub).
 
 #### Scenario: Stub désactivé
 
@@ -184,11 +147,11 @@ Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir
 - **WHEN** le dashboard charge l’overview
 - **THEN** `nextDeparture` est absent pour ce journey
 
-#### Scenario: Snapshot ZOU failover
+#### Scenario: Snapshot ZOU ignoré
 
 - **GIVEN** un snapshot `source=zou` en base
 - **WHEN** le dashboard charge l’overview
-- **THEN** `nextDeparture` est exposé pour ce journey
+- **THEN** ce snapshot n’est pas exposé comme `nextDeparture`
 
 Le poll ingest SHALL pouvoir tourner hors du process API (`INGEST_IN_PROCESS=false` + worker dédié). Des unités systemd SHALL être fournies en exemple (`deploy/systemd/`).
 
@@ -234,9 +197,9 @@ Après le premier événement éligible, les polls suivants MUST mettre à jour 
 
 ### Requirement: Motif de retard optionnel
 
-L’ingest SHALL persister `delay_reason` (texte affichable) et `delay_reason_key` (clé de regroupement stats) quand la source en fournit, sinon `null`. MUST NOT inventer un motif. MUST NOT créer d’événement à partir d’une Service Alert ZOU seule.
+L’ingest SHALL persister `delay_reason` (texte affichable) et `delay_reason_key` (clé de regroupement stats) quand Navitia en fournit, sinon `null`. MUST NOT inventer un motif.
 
-Navitia : messages / cause des `disruptions` liées au départ. ZOU : texte d’une Service Alert uniquement si `informed_entity.trip_id` correspond au TripUpdate.
+Navitia : messages / cause des `disruptions` liées au départ.
 
 #### Scenario: Navitia avec disruption
 
@@ -244,9 +207,3 @@ Navitia : messages / cause des `disruptions` liées au départ. ZOU : texte d’
 - **WHEN** un retard éligible est ingéré
 - **THEN** `delay_reason_key` reflète la cause / catégorie
 - **AND** `delay_reason` MAY contenir le message
-
-#### Scenario: ZOU sans alerte trip
-
-- **GIVEN** un TripUpdate retard sans Service Alert pour ce `trip_id`
-- **WHEN** l’événement ZOU est créé
-- **THEN** `delay_reason` est `null`
