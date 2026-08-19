@@ -70,6 +70,22 @@ export function JourneyCard({
         <strong>{card.boardStatusLabel}</strong>
       </div>
       {nextDepartureBlock(card)}
+      {card.originWeather?.weatherLabel ? (
+        <p className="journey-weather muted">
+          Météo gare ·{" "}
+          <strong>{card.originWeather.weatherLabel.split(" (WMO")[0]}</strong>
+          {card.originWeather.temperatureC != null
+            ? ` · ${card.originWeather.temperatureC} °C`
+            : null}
+          {card.originWeather.precipitationMm != null &&
+          card.originWeather.precipitationMm > 0
+            ? ` · ${card.originWeather.precipitationMm} mm/h`
+            : null}
+          {card.originWeather.windSpeedKmh != null
+            ? ` · vent ${card.originWeather.windSpeedKmh} km/h`
+            : null}
+        </p>
+      ) : null}
       {gcUrl ? (
         <p className="gc-link-wrap">
           <a

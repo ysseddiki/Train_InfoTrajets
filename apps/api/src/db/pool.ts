@@ -246,6 +246,45 @@ async function ensureDeliveryLiaisonColumn(p: pg.Pool): Promise<void> {
   `);
 }
 
+async function ensureWeatherColumns(p: pg.Pool): Promise<void> {
+  if (!(await tableExists(p, "stations"))) return;
+  if (!(await columnExists(p, "stations", "latitude"))) {
+    await p.query(`ALTER TABLE stations ADD COLUMN latitude DOUBLE PRECISION`);
+  }
+  if (!(await columnExists(p, "stations", "longitude"))) {
+    await p.query(`ALTER TABLE stations ADD COLUMN longitude DOUBLE PRECISION`);
+  }
+  if (!(await tableExists(p, "disruption_events"))) return;
+  if (!(await columnExists(p, "disruption_events", "weather_bucket"))) {
+    await p.query(
+      `ALTER TABLE disruption_events ADD COLUMN weather_bucket TEXT`,
+    );
+  }
+  if (!(await columnExists(p, "disruption_events", "weather_code"))) {
+    await p.query(`ALTER TABLE disruption_events ADD COLUMN weather_code INT`);
+  }
+  if (!(await columnExists(p, "disruption_events", "weather_label"))) {
+    await p.query(
+      `ALTER TABLE disruption_events ADD COLUMN weather_label TEXT`,
+    );
+  }
+  if (!(await columnExists(p, "disruption_events", "precipitation_mm"))) {
+    await p.query(
+      `ALTER TABLE disruption_events ADD COLUMN precipitation_mm REAL`,
+    );
+  }
+  if (!(await columnExists(p, "disruption_events", "wind_speed_kmh"))) {
+    await p.query(
+      `ALTER TABLE disruption_events ADD COLUMN wind_speed_kmh REAL`,
+    );
+  }
+  if (!(await columnExists(p, "disruption_events", "temperature_c"))) {
+    await p.query(
+      `ALTER TABLE disruption_events ADD COLUMN temperature_c REAL`,
+    );
+  }
+}
+
 async function ensureUserAccessColumns(p: pg.Pool): Promise<void> {
   if (!(await tableExists(p, "admin_accounts"))) return;
   if (!(await columnExists(p, "admin_accounts", "role"))) {
@@ -273,6 +312,7 @@ export async function migrate(): Promise<void> {
   await ensureWatchColumns(p);
   await ensureDelayReasonColumns(p);
   await ensureStationsTable(p);
+  await ensureWeatherColumns(p);
   await ensureLiaisonDefaultColumn(p);
   await ensureDeliveryLiaisonColumn(p);
   await ensureUserAccessColumns(p);

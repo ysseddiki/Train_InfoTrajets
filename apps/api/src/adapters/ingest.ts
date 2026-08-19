@@ -1,4 +1,4 @@
-import type { JourneyConfig, JourneyDirection } from "@sncf-alerts/shared";
+import type { EventWeatherSnapshot, JourneyConfig, JourneyDirection } from "@sncf-alerts/shared";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
 import { delayReasonFromNavitia } from "../domain/delay-reason.js";
 import { isWatchedDeparture, isWithinWatchWindow } from "../domain/matching.js";
@@ -6,6 +6,7 @@ import { buildNextDepartureStatus } from "../domain/next-departure.js";
 import { notifyForEvent, processNotifyJobs } from "../domain/notify.js";
 import { shouldNotifyDelayStep } from "../domain/notify-step.js";
 import { store } from "../domain/store.js";
+import { syntheticWeatherForStub } from "../domain/weather.js";
 import {
   NavitiaDeparturesPort,
   navitiaDepartureMatchesFilter,
@@ -45,6 +46,7 @@ export async function injectStubEvent(input?: {
   const now = new Date();
   const externalEventId = `stub-${journey?.id ?? direction}-${now.toISOString()}`;
 
+  const weather = await weatherForJourney(journey, "stub");
   const { event, created } = await store.upsertEvent({
     externalEventId,
     journeyId: journey?.id ?? null,
@@ -60,6 +62,7 @@ export async function injectStubEvent(input?: {
     delayMinutes: kind === "delay" ? delayMinutes : null,
     delayReason: null,
     delayReasonKey: null,
+    ...weather,
     startsAt: now.toISOString(),
     endsAt: null,
     source: "stub",
@@ -162,6 +165,7 @@ export async function seedStubHistory(input?: {
       const dayKey = iso.slice(0, 10);
       const externalEventId = `stub-hist-${journey.id}-${dayKey}-${i}`;
 
+      const stubWeather = await weatherForJourney(journey, "stub");
       const { created: wasCreated } = await store.upsertEvent({
         externalEventId,
         journeyId: journey.id,
@@ -179,6 +183,7 @@ export async function seedStubHistory(input?: {
         delayMinutes,
         delayReason: null,
         delayReasonKey: null,
+        ...stubWeather,
         startsAt: iso,
         endsAt: null,
         source: "stub",
@@ -353,11 +358,46 @@ async function saveNextFromNavitia(
   });
 }
 
+async function weatherForJourney(
+  journey: JourneyConfig | null | undefined,
+  source: string,
+): Promise<EventWeatherSnapshot> {
+  if (source === "stub" || !journey?.originId) {
+    return syntheticWeatherForStub();
+  }
+  const snap = await store.getWeatherForOrigin(
+    journey.originId,
+    journey.originLabel,
+  );
+  if (!snap) {
+    return {
+      weatherBucket: null,
+      weatherCode: null,
+      weatherLabel: null,
+      precipitationMm: null,
+      windSpeedKmh: null,
+      temperatureC: null,
+    };
+  }
+  return {
+    weatherBucket: snap.weatherBucket,
+    weatherCode: snap.weatherCode,
+    weatherLabel: snap.weatherLabel,
+    precipitationMm: snap.precipitationMm,
+    windSpeedKmh: snap.windSpeedKmh,
+    temperatureC: snap.temperatureC,
+  };
+}
+
 async function persistAlertAndMaybeNotify(input: {
   journey: JourneyConfig;
-  event: Parameters<typeof store.upsertEvent>[0];
+  event: Omit<
+    Parameters<typeof store.upsertEvent>[0],
+    keyof EventWeatherSnapshot
+  >;
 }): Promise<boolean> {
-  const upserted = await store.upsertEvent(input.event);
+  const weather = await weatherForJourney(input.journey, input.event.source);
+  const upserted = await store.upsertEvent({ ...input.event, ...weather });
   const notify = shouldNotifyDelayStep({
     created: upserted.created,
     notifyStepMinutes: input.journey.notifyStepMinutes,

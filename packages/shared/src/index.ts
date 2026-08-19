@@ -169,6 +169,37 @@ export type IngestRunStatus = "ok" | "error" | "skipped";
 
 
 /** Agrégats sur une fenêtre (bornes calculées côté API, TZ Europe/Paris pour le calendaire) */
+export type WeatherBucket =
+  | "clear"
+  | "cloudy"
+  | "fog"
+  | "rain"
+  | "snow"
+  | "storm"
+  | "unknown";
+
+export interface EventWeatherSnapshot {
+  weatherBucket: WeatherBucket | null;
+  weatherCode: number | null;
+  weatherLabel: string | null;
+  precipitationMm: number | null;
+  windSpeedKmh: number | null;
+  temperatureC: number | null;
+}
+
+export interface WeatherSnapshotPublic extends EventWeatherSnapshot {
+  fetchedAt: string;
+}
+
+export interface WeatherDelayCorrelation {
+  bucket: WeatherBucket;
+  label: string;
+  delayCount: number;
+  avgDelayMinutes: number | null;
+  /** Part des retards avec météo connue (0–100) */
+  sharePercent: number;
+}
+
 export interface DashboardPeriodStats {
   events: number;
   delays: number;
@@ -187,6 +218,12 @@ export interface DashboardPeriodStats {
   delayReasons: Array<{ key: string; label: string; count: number }>;
   /** Retards `kind=delay` sans `delay_reason_key` */
   delaysWithoutReason: number;
+  /** Retards avec snapshot météo */
+  delaysWithWeather: number;
+  /** Retards par conditions météo */
+  weatherCorrelation: WeatherDelayCorrelation[];
+  /** Pearson r précipitation (mm) vs durée retard ; null si n < 5 */
+  precipitationDelayCorrelation: number | null;
 }
 
 /** Jour calendaire (Europe/Paris) pour heatmap retards */
@@ -279,6 +316,8 @@ export interface JourneyStatusCard {
   boardStatusLabel: string;
   /** Prochain départ valide (dernier poll) */
   nextDeparture: NextDepartureInfo | null;
+  /** Météo actuelle à la gare surveillée (Open-Meteo) */
+  originWeather: WeatherSnapshotPublic | null;
   latestEvent: {
     id: string;
     kind: DisruptionKind;
@@ -306,6 +345,13 @@ export interface DisruptionEventDto {
   delayReason: string | null;
   /** Clé de regroupement stats (cause / catégorie normalisée) */
   delayReasonKey: string | null;
+  /** Snapshot météo à la détection (Open-Meteo, gare surveillée) */
+  weatherBucket: WeatherBucket | null;
+  weatherCode: number | null;
+  weatherLabel: string | null;
+  precipitationMm: number | null;
+  windSpeedKmh: number | null;
+  temperatureC: number | null;
   startsAt: string;
   endsAt: string | null;
   source: "stub" | "prim" | "navitia" | "zou";
@@ -511,6 +557,14 @@ export interface Station {
   externalId: string;
   label: string;
   /**
+   * Latitude WGS84 (Open-Meteo). null si non résolu.
+   */
+  latitude: number | null;
+  /**
+   * Longitude WGS84 (Open-Meteo). null si non résolu.
+   */
+  longitude: number | null;
+  /**
    * URL page publique d’affichage (ex. Gares & Connexions).
    * null si non renseigné.
    */
@@ -529,6 +583,8 @@ export interface Station {
 export interface StationUpsertBody {
   externalId: string;
   label: string;
+  latitude?: number | null;
+  longitude?: number | null;
   /** URL affichage gare ; `""` ou omis → null */
   displayUrl?: string | null;
   terminusHelpersEnabled?: boolean;

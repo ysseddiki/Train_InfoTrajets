@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.11.0`  
+> **Version** : `1.12.0`  
 > **Date** : 2026-08-19  
-> **Change** : `openspec/changes/remove-zou-failover`  
+> **Change** : `openspec/changes/weather-delay-correlation`  
 > **Format** : OpenSpec
 
 ---
@@ -111,6 +111,12 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `delay_minutes` | int \| null | `null` = durée **unknown** (jamais coercée en `0`) |
 | `delay_reason` | string \| null | Motif source (best-effort, jamais inventé) |
 | `delay_reason_key` | string \| null | Clé de regroupement stats |
+| `weather_bucket` | string \| null | `clear` / `rain` / … (Open-Meteo à la détection) |
+| `weather_code` | int \| null | Code WMO |
+| `weather_label` | string \| null | Libellé affichable |
+| `precipitation_mm` | float \| null | mm/h au moment du retard |
+| `wind_speed_kmh` | float \| null | km/h |
+| `temperature_c` | float \| null | °C |
 | `notified_delay_minutes` | int \| null | Dernier retard pour lequel une notif a été enfilée |
 | `starts_at` / `ends_at` | datetime | |
 | `source` | `stub` \| `navitia` \| legacy `zou` \| `prim` | `zou`/`prim` = lecture / clear-stats seulement |
@@ -125,6 +131,7 @@ Un enregistrement par sens (`direction`) **par liaison**.
 | `id` | UUID | PK |
 | `external_id` | string | ID Navitia `stop_area` (unique) |
 | `label` | string | Affichage |
+| `latitude` / `longitude` | float \| null | WGS84 pour Open-Meteo (Nice/Monaco seedées) |
 | `display_url` | string \| null | Lien UI fiche publique (ex. G&C) — **jamais** scrapé |
 | `terminus_helpers_enabled` | bool | Legacy catalogue — **non utilisé** par le matching Navitia |
 | `terminus_helper_labels` | string[] | Legacy |
@@ -315,3 +322,4 @@ specs/system/     # Baseline narrative
 | `1.9.0` | 2026-08-18 | Veille +2 h après la fenêtre ; trains théoriques passés encore dus |
 | `1.10.0` | 2026-08-19 | Accès : visiteur, comptes locaux, rôles |
 | `1.11.0` | 2026-08-19 | Retrait failover ZOU (GTFS-RT) |
+| `1.12.0` | 2026-08-19 | Météo Open-Meteo + corrélation retards (dashboard) |

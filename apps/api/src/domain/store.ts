@@ -11,6 +11,7 @@ import type {
   DisruptionEventDto,
   DisruptionKind,
   DisruptionSeverity,
+  EventWeatherSnapshot,
   IngestConfigPublic,
   IngestConfigUpdate,
   IngestEventSource,
@@ -35,6 +36,9 @@ import type {
   UserPatchBody,
   UserPublic,
   UserRole,
+  WeatherBucket,
+  WeatherDelayCorrelation,
+  WeatherSnapshotPublic,
 } from "@sncf-alerts/shared";
 import {
   ADMIN_PASSWORD_MIN_LENGTH,
@@ -52,6 +56,11 @@ import { getPool } from "../db/pool.js";
 import { wouldRemoveLastAdmin } from "./access.js";
 import { isDepartureStillDue, isWithinWatchWindow } from "./matching.js";
 import { formatHmParis } from "./next-departure.js";
+import {
+  fetchWeatherSnapshot,
+  geocodeStationLabel,
+  weatherBucketLabel,
+} from "./weather.js";
 import { dashboardPeriodStarts } from "./paris-calendar.js";
 
 const SESSION_COOKIE = "sncf_admin_session";
@@ -100,6 +109,8 @@ type StoredCheck = {
 const NICE_VILLE = {
   id: "stop_area:SNCF:87756056",
   label: "Nice-Ville",
+  latitude: 43.7044,
+  longitude: 7.2619,
   displayUrl:
     "https://www.garesetconnexions.sncf/fr/gares-services/nice-ville",
 } as const;
@@ -107,6 +118,8 @@ const NICE_VILLE = {
 const MONACO_MONTE_CARLO = {
   id: "stop_area:SNCF:87756403",
   label: "Monaco - Monte-Carlo",
+  latitude: 43.7384,
+  longitude: 7.4194,
   displayUrl:
     "https://www.garesetconnexions.sncf/fr/gares-services/monaco-monte-carlo",
 } as const;
@@ -191,6 +204,14 @@ function mapStation(row: Record<string, unknown>): Station {
     id: String(row.id),
     externalId: String(row.external_id),
     label: String(row.label),
+    latitude:
+      row.latitude === null || row.latitude === undefined
+        ? null
+        : Number(row.latitude),
+    longitude:
+      row.longitude === null || row.longitude === undefined
+        ? null
+        : Number(row.longitude),
     displayUrl,
     terminusHelpersEnabled: Boolean(row.terminus_helpers_enabled),
     terminusHelperLabels,
@@ -246,6 +267,27 @@ function mapEvent(row: Record<string, unknown>): DisruptionEventDto {
       row.delay_reason_key === null || row.delay_reason_key === undefined
         ? null
         : String(row.delay_reason_key),
+    weatherBucket: (row.weather_bucket as WeatherBucket | null) ?? null,
+    weatherCode:
+      row.weather_code === null || row.weather_code === undefined
+        ? null
+        : Number(row.weather_code),
+    weatherLabel:
+      row.weather_label === null || row.weather_label === undefined
+        ? null
+        : String(row.weather_label),
+    precipitationMm:
+      row.precipitation_mm === null || row.precipitation_mm === undefined
+        ? null
+        : Number(row.precipitation_mm),
+    windSpeedKmh:
+      row.wind_speed_kmh === null || row.wind_speed_kmh === undefined
+        ? null
+        : Number(row.wind_speed_kmh),
+    temperatureC:
+      row.temperature_c === null || row.temperature_c === undefined
+        ? null
+        : Number(row.temperature_c),
     startsAt: new Date(String(row.starts_at)).toISOString(),
     endsAt: row.ends_at ? new Date(String(row.ends_at)).toISOString() : null,
     source: row.source as "stub" | "prim" | "navitia" | "zou",
@@ -488,15 +530,59 @@ export class PgStore {
     const pool = getPool();
     for (const s of defaults) {
       await pool.query(
-        `INSERT INTO stations (external_id, label, display_url, updated_at)
-         VALUES ($1, $2, $3, now())
+        `INSERT INTO stations (external_id, label, display_url, latitude, longitude, updated_at)
+         VALUES ($1, $2, $3, $4, $5, now())
          ON CONFLICT (external_id) DO UPDATE SET
            display_url = COALESCE(NULLIF(stations.display_url, ''), EXCLUDED.display_url),
            label = EXCLUDED.label,
+           latitude = COALESCE(stations.latitude, EXCLUDED.latitude),
+           longitude = COALESCE(stations.longitude, EXCLUDED.longitude),
            updated_at = now()`,
-        [s.id, s.label, s.displayUrl],
+        [s.id, s.label, s.displayUrl, s.latitude, s.longitude],
       );
     }
+  }
+
+  /** Lat/lon catalogue ; géocodage Open-Meteo si manquant. */
+  async resolveStationCoordinates(
+    externalId: string,
+    label?: string,
+  ): Promise<{ latitude: number; longitude: number } | null> {
+    const station = externalId
+      ? await this.getStationByExternalId(externalId)
+      : null;
+    if (
+      station?.latitude != null &&
+      station?.longitude != null &&
+      Number.isFinite(station.latitude) &&
+      Number.isFinite(station.longitude)
+    ) {
+      return { latitude: station.latitude, longitude: station.longitude };
+    }
+    const geoLabel = label ?? station?.label;
+    if (!geoLabel?.trim()) return null;
+    const hit = await geocodeStationLabel(geoLabel);
+    if (!hit || !externalId) return hit;
+    const pool = getPool();
+    await pool.query(
+      `UPDATE stations SET latitude = $2, longitude = $3, updated_at = now()
+       WHERE external_id = $1`,
+      [externalId, hit.latitude, hit.longitude],
+    );
+    return hit;
+  }
+
+  async getWeatherForOrigin(
+    originExternalId: string,
+    originLabel?: string,
+    at = new Date(),
+  ): Promise<WeatherSnapshotPublic | null> {
+    const coords = await this.resolveStationCoordinates(
+      originExternalId,
+      originLabel,
+    );
+    if (!coords) return null;
+    return fetchWeatherSnapshot(coords.latitude, coords.longitude, at);
   }
 
   private async getMeta(key: string): Promise<string | null> {
@@ -1313,8 +1399,63 @@ export class PgStore {
        LIMIT 8`,
       params,
     );
+    const weatherRes = await pool.query(
+      `SELECT weather_bucket AS bucket,
+              COUNT(*)::int AS delay_count,
+              ROUND(AVG(delay_minutes) FILTER (WHERE delay_minutes IS NOT NULL))::int AS avg_delay
+       FROM disruption_events
+       WHERE ${eventFilter}
+         AND kind = 'delay'
+         AND weather_bucket IS NOT NULL
+         AND weather_bucket <> 'unknown'
+       GROUP BY weather_bucket
+       ORDER BY delay_count DESC, weather_bucket ASC`,
+      params,
+    );
+    const weatherCountRes = await pool.query(
+      `SELECT COUNT(*)::int AS n
+       FROM disruption_events
+       WHERE ${eventFilter}
+         AND kind = 'delay'
+         AND weather_bucket IS NOT NULL
+         AND weather_bucket <> 'unknown'`,
+      params,
+    );
+    const corrRes = await pool.query(
+      `SELECT CORR(precipitation_mm, delay_minutes::float) AS r,
+              COUNT(*)::int AS n
+       FROM disruption_events
+       WHERE ${eventFilter}
+         AND kind = 'delay'
+         AND precipitation_mm IS NOT NULL
+         AND delay_minutes IS NOT NULL`,
+      params,
+    );
     const e = res.rows[0] ?? {};
     const d = delRes.rows[0] ?? {};
+    const delaysWithWeather = Number(weatherCountRes.rows[0]?.n ?? 0);
+    const weatherCorrelation: WeatherDelayCorrelation[] = weatherRes.rows.map(
+      (row) => {
+        const bucket = String(row.bucket) as WeatherBucket;
+        const delayCount = Number(row.delay_count ?? 0);
+        return {
+          bucket,
+          label: weatherBucketLabel(bucket),
+          delayCount,
+          avgDelayMinutes:
+            row.avg_delay === null || row.avg_delay === undefined
+              ? null
+              : Number(row.avg_delay),
+          sharePercent:
+            delaysWithWeather > 0
+              ? Math.round((delayCount / delaysWithWeather) * 100)
+              : 0,
+        };
+      },
+    );
+    const corrRow = corrRes.rows[0] ?? {};
+    const corrN = Number(corrRow.n ?? 0);
+    const corrR = corrRow.r === null || corrRow.r === undefined ? null : Number(corrRow.r);
     return {
       events: Number(e.events ?? 0),
       delays: Number(e.delays ?? 0),
@@ -1341,6 +1482,12 @@ export class PgStore {
         count: Number(row.count ?? 0),
       })),
       delaysWithoutReason: Number(e.delays_without_reason ?? 0),
+      delaysWithWeather,
+      weatherCorrelation,
+      precipitationDelayCorrelation:
+        corrN >= 5 && corrR != null && Number.isFinite(corrR)
+          ? Math.round(corrR * 100) / 100
+          : null,
     };
   }
 
@@ -1487,6 +1634,20 @@ export class PgStore {
     ]);
     const boardByJourney = await this.getJourneyBoardSnapshots(journeyIds);
 
+    const originKeys = new Map<string, string>();
+    for (const l of scopedLiaisons) {
+      for (const j of [l.outbound, l.inbound]) {
+        if (j.originId) originKeys.set(j.originId, j.originLabel);
+      }
+    }
+    const weatherByOrigin = new Map<string, WeatherSnapshotPublic | null>();
+    await Promise.all(
+      [...originKeys.entries()].map(async ([originId, originLabel]) => {
+        const w = await this.getWeatherForOrigin(originId, originLabel);
+        weatherByOrigin.set(originId, w);
+      }),
+    );
+
     const card = (j: JourneyConfig): JourneyStatusCard => {
       const latest =
         events.find((e) => e.journeyId === j.id) ??
@@ -1553,6 +1714,7 @@ export class PgStore {
         boardStatus,
         boardStatusLabel,
         nextDeparture,
+        originWeather: weatherByOrigin.get(j.originId) ?? null,
         latestEvent: latest
           ? {
               id: latest.id,
@@ -1939,13 +2101,21 @@ export class PgStore {
     );
     const delayReason = input.delayReason ?? null;
     const delayReasonKey = input.delayReasonKey ?? null;
+    const weatherBucket = input.weatherBucket ?? null;
+    const weatherCode = input.weatherCode ?? null;
+    const weatherLabel = input.weatherLabel ?? null;
+    const precipitationMm = input.precipitationMm ?? null;
+    const windSpeedKmh = input.windSpeedKmh ?? null;
+    const temperatureC = input.temperatureC ?? null;
     if ((existing.rowCount ?? 0) > 0) {
       const prev = existing.rows[0] as Record<string, unknown>;
       const res = await pool.query(
         `UPDATE disruption_events SET
           journey_id = $2, liaison_id = $3, direction = $4, kind = $5, severity = $6,
           title = $7, description = $8, delay_minutes = $9, starts_at = $10, ends_at = $11,
-          source = $12, delay_reason = $13, delay_reason_key = $14
+          source = $12, delay_reason = $13, delay_reason_key = $14,
+          weather_bucket = $15, weather_code = $16, weather_label = $17,
+          precipitation_mm = $18, wind_speed_kmh = $19, temperature_c = $20
          WHERE external_event_id = $1
          RETURNING *`,
         [
@@ -1963,6 +2133,12 @@ export class PgStore {
           input.source,
           delayReason,
           delayReasonKey,
+          weatherBucket,
+          weatherCode,
+          weatherLabel,
+          precipitationMm,
+          windSpeedKmh,
+          temperatureC,
         ],
       );
       return {
@@ -1981,8 +2157,9 @@ export class PgStore {
     const res = await pool.query(
       `INSERT INTO disruption_events (
         external_event_id, journey_id, liaison_id, direction, kind, severity, title, description,
-        delay_minutes, starts_at, ends_at, source, detected_at, delay_reason, delay_reason_key
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13::timestamptz, now()),$14,$15)
+        delay_minutes, starts_at, ends_at, source, detected_at, delay_reason, delay_reason_key,
+        weather_bucket, weather_code, weather_label, precipitation_mm, wind_speed_kmh, temperature_c
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13::timestamptz, now()),$14,$15,$16,$17,$18,$19,$20,$21)
       RETURNING *`,
       [
         input.externalEventId,
@@ -2000,6 +2177,12 @@ export class PgStore {
         input.detectedAt ?? null,
         delayReason,
         delayReasonKey,
+        weatherBucket,
+        weatherCode,
+        weatherLabel,
+        precipitationMm,
+        windSpeedKmh,
+        temperatureC,
       ],
     );
     return {

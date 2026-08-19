@@ -24,6 +24,7 @@ import {
   type LiaisonScopeValue,
 } from "../components/LiaisonScopePicker";
 import { StatCard } from "../components/StatCard";
+import { WeatherCorrelationPanel } from "../components/WeatherCorrelationPanel";
 import { errorMessage, formatRelative, formatWhen } from "../lib/format";
 
 const STORAGE_KEY = "sncf.dashboard.liaisonScope";
@@ -347,6 +348,7 @@ export function DashboardPage() {
             compact
           />
         </div>
+        <WeatherCorrelationPanel stats={p} />
         <ActivityHeatmap
           days={data.activityHeatmap ?? []}
           scopeHint={scopeHint}
