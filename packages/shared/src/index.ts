@@ -343,6 +343,55 @@ export interface AlertDeliveryDto {
 
 export const ADMIN_PASSWORD_MIN_LENGTH = 8;
 
+export const USER_ROLES = ["reader", "liaison_editor", "admin"] as const;
+export type UserRole = (typeof USER_ROLES)[number];
+
+export const ROLES_ANY: UserRole[] = ["reader", "liaison_editor", "admin"];
+export const ROLES_LIAISON: UserRole[] = ["liaison_editor", "admin"];
+export const ROLES_ADMIN: UserRole[] = ["admin"];
+
+export function isUserRole(value: unknown): value is UserRole {
+  return USER_ROLES.includes(value as UserRole);
+}
+
+export function roleCanAccessAdmin(role: UserRole): boolean {
+  return role === "liaison_editor" || role === "admin";
+}
+
+export interface AuthMe {
+  username: string;
+  role: UserRole;
+}
+
+export interface AuthConfigPublic {
+  visitorEnabled: boolean;
+}
+
+export interface AccessSettings {
+  visitorEnabled: boolean;
+}
+
+export interface UserPublic {
+  id: string;
+  username: string;
+  role: UserRole;
+  disabled: boolean;
+  createdAt: string;
+}
+
+export interface UserCreateBody {
+  username: string;
+  password: string;
+  role: UserRole;
+}
+
+export interface UserPatchBody {
+  role?: UserRole;
+  disabled?: boolean;
+  /** Reset write-only ; vide / omis = ne pas changer */
+  password?: string;
+}
+
 export interface AdminPasswordUpdate {
   currentPassword: string;
   newPassword: string;

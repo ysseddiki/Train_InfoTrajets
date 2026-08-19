@@ -81,9 +81,11 @@ createdb -O sncf sncf_alerts
 # DATABASE_URL=postgres://sncf:MOT_DE_PASSE@127.0.0.1:5432/sncf_alerts
 ```
 
-L’API exécute automatiquement le schéma (`apps/api/src/db/schema.sql`) au démarrage et crée le compte admin (hash bcrypt) à partir de `ADMIN_USERNAME` / `ADMIN_PASSWORD` **au premier boot**. Ensuite, le mot de passe se change dans **Admin → Compte**.
+L’API exécute automatiquement le schéma (`apps/api/src/db/schema.sql`) au démarrage et crée le **premier** compte admin (hash bcrypt, rôle `admin`) à partir de `ADMIN_USERNAME` / `ADMIN_PASSWORD` **au premier boot**. Ensuite, les comptes se gèrent dans **Admin → Comptes**. Chaque user change son mot de passe via le menu compte (ou Admin → Compte).
 
-Pour **ré-écraser** le hash depuis `.env` (urgence / oubli) :
+Le dashboard est derrière une **porte d’entrée** (connexion ou visiteur). Un admin peut désactiver le mode visiteur dans **Admin → Accès**.
+
+Pour **ré-écraser** le hash du compte bootstrap depuis `.env` (urgence / oubli) :
 
 ```env
 ADMIN_PASSWORD_SYNC=true

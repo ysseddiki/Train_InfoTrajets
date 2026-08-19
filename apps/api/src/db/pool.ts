@@ -246,6 +246,22 @@ async function ensureDeliveryLiaisonColumn(p: pg.Pool): Promise<void> {
   `);
 }
 
+async function ensureUserAccessColumns(p: pg.Pool): Promise<void> {
+  if (!(await tableExists(p, "admin_accounts"))) return;
+  if (!(await columnExists(p, "admin_accounts", "role"))) {
+    await p.query(`
+      ALTER TABLE admin_accounts
+      ADD COLUMN role TEXT NOT NULL DEFAULT 'admin'
+      CHECK (role IN ('reader', 'liaison_editor', 'admin'))
+    `);
+  }
+  if (!(await columnExists(p, "admin_accounts", "disabled_at"))) {
+    await p.query(
+      `ALTER TABLE admin_accounts ADD COLUMN disabled_at TIMESTAMPTZ`,
+    );
+  }
+}
+
 export async function migrate(): Promise<void> {
   const p = getPool();
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -259,6 +275,7 @@ export async function migrate(): Promise<void> {
   await ensureStationsTable(p);
   await ensureLiaisonDefaultColumn(p);
   await ensureDeliveryLiaisonColumn(p);
+  await ensureUserAccessColumns(p);
   await p.query(`
     CREATE TABLE IF NOT EXISTS notify_jobs (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

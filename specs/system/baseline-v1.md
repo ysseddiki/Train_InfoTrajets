@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.9.0`  
-> **Date** : 2026-08-18  
-> **Change** : `openspec/changes/watch-lag-delayed-departures`  
+> **Version** : `1.10.0`  
+> **Date** : 2026-08-19  
+> **Change** : `openspec/changes/access-control-roles`  
 > **Format** : OpenSpec
 
 ---
@@ -13,8 +13,8 @@
 SNCF-Alerts est un outil **ops interne** (quelques opérateurs) qui :
 
 1. Surveille **une ou plusieurs liaisons** (chaque liaison = **Aller** `outbound` + **Retour** `inbound`)
-2. Affiche un **dashboard** de lecture (stats, état par liaison, historique) — **sans login app**, derrière restriction réseau
-3. Expose une **console admin** (login simple) pour configurer liaisons, SMTP, destinataires email, Teams, mot de passe admin
+2. Affiche un **dashboard** de lecture (stats, état par liaison, historique) — session **ou** mode visiteur
+3. Expose une **console admin** filtrée par rôle (`reader` / `liaison_editor` / `admin`) pour configurer liaisons, SMTP, destinataires, Teams, comptes
 4. Envoie des notifications via **Email (SMTP custom)** et **Microsoft Teams**
 
 Le client (`apps/web`) et le serveur (`apps/api`) sont séparés. Specs détaillées : `openspec/specs/*`.
@@ -40,7 +40,7 @@ Le système MUST disposer d’une baseline OpenSpec alignée sur le pivot ops (`
 ### 1.1 Entités
 
 ```text
-AdminAccount (unique)
+UserAccount (role: reader | liaison_editor | admin)
 Liaison ──2 JourneyConfig (outbound | inbound) ──* DisruptionEvent
 NotificationSettings ── EmailRecipients[]
                      ── SmtpConfig (secret_ref)
@@ -49,16 +49,18 @@ AlertDelivery *── DisruptionEvent
               *── channel (email | teams)
 ```
 
-### 1.2 AdminAccount
+### 1.2 UserAccount (`admin_accounts`)
 
 | Champ | Type | Notes |
 |-------|------|-------|
 | `id` | UUID | PK |
 | `username` | string | unique |
-| `password_hash` | string | argon2/bcrypt — jamais exposé |
+| `password_hash` | string | bcrypt — jamais exposé |
+| `role` | `reader` \| `liaison_editor` \| `admin` | un seul rôle |
+| `disabled_at` | datetime \| null | compte inactif |
 | `created_at` | datetime | UTC |
 
-Pas d’autres users en v1.
+Comptes créés par un `admin` uniquement. Bootstrap `.env` du premier admin. Pas d’inscription publique.
 
 ### 1.2b Liaison
 
@@ -162,14 +164,15 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 
 - Base : `/v1`
 - JSON ; erreurs RFC 7807
-- Dashboard : **sans** auth app
-- Admin : session cookie httpOnly après login
+- Dashboard : session **ou** `visitorEnabled`
+- Admin : session cookie httpOnly ; autorisation par rôle
 
-### Dashboard (réseau trusté)
+### Dashboard (session ou visiteur)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/v1/health` | Santé API |
+| GET | `/v1/health` | Santé API (public) |
+| GET | `/v1/auth/config` | `{ visitorEnabled }` (public) |
 | GET | `/v1/dashboard/overview` | Stats + statut par liaison |
 | GET | `/v1/liaisons` | Config publique des liaisons |
 | GET | `/v1/journeys` | Config publique des legs (flat) |
@@ -182,8 +185,11 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 |--------|------|-------------|
 | POST | `/v1/admin/login` | Login |
 | POST | `/v1/admin/logout` | Logout |
-| GET | `/v1/admin/me` | Session courante |
+| GET | `/v1/admin/me` | Session courante `{ username, role }` |
 | PUT | `/v1/admin/account/password` | Changer le mot de passe (actuel + nouveau, min 8) |
+| GET/POST | `/v1/admin/users` | Lister / créer un compte (admin) |
+| PATCH | `/v1/admin/users/:id` | Rôle, désactivation, reset mot de passe (admin) |
+| GET/PUT | `/v1/admin/settings/access` | Toggle `visitorEnabled` (admin) |
 | GET/POST | `/v1/admin/liaisons` | Liste / créer |
 | GET/PUT/DELETE | `/v1/admin/liaisons/:id` | Lire / maj / supprimer |
 | GET/PUT | `/v1/admin/journeys/:direction` | Compat (1ʳᵉ liaison) |
@@ -238,7 +244,7 @@ File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non blo
 
 - Pas de stockage de mots de passe en clair
 - Pas de secrets dans git, logs, réponses API
-- Destinataires = liste ops saisie par l’admin (pas de comptes users)
+- Destinataires = liste ops saisie par l’admin (pas de comptes voyageurs)
 
 ---
 
@@ -254,7 +260,7 @@ File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non blo
 | Shared | `packages/shared` types |
 | DB | PostgreSQL 16 (phase suivante ; mémoire/sqlite OK pour stub initial) |
 | Queue | table `notify_jobs` (Postgres) ; Redis optionnel plus tard |
-| Auth | session cookie + password hash |
+| Auth | session cookie + rôles locaux + mode visiteur |
 | Workloads | `sncf-alerts-api` ≠ `sncf-alerts-ingest` (systemd) |
 
 ### Externes

@@ -6,6 +6,9 @@ CREATE TABLE IF NOT EXISTS admin_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   username TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'admin'
+    CHECK (role IN ('reader', 'liaison_editor', 'admin')),
+  disabled_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

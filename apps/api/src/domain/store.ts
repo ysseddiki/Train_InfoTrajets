@@ -31,9 +31,14 @@ import type {
   Station,
   StationUpsertBody,
   TeamsConfigPublic,
+  UserCreateBody,
+  UserPatchBody,
+  UserPublic,
+  UserRole,
 } from "@sncf-alerts/shared";
 import {
   ADMIN_PASSWORD_MIN_LENGTH,
+  isUserRole,
   clampIngestPollSeconds,
   clampNotifyStepMinutes,
   clampWatchLeadHours,
@@ -44,6 +49,7 @@ import {
   resolveLiaisonDisplayName,
 } from "@sncf-alerts/shared";
 import { getPool } from "../db/pool.js";
+import { wouldRemoveLastAdmin } from "./access.js";
 import { isDepartureStillDue, isWithinWatchWindow } from "./matching.js";
 import { formatHmParis } from "./next-departure.js";
 import { dashboardPeriodStarts } from "./paris-calendar.js";
@@ -67,6 +73,7 @@ const META_SMTP_USERNAME = "smtp_username";
 const META_SMTP_PASSWORD = "smtp_password";
 const META_SMTP_FROM = "smtp_from";
 const META_SMTP_BOOTSTRAPPED = "smtp_bootstrapped_from_env";
+const META_VISITOR_ENABLED = "visitor_enabled";
 
 function parseIngestProvider(value: string | null | undefined): IngestProviderId {
   // Ancien provider PRIM (IDF) → Navitia
@@ -312,6 +319,27 @@ function resolveBoardStatus(input: {
   return { boardStatus: "no_data", boardStatusLabel: "Pas de données" };
 }
 
+function httpError(status: number, message: string): Error {
+  return Object.assign(new Error(message), { statusCode: status });
+}
+
+function mapUserRow(row: {
+  id: unknown;
+  username: unknown;
+  role: unknown;
+  disabled_at: unknown;
+  created_at: unknown;
+}): UserPublic {
+  const role = isUserRole(row.role) ? row.role : "admin";
+  return {
+    id: String(row.id),
+    username: String(row.username),
+    role,
+    disabled: row.disabled_at != null,
+    createdAt: new Date(String(row.created_at)).toISOString(),
+  };
+}
+
 export class PgStore {
   readonly sessionCookieName = SESSION_COOKIE;
 
@@ -328,7 +356,7 @@ export class PgStore {
     if (existing.rowCount === 0) {
       const hash = await bcrypt.hash(password, 12);
       await pool.query(
-        `INSERT INTO admin_accounts (username, password_hash) VALUES ($1, $2)`,
+        `INSERT INTO admin_accounts (username, password_hash, role) VALUES ($1, $2, 'admin')`,
         [username, hash],
       );
     } else if (process.env.ADMIN_PASSWORD_SYNC === "true") {
@@ -337,6 +365,10 @@ export class PgStore {
         `UPDATE admin_accounts SET password_hash = $2 WHERE username = $1`,
         [username, hash],
       );
+    }
+
+    if ((await this.getMeta(META_VISITOR_ENABLED)) === null) {
+      await this.setMeta(META_VISITOR_ENABLED, "true");
     }
 
     const boardSeed = await pool.query(
@@ -648,17 +680,20 @@ export class PgStore {
   async verifyLogin(
     username: string,
     password: string,
-  ): Promise<{ id: string; username: string } | null> {
+  ): Promise<{ id: string; username: string; role: UserRole } | null> {
     const pool = getPool();
     const res = await pool.query(
-      `SELECT id, username, password_hash FROM admin_accounts WHERE username = $1`,
+      `SELECT id, username, password_hash, role, disabled_at
+       FROM admin_accounts WHERE username = $1`,
       [username],
     );
     if (res.rowCount === 0) return null;
     const row = res.rows[0];
+    if (row.disabled_at != null) return null;
     const ok = await bcrypt.compare(password, String(row.password_hash));
     if (!ok) return null;
-    return { id: String(row.id), username: String(row.username) };
+    const role = isUserRole(row.role) ? row.role : "admin";
+    return { id: String(row.id), username: String(row.username), role };
   }
 
   async changeAdminPassword(
@@ -712,11 +747,11 @@ export class PgStore {
 
   async getSession(
     sessionId: string | undefined,
-  ): Promise<{ adminId: string; username: string } | null> {
+  ): Promise<{ adminId: string; username: string; role: UserRole } | null> {
     if (!sessionId) return null;
     const pool = getPool();
     const res = await pool.query(
-      `SELECT s.admin_id, a.username, s.expires_at
+      `SELECT s.admin_id, a.username, a.role, a.disabled_at, s.expires_at
        FROM sessions s
        JOIN admin_accounts a ON a.id = s.admin_id
        WHERE s.id = $1`,
@@ -724,17 +759,153 @@ export class PgStore {
     );
     if (res.rowCount === 0) return null;
     const row = res.rows[0];
+    if (row.disabled_at != null) {
+      await pool.query(`DELETE FROM sessions WHERE id = $1`, [sessionId]);
+      return null;
+    }
     if (new Date(row.expires_at).getTime() <= Date.now()) {
       await pool.query(`DELETE FROM sessions WHERE id = $1`, [sessionId]);
       return null;
     }
-    return { adminId: String(row.admin_id), username: String(row.username) };
+    const role = isUserRole(row.role) ? row.role : "admin";
+    return {
+      adminId: String(row.admin_id),
+      username: String(row.username),
+      role,
+    };
   }
 
   async deleteSession(sessionId: string | undefined): Promise<void> {
     if (!sessionId) return;
     const pool = getPool();
     await pool.query(`DELETE FROM sessions WHERE id = $1`, [sessionId]);
+  }
+
+  async getVisitorEnabled(): Promise<boolean> {
+    const raw = await this.getMeta(META_VISITOR_ENABLED);
+    if (raw === null) return true;
+    return raw !== "false";
+  }
+
+  async setVisitorEnabled(enabled: boolean): Promise<boolean> {
+    await this.setMeta(META_VISITOR_ENABLED, enabled ? "true" : "false");
+    return enabled;
+  }
+
+  async listUsers(): Promise<UserPublic[]> {
+    const pool = getPool();
+    const res = await pool.query(
+      `SELECT id, username, role, disabled_at, created_at
+       FROM admin_accounts
+       ORDER BY username`,
+    );
+    return res.rows.map(mapUserRow);
+  }
+
+  async createUser(body: UserCreateBody): Promise<UserPublic> {
+    const username = String(body.username ?? "").trim();
+    const password = String(body.password ?? "");
+    const role = body.role;
+    if (!username) {
+      throw httpError(400, "username is required");
+    }
+    if (password.length < ADMIN_PASSWORD_MIN_LENGTH) {
+      throw httpError(
+        400,
+        `Le mot de passe doit faire au moins ${ADMIN_PASSWORD_MIN_LENGTH} caractères`,
+      );
+    }
+    if (!isUserRole(role)) {
+      throw httpError(400, "role must be reader | liaison_editor | admin");
+    }
+    const hash = await bcrypt.hash(password, 12);
+    const pool = getPool();
+    try {
+      const res = await pool.query(
+        `INSERT INTO admin_accounts (username, password_hash, role)
+         VALUES ($1, $2, $3)
+         RETURNING id, username, role, disabled_at, created_at`,
+        [username, hash, role],
+      );
+      return mapUserRow(res.rows[0]);
+    } catch (err) {
+      const code = (err as { code?: string }).code;
+      if (code === "23505") {
+        throw httpError(409, "Username already exists");
+      }
+      throw err;
+    }
+  }
+
+  async patchUser(id: string, body: UserPatchBody): Promise<UserPublic> {
+    const pool = getPool();
+    const existing = await pool.query(
+      `SELECT id, username, role, disabled_at, created_at, password_hash
+       FROM admin_accounts WHERE id = $1`,
+      [id],
+    );
+    if (existing.rowCount === 0) {
+      throw httpError(404, "User not found");
+    }
+    const row = existing.rows[0];
+    const current = mapUserRow(row);
+    const nextRole =
+      body.role !== undefined
+        ? isUserRole(body.role)
+          ? body.role
+          : (() => {
+              throw httpError(400, "role must be reader | liaison_editor | admin");
+            })()
+        : current.role;
+    const nextDisabled =
+      body.disabled !== undefined ? Boolean(body.disabled) : current.disabled;
+
+    const adminCount = await pool.query(
+      `SELECT COUNT(*)::int AS n FROM admin_accounts
+       WHERE role = 'admin' AND disabled_at IS NULL`,
+    );
+    const activeAdminCount = Number(adminCount.rows[0]?.n ?? 0);
+    if (
+      wouldRemoveLastAdmin({
+        targetIsActiveAdmin: current.role === "admin" && !current.disabled,
+        activeAdminCount,
+        disable: nextDisabled && !current.disabled ? true : undefined,
+        nextRole: nextRole !== current.role ? nextRole : undefined,
+      })
+    ) {
+      throw httpError(400, "Impossible de retirer le dernier admin");
+    }
+
+    let passwordHash = String(row.password_hash);
+    if (body.password !== undefined && body.password !== "") {
+      if (body.password.length < ADMIN_PASSWORD_MIN_LENGTH) {
+        throw httpError(
+          400,
+          `Le mot de passe doit faire au moins ${ADMIN_PASSWORD_MIN_LENGTH} caractères`,
+        );
+      }
+      passwordHash = await bcrypt.hash(body.password, 12);
+    }
+
+    const disabledAt = nextDisabled
+      ? current.disabled
+        ? row.disabled_at
+        : new Date().toISOString()
+      : null;
+
+    const updated = await pool.query(
+      `UPDATE admin_accounts
+       SET role = $2, disabled_at = $3, password_hash = $4
+       WHERE id = $1
+       RETURNING id, username, role, disabled_at, created_at`,
+      [id, nextRole, disabledAt, passwordHash],
+    );
+
+    if (nextDisabled && !current.disabled) {
+      await pool.query(`DELETE FROM sessions WHERE admin_id = $1`, [id]);
+    }
+
+    return mapUserRow(updated.rows[0]);
   }
 
   async listJourneys(): Promise<JourneyConfig[]> {

@@ -7,6 +7,7 @@ import { migrate } from "./db/pool.js";
 import { loadRepoEnv } from "./domain/env.js";
 import { getFeatureFlags } from "./domain/feature-flags.js";
 import { store } from "./domain/store.js";
+import { registerAuthRoutes } from "./routes/auth.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerDashboardRoutes } from "./routes/dashboard.js";
 
@@ -57,6 +58,7 @@ async function main() {
     };
   });
 
+  await registerAuthRoutes(app);
   await registerDashboardRoutes(app);
   await registerAdminRoutes(app);
 

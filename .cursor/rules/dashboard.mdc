@@ -6,8 +6,8 @@ alwaysApply: false
 
 # Dashboard
 
-- Lecture seule : statut Aller + Retour, stats, événements, livraisons
-- Pas d’auth applicative (restriction réseau documentée)
+- Lecture : statut Aller + Retour, stats, événements, livraisons
+- Accès : session **ou** mode visiteur ; porte d’entrée avant le shell
 - Sélecteur de liaison (pill) : **défaut serveur** au load ; « Toutes les liaisons » explicite (`?liaisonId=all`)
 - Stats / activité filtrées côté API (`overview` / `events` / `deliveries` + `liaisonId`)
 - Deux cartes sens (`outbound` / `inbound`) par liaison ; plusieurs liaisons possibles

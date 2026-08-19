@@ -1,5 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type {
+  AccessSettings,
   JourneyConfig,
   JourneyDirection,
   LiaisonUpsertBody,
@@ -10,12 +11,16 @@ import type {
   SmtpConfigUpdate,
   StationUpsertBody,
   AdminPasswordUpdate,
+  UserCreateBody,
+  UserPatchBody,
 } from "@sncf-alerts/shared";
+import { ROLES_ANY, ROLES_LIAISON } from "@sncf-alerts/shared";
 import { probeIngestCredential } from "../adapters/ingest-probe.js";
 import { injectStubEvent, seedStubHistory } from "../adapters/ingest.js";
 import {
   clearSessionCookie,
   requireAdmin,
+  requireRole,
   sanitizeForLog,
   setSessionCookie,
 } from "../domain/auth.js";
@@ -66,7 +71,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     resetLoginRateLimit(ip);
     const session = await store.createSession(admin.id);
     setSessionCookie(reply, session.id, session.expiresAt);
-    return { authenticated: true, username: admin.username };
+    return { authenticated: true, username: admin.username, role: admin.role };
   });
 
   app.post("/v1/admin/logout", async (req, reply) => {
@@ -77,15 +82,15 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   });
 
   app.get("/v1/admin/me", async (req, reply) => {
-    const session = await requireAdmin(req, reply);
+    const session = await requireRole(req, reply, ROLES_ANY);
     if (!session) return;
-    return { username: session.username, role: "admin" };
+    return { username: session.username, role: session.role };
   });
 
   app.put<{ Body: AdminPasswordUpdate }>(
     "/v1/admin/account/password",
     async (req, reply) => {
-      const session = await requireAdmin(req, reply);
+      const session = await requireRole(req, reply, ROLES_ANY);
       if (!session) return;
       try {
         await store.changeAdminPassword(
@@ -112,19 +117,19 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   );
 
   app.get("/v1/admin/liaisons", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
     return store.listLiaisons();
   });
 
   app.post("/v1/admin/liaisons", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
     return store.createLiaison();
   });
 
   app.get<{ Params: { id: string } }>(
     "/v1/admin/liaisons/:id",
     async (req, reply) => {
-      if (!(await requireAdmin(req, reply))) return;
+      if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
       const liaison = await store.getLiaison(req.params.id);
       if (!liaison) {
         return reply.code(404).send({
@@ -140,7 +145,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.put<{ Params: { id: string }; Body: LiaisonUpsertBody }>(
     "/v1/admin/liaisons/:id",
     async (req, reply) => {
-      if (!(await requireAdmin(req, reply))) return;
+      if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
       try {
         return await store.upsertLiaison(req.params.id, req.body ?? {});
       } catch (err) {
@@ -157,7 +162,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.delete<{ Params: { id: string } }>(
     "/v1/admin/liaisons/:id",
     async (req, reply) => {
-      if (!(await requireAdmin(req, reply))) return;
+      if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
       try {
         await store.deleteLiaison(req.params.id);
         return { ok: true };
@@ -180,7 +185,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.put<{ Params: { id: string } }>(
     "/v1/admin/liaisons/:id/default",
     async (req, reply) => {
-      if (!(await requireAdmin(req, reply))) return;
+      if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
       try {
         return await store.setDefaultLiaison(req.params.id);
       } catch (err) {
@@ -195,14 +200,14 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   );
 
   app.get("/v1/admin/stations", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
     return store.listStations();
   });
 
   app.post<{ Body: StationUpsertBody }>(
     "/v1/admin/stations",
     async (req, reply) => {
-      if (!(await requireAdmin(req, reply))) return;
+      if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
       try {
         return await store.createStation(req.body ?? { externalId: "", label: "" });
       } catch (err) {
@@ -275,7 +280,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   app.get<{ Params: { direction: JourneyDirection } }>(
     "/v1/admin/journeys/:direction",
     async (req, reply) => {
-      if (!(await requireAdmin(req, reply))) return;
+      if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
       const journey = await store.getJourney(req.params.direction);
       if (!journey) {
         return reply.code(404).send({
@@ -292,7 +297,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     Params: { direction: JourneyDirection };
     Body: Partial<JourneyConfig>;
   }>("/v1/admin/journeys/:direction", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    if (!(await requireRole(req, reply, ROLES_LIAISON))) return;
     return store.upsertJourney(req.params.direction, req.body ?? {});
   });
 
@@ -513,4 +518,76 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const deleted = clearIngestApiLogs(source);
     return { ok: true, deleted };
   });
+
+  app.get("/v1/admin/users", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return store.listUsers();
+  });
+
+  app.post<{ Body: UserCreateBody }>(
+    "/v1/admin/users",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      try {
+        return await store.createUser(req.body ?? ({} as UserCreateBody));
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type:
+            status === 409
+              ? "/errors/conflict"
+              : status === 400
+                ? "/errors/validation"
+                : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
+
+  app.patch<{ Params: { id: string }; Body: UserPatchBody }>(
+    "/v1/admin/users/:id",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      try {
+        return await store.patchUser(req.params.id, req.body ?? {});
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type:
+            status === 404
+              ? "/errors/not-found"
+              : status === 400
+                ? "/errors/validation"
+                : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
+
+  app.get("/v1/admin/settings/access", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return { visitorEnabled: await store.getVisitorEnabled() };
+  });
+
+  app.put<{ Body: AccessSettings }>(
+    "/v1/admin/settings/access",
+    async (req, reply) => {
+      if (!(await requireAdmin(req, reply))) return;
+      const enabled = req.body?.visitorEnabled;
+      if (typeof enabled !== "boolean") {
+        return reply.code(400).send({
+          type: "/errors/validation",
+          title: "visitorEnabled must be a boolean",
+          status: 400,
+        });
+      }
+      return {
+        visitorEnabled: await store.setVisitorEnabled(enabled),
+      };
+    },
+  );
 }

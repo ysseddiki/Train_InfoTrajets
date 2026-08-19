@@ -7,7 +7,7 @@ alwaysApply: false
 # API server
 
 - Fastify sous `apps/api` ; routes versionnées `/v1`
-- Dashboard routes : pas d’auth app ; Admin routes : session obligatoire
+- Dashboard routes : session **ou** visiteur ON ; Admin routes : `requireRole`
 - Secrets via `process.env` uniquement ; ne jamais renvoyer SMTP password / webhook en clair
 - Adapters derrière ports (`DisruptionIngestPort`, notifiers) — une implémentation ingest active
 - Erreurs préférablement RFC 7807 (`type`, `title`, `status`)

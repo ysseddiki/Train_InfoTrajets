@@ -2,21 +2,21 @@
 
 ## Purpose
 
-SNCF-Alerts est un outil **ops interne** qui surveille une ou plusieurs **liaisons** SNCF (chaque liaison = Aller + Retour), affiche un dashboard de lecture, permet à un **admin** de configurer cibles et canaux, et envoie des alertes via **Email (SMTP custom)** et **Microsoft Teams**.
+SNCF-Alerts est un outil **ops interne** qui surveille une ou plusieurs **liaisons** SNCF (chaque liaison = Aller + Retour), affiche un dashboard de lecture (session ou visiteur), permet de configurer cibles et canaux selon le rôle, et envoie des alertes via **Email (SMTP custom)** et **Microsoft Teams**.
 
-Le client (`apps/web`) et le serveur (`apps/api`) sont strictement séparés. Les secrets et intégrations externes restent côté serveur. Aucun compte voyageur en v1 (éventuellement version lointaine).
+Le client (`apps/web`) et le serveur (`apps/api`) sont strictement séparés. Les secrets et intégrations externes restent côté serveur. Comptes **locaux** (rôles `reader` / `liaison_editor` / `admin`) ; pas de comptes voyageurs B2C ni de canal push.
 
 ## Requirements
 
 ### Requirement: Produit ops interne Aller/Retour
 
-Le système SHALL être un outil ops interne qui surveille une ou plusieurs liaisons (chaque liaison = `outbound` / Aller et `inbound` / Retour), expose un dashboard de lecture et une console admin, et notifie via Email (SMTP) et Teams.
+Le système SHALL être un outil ops interne qui surveille une ou plusieurs liaisons (chaque liaison = `outbound` / Aller et `inbound` / Retour), expose un dashboard de lecture (session ou visiteur) et une console admin selon le rôle, et notifie via Email (SMTP) et Teams. Les comptes sont **locaux** (un rôle parmi `reader`, `liaison_editor`, `admin`), créés par un admin. Pas de comptes voyageurs B2C ni de canal push.
 
-#### Scenario: Périmètre v1
+#### Scenario: Périmètre
 
-- **GIVEN** le déploiement v1
+- **GIVEN** le déploiement
 - **WHEN** un opérateur utilise le produit
-- **THEN** seules les surfaces Dashboard et Admin sont disponibles
+- **THEN** les surfaces Dashboard, Notifications et Admin (filtrée) sont disponibles
 - **AND** aucun compte voyageur ni canal push n’existe
 - **AND** au moins une liaison est configurée (seed par défaut)
 - **AND** aucune source d’ingest scrape Gares & Connexions n’est disponible

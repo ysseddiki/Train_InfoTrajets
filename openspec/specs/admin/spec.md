@@ -6,15 +6,37 @@ La console d’administration permet à un admin authentifié de configurer les 
 
 ## Requirements
 
-### Requirement: Console admin authentifiée
+### Requirement: Console admin authentifiée et filtrée par rôle
 
-La console admin MUST exiger un login simple (session serveur) avant tout accès aux opérations de configuration.
+La console admin MUST exiger une session. L’accès aux opérations MUST dépendre du rôle :
+
+- `reader` : aucun accès admin (`403` / pas de lien UI)
+- `liaison_editor` : CRUD liaisons ; lecture catalogue gares ; création d’une gare (`POST /v1/admin/stations`) depuis le formulaire liaison ; changement de son mot de passe
+- `admin` : toutes les opérations (canaux, ingest, debug, clear stats, gares CRUD, comptes, toggle visiteur)
 
 #### Scenario: Accès non authentifié
 
-- **GIVEN** aucune session admin
+- **GIVEN** aucune session
 - **WHEN** un client appelle `GET /v1/admin/liaisons`
 - **THEN** l’API retourne `401`
+
+#### Scenario: Reader refusé
+
+- **GIVEN** une session `reader`
+- **WHEN** il appelle `GET /v1/admin/liaisons`
+- **THEN** l’API retourne `403`
+
+#### Scenario: Éditeur liaisons sans secrets
+
+- **GIVEN** une session `liaison_editor`
+- **WHEN** il appelle `GET /v1/admin/channels/smtp`
+- **THEN** l’API retourne `403`
+
+#### Scenario: Éditeur crée une liaison
+
+- **GIVEN** une session `liaison_editor`
+- **WHEN** il envoie `POST /v1/admin/liaisons`
+- **THEN** la liaison est créée
 
 ### Requirement: Configuration des liaisons
 
@@ -150,12 +172,22 @@ Un admin authentifié SHALL pouvoir configurer **indépendamment** les providers
 
 Un admin authentifié SHALL pouvoir lire et mettre à jour la config SMTP via `GET/PUT /v1/admin/channels/smtp` (host, port, secure, username, from, enabled). Le mot de passe MUST être write-only (`passwordConfigured` en lecture). La config MUST être stockée côté serveur (app_meta) ; un bootstrap depuis `.env` MAY remplir les meta vides une seule fois.
 
-### Requirement: Formulaire mot de passe admin
+### Requirement: Formulaire mot de passe
 
-La console SHALL exposer une section Compte permettant de changer le mot de passe (actuel, nouveau, confirmation). MUST NOT préremplir ni afficher le mot de passe existant.
+La console SHALL exposer une section Compte (et un menu shell) permettant de changer le mot de passe (actuel, nouveau, confirmation). MUST NOT préremplir ni afficher le mot de passe existant.
 
 #### Scenario: Confirmation
 
-- **GIVEN** un admin sur la section Compte
+- **GIVEN** un utilisateur change son mot de passe
 - **WHEN** nouveau et confirmation diffèrent
 - **THEN** le client n’envoie pas la requête
+
+### Requirement: Section Comptes et Accès (admin)
+
+La console SHALL exposer, pour un `admin` uniquement, une section **Comptes** (création, rôle, désactivation) et une section **Accès** (toggle mode visiteur).
+
+#### Scenario: Toggle visiteur
+
+- **GIVEN** un admin sur Accès
+- **WHEN** il désactive le mode visiteur
+- **THEN** `PUT /v1/admin/settings/access` persiste `visitorEnabled: false`

@@ -265,7 +265,9 @@ h3,
 
   .sidebar-brand .brand-name,
   .sidebar-link .nav-label,
-  .sidebar-foot .api-status-label {
+  .sidebar-foot .api-status-label,
+  .sidebar-account-label,
+  .sidebar-account-name {
     position: absolute;
     width: 1px;
     height: 1px;
@@ -532,6 +534,123 @@ main.main-wide {
   flex-direction: column;
   gap: 0.85rem;
   margin-top: 1.25rem;
+}
+
+.gate-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+}
+
+.gate-loading {
+  padding: 2rem;
+}
+
+.gate-visitor-btn {
+  width: 100%;
+  margin-top: 0.75rem;
+}
+
+.sidebar-account {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.sidebar-account-name {
+  margin: 0;
+  padding: 0 0.55rem;
+  font-size: 0.85rem;
+  color: var(--sidebar-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sidebar-account-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--sidebar-muted);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+}
+
+.sidebar-account-btn:hover {
+  color: var(--sidebar-ink);
+  background: var(--sidebar-active);
+}
+
+.account-drawer {
+  margin: 0 0 1rem;
+  padding: 1rem 1.1rem;
+}
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(21, 32, 41, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.dialog-card {
+  width: min(100%, 420px);
+  padding: 1.25rem 1.2rem;
+}
+
+.users-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.users-list li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.users-list li.is-disabled strong {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.users-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
 }
 
 .admin-empty {

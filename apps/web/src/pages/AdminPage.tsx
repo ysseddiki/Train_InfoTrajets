@@ -4,6 +4,7 @@ import type {
   RecipientsConfig,
   Station,
   TeamsConfigPublic,
+  UserRole,
 } from "@sncf-alerts/shared";
 import {
   Bug,
@@ -15,18 +16,22 @@ import {
   Plus,
   Radio,
   Route,
+  Shield,
   Trash2,
+  Users,
 } from "lucide-react";
 import {
-  useCallback,
   useEffect,
   useState,
   type FormEvent,
   type ReactNode,
 } from "react";
 import { apiGet, apiSend } from "../api/client";
+import { useAuth } from "../auth/AuthContext";
+import { AccessPanel, UsersPanel } from "../components/AccessUsersPanels";
 import { AdminAccountPanel } from "../components/AdminAccountPanel";
 import { ClearStatsPanel } from "../components/ClearStatsPanel";
+import { CreateStationDialog } from "../components/CreateStationDialog";
 import { DebugPanel } from "../components/DebugPanel";
 import { IngestConfigPanel } from "../components/IngestConfigPanel";
 import { LiaisonForm } from "../components/LiaisonForm";
@@ -35,8 +40,6 @@ import { SmtpConfigPanel } from "../components/SmtpConfigPanel";
 import { StationsPanel } from "../components/StationsPanel";
 import { errorMessage } from "../lib/format";
 
-type AdminMe = { username: string };
-
 type AdminSectionId =
   | "liaisons"
   | "stations"
@@ -44,6 +47,8 @@ type AdminSectionId =
   | "data"
   | "debug"
   | "clear-stats"
+  | "users"
+  | "access"
   | "account";
 
 type AdminNavItem = {
@@ -121,25 +126,51 @@ const ADMIN_NAV: AdminNavGroup[] = [
     label: "Sécurité",
     items: [
       {
+        id: "users",
+        label: "Comptes",
+        description: "Comptes locaux et rôles.",
+        icon: Users,
+      },
+      {
+        id: "access",
+        label: "Accès",
+        description: "Mode visiteur.",
+        icon: Shield,
+      },
+      {
         id: "account",
         label: "Compte",
-        description: "Mot de passe du compte admin.",
+        description: "Mot de passe du compte connecté.",
         icon: KeyRound,
       },
     ],
   },
 ];
 
-const ALL_SECTIONS = ADMIN_NAV.flatMap((g) => g.items);
+const EDITOR_SECTION_IDS = new Set<AdminSectionId>(["liaisons", "account"]);
+
+function navForRole(role: UserRole): AdminNavGroup[] {
+  if (role === "admin") return ADMIN_NAV;
+  return ADMIN_NAV.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => EDITOR_SECTION_IDS.has(item.id)),
+  })).filter((group) => group.items.length > 0);
+}
 
 function AdminConsole({
   username,
+  role,
   onLogout,
 }: {
   username: string;
+  role: UserRole;
   onLogout: () => void;
 }) {
   const [section, setSection] = useState<AdminSectionId>("liaisons");
+  const [createStationOpen, setCreateStationOpen] = useState(false);
+  const nav = navForRole(role);
+  const sections = nav.flatMap((g) => g.items);
+  const isEditor = role === "liaison_editor";
   const [liaisons, setLiaisons] = useState<LiaisonConfig[]>([]);
   const [stations, setStations] = useState<Station[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -162,14 +193,34 @@ function AdminConsole({
     text: string;
     ok: boolean;
   } | null>(null);
+  const [ready, setReady] = useState(false);
 
   const selected =
     liaisons.find((l) => l.id === selectedId) ?? liaisons[0] ?? null;
 
   useEffect(() => {
+    const allowed = navForRole(role).flatMap((g) => g.items).map((s) => s.id);
+    if (!allowed.includes(section)) {
+      setSection("liaisons");
+    }
+  }, [role, section]);
+
+  useEffect(() => {
     let cancelled = false;
     void (async () => {
       try {
+        if (isEditor) {
+          const [list, st] = await Promise.all([
+            apiGet<LiaisonConfig[]>("/v1/admin/liaisons"),
+            apiGet<Station[]>("/v1/admin/stations"),
+          ]);
+          if (cancelled) return;
+          setLiaisons(list);
+          setStations(st);
+          setSelectedId((prev) => prev ?? list[0]?.id ?? null);
+          setReady(true);
+          return;
+        }
         const [list, st, r, t, q] = await Promise.all([
           apiGet<LiaisonConfig[]>("/v1/admin/liaisons"),
           apiGet<Station[]>("/v1/admin/stations"),
@@ -184,6 +235,7 @@ function AdminConsole({
         setRecipients(r);
         setTeams(t);
         setQuota(q);
+        setReady(true);
       } catch (err) {
         if (!cancelled) setLoadError(errorMessage(err));
       }
@@ -191,7 +243,7 @@ function AdminConsole({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isEditor]);
 
   useEffect(() => {
     if (section !== "data") return;
@@ -317,7 +369,7 @@ function AdminConsole({
     );
   }
 
-  if (!recipients || !teams || !quota) {
+  if (!ready) {
     return <p className="muted page-enter">Chargement…</p>;
   }
 
@@ -332,7 +384,7 @@ function AdminConsole({
     );
   }
 
-  const active = ALL_SECTIONS.find((s) => s.id === section)!;
+  const active = sections.find((s) => s.id === section) ?? sections[0];
 
   let panelBody: ReactNode;
   switch (section) {
@@ -405,7 +457,7 @@ function AdminConsole({
           <LiaisonForm
             liaison={selected!}
             stations={stations}
-            onCreateStation={() => setSection("stations")}
+            onCreateStation={() => setCreateStationOpen(true)}
             onSaved={(next) => {
               setLiaisons((prev) =>
                 prev.map((l) => (l.id === next.id ? next : l)),
@@ -421,7 +473,8 @@ function AdminConsole({
       );
       break;
     case "alerts":
-      panelBody = (
+      panelBody =
+        recipients && teams ? (
         <div className="admin-stack">
           <form
             className="card admin-stack-card"
@@ -483,14 +536,18 @@ function AdminConsole({
             </article>
           </div>
         </div>
-      );
+        ) : (
+          <p className="muted">Chargement…</p>
+        );
       break;
     case "data":
-      panelBody = (
+      panelBody = quota ? (
         <div className="admin-stack">
           <QuotaPanel quota={quota} />
           <IngestConfigPanel />
         </div>
+      ) : (
+        <p className="muted">Chargement…</p>
       );
       break;
     case "clear-stats":
@@ -502,6 +559,16 @@ function AdminConsole({
     case "account":
       panelBody = <AdminAccountPanel username={username} />;
       break;
+    case "users":
+      panelBody = <UsersPanel />;
+      break;
+    case "access":
+      panelBody = <AccessPanel />;
+      break;
+  }
+
+  if (!active) {
+    return <p className="muted page-enter">Chargement…</p>;
   }
 
   return (
@@ -522,7 +589,7 @@ function AdminConsole({
 
       <div className="admin-layout">
         <nav className="admin-nav" aria-label="Paramètres admin">
-          {ADMIN_NAV.map((group) => (
+          {nav.map((group) => (
             <div key={group.id} className="admin-nav-group">
               <p className="admin-nav-label">{group.label}</p>
               <ul className="admin-nav-list">
@@ -558,83 +625,28 @@ function AdminConsole({
           <div className="admin-panel-body">{panelBody}</div>
         </section>
       </div>
-    </div>
-  );
-}
-
-function LoginForm({ onSuccess }: { onSuccess: () => void }) {
-  const [error, setError] = useState<string | null>(null);
-
-  async function onSubmit(e: FormEvent<HTMLFormElement>) {
-    e.preventDefault();
-    const fd = new FormData(e.currentTarget);
-    try {
-      await apiSend("/v1/admin/login", "POST", {
-        username: String(fd.get("username") ?? ""),
-        password: String(fd.get("password") ?? ""),
-      });
-      onSuccess();
-    } catch {
-      setError("Identifiants incorrects");
-    }
-  }
-
-  return (
-    <div className="page-enter admin-login">
-      <div className="admin-login-card card">
-        <p className="eyebrow">SNCF-Alerts</p>
-        <h1>Console admin</h1>
-        <p className="muted">Accès réservé à l’opérateur.</p>
-        <form className="admin-login-form" onSubmit={(e) => void onSubmit(e)}>
-          <label>
-            Identifiant
-            <input name="username" autoComplete="username" required />
-          </label>
-          <label>
-            Mot de passe
-            <input
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-            />
-          </label>
-          <button type="submit">Se connecter</button>
-          {error && <p className="error">{error}</p>}
-        </form>
-      </div>
+      {createStationOpen ? (
+        <CreateStationDialog
+          onCreated={(s) =>
+            setStations((prev) =>
+              [...prev, s].sort((a, b) => a.label.localeCompare(b.label, "fr")),
+            )
+          }
+          onClose={() => setCreateStationOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
 
 export function AdminPage() {
-  const [me, setMe] = useState<AdminMe | null | undefined>(undefined);
-
-  const probe = useCallback(async () => {
-    try {
-      const user = await apiGet<AdminMe>("/v1/admin/me");
-      setMe(user);
-    } catch {
-      setMe(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    void probe();
-  }, [probe]);
-
-  async function logout() {
-    await apiSend("/v1/admin/logout", "POST");
-    setMe(null);
-  }
-
-  if (me === undefined) {
-    return <p className="muted page-enter">Chargement…</p>;
-  }
-
-  if (!me) {
-    return <LoginForm onSuccess={() => void probe()} />;
-  }
-
-  return <AdminConsole username={me.username} onLogout={() => void logout()} />;
+  const { me, logout } = useAuth();
+  if (!me) return null;
+  return (
+    <AdminConsole
+      username={me.username}
+      role={me.role}
+      onLogout={() => void logout()}
+    />
+  );
 }

@@ -14,8 +14,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       },
     });
     if (!res.ok) {
-      httpErrorHandled = true;
-      reportApiResult(false);
+      const authError = res.status === 401 || res.status === 403;
+      if (!authError) {
+        httpErrorHandled = true;
+        reportApiResult(false);
+      } else {
+        httpErrorHandled = true;
+      }
       let detail = "";
       try {
         const body = (await res.json()) as {
