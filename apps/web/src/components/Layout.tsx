@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   LogIn,
   LogOut,
+  Radio,
   Settings2,
 } from "lucide-react";
 import { useState } from "react";
@@ -14,15 +15,46 @@ import { AdminAccountPanel } from "./AdminAccountPanel";
 import { ApiStatusLine } from "./ApiStatusLine";
 
 const NAV = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true, adminOnly: false },
-  { to: "/notifications", label: "Notifications", icon: Bell, end: false, adminOnly: false },
-  { to: "/admin", label: "Admin", icon: Settings2, end: false, adminOnly: true },
+  {
+    to: "/",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+    end: true,
+    require: "any" as const,
+  },
+  {
+    to: "/notifications",
+    label: "Notifications",
+    icon: Bell,
+    end: false,
+    require: "any" as const,
+  },
+  {
+    to: "/live",
+    label: "Réponse",
+    icon: Radio,
+    end: false,
+    require: "admin" as const,
+  },
+  {
+    to: "/admin",
+    label: "Admin",
+    icon: Settings2,
+    end: false,
+    require: "console" as const,
+  },
 ] as const;
 
 export function Layout() {
   const { me, logout, requestLogin } = useAuth();
   const [passwordOpen, setPasswordOpen] = useState(false);
-  const showAdmin = Boolean(me && roleCanAccessAdmin(me.role));
+
+  const visibleNav = NAV.filter((item) => {
+    if (item.require === "any") return true;
+    if (!me) return false;
+    if (item.require === "admin") return me.role === "admin";
+    return roleCanAccessAdmin(me.role);
+  });
 
   return (
     <div className="app-shell">
@@ -38,22 +70,20 @@ export function Layout() {
             <span className="brand-name">SNCF-Alerts</span>
           </Link>
           <nav className="sidebar-nav">
-            {NAV.filter((item) => !item.adminOnly || showAdmin).map(
-              ({ to, label, icon: Icon, end }) => (
-                <NavLink
-                  key={to}
-                  to={to}
-                  end={end}
-                  className={({ isActive }) =>
-                    `sidebar-link${isActive ? " sidebar-link-active" : ""}`
-                  }
-                  title={label}
-                >
-                  <Icon size={20} strokeWidth={2} aria-hidden />
-                  <span className="nav-label">{label}</span>
-                </NavLink>
-              ),
-            )}
+            {visibleNav.map(({ to, label, icon: Icon, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `sidebar-link${isActive ? " sidebar-link-active" : ""}`
+                }
+                title={to === "/live" ? "Dernière réponse API ingest" : label}
+              >
+                <Icon size={20} strokeWidth={2} aria-hidden />
+                <span className="nav-label">{label}</span>
+              </NavLink>
+            ))}
           </nav>
         </div>
         <div className="sidebar-foot">

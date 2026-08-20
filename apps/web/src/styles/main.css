@@ -2909,8 +2909,72 @@ td {
   opacity: 0.85;
 }
 
+/* --- Réponse API (sidebar) --- */
+.api-live-page .dash-head {
+  margin-bottom: 1.25rem;
+}
+
+.api-live-auto {
+  margin: 0;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+.api-live-meta {
+  margin-bottom: 1.5rem;
+}
+
+.api-live-meta .dash-section-title {
+  margin-bottom: 0.75rem;
+}
+
+.api-live-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem 1.25rem;
+  margin: 0;
+}
+
+.api-live-meta-grid dt {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.api-live-meta-grid dd {
+  margin: 0.25rem 0 0;
+  font-size: 0.95rem;
+}
+
+.api-live-meta-detail {
+  grid-column: 1 / -1;
+}
+
+.api-live-featured {
+  box-shadow: var(--shadow-soft);
+  padding: 1rem 1.1rem;
+}
+
+.api-live-list {
+  max-height: none;
+}
+
+@media (max-width: 720px) {
+  .api-live-meta-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .api-live-page .dash-head-actions {
+    flex-wrap: wrap;
+  }
+}
+
 .pill-ok {
   background: #e4f5ec;
+
   color: #0b6e4f;
 }
 

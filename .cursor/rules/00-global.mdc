@@ -9,7 +9,7 @@ alwaysApply: true
 
 - Outil **ops interne** (pas B2C voyageur)
 - Exactement **N liaisons** (Aller/Retour par liaison) : au moins une, plusieurs possibles
-- Surfaces : **Dashboard** (session ou visiteur) + **Admin** (selon le rôle)
+- Surfaces : **Dashboard** (session ou visiteur) + **Réponse** (admin, dernière API) + **Admin** (selon le rôle)
 - Acteurs : comptes locaux `reader` / `liaison_editor` / `admin` — pas d’inscription publique ni de comptes voyageurs B2C
 - Notifications : **Email SMTP custom** + **Teams** uniquement
 

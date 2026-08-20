@@ -4,6 +4,7 @@ import { ApiStatusProvider } from "./api/ApiStatusContext";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
 import { AdminPage } from "./pages/AdminPage";
+import { ApiLivePage } from "./pages/ApiLivePage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GatePage } from "./pages/GatePage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -23,6 +24,16 @@ function GuardedApp() {
       <Route element={<Layout />}>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route
+          path="/live"
+          element={
+            me?.role === "admin" ? (
+              <ApiLivePage />
+            ) : (
+              <Navigate to="/" replace />
+            )
+          }
+        />
         <Route
           path="/admin"
           element={
