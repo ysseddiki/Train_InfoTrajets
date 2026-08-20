@@ -8,8 +8,11 @@ Type=simple
 User=debian
 WorkingDirectory=/home/debian/Train_InfoTrajets
 EnvironmentFile=-/home/debian/Train_InfoTrajets/.env
-# Port 443 (vite.config) : si bind EACCES, passer User=root ou garder cette capa
+# HTTPS direct (WEB_PORT=443) : capa bind privileged ports
+# Derrière nginx (WEB_BEHIND_PROXY=true, port 5173) : capa inutile mais inoffensive
 AmbientCapabilities=CAP_NET_BIND_SERVICE
+# Lecture des clés Let's Encrypt (groupe ssl-cert) si WEB_TLS_KEY
+SupplementaryGroups=ssl-cert
 ExecStart=/usr/bin/npm run dev:web
 Restart=on-failure
 RestartSec=5

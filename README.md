@@ -47,6 +47,27 @@ sudo systemctl restart sncf-alerts-api sncf-alerts-ingest sncf-alerts-web
 
 Dans `.env` : `INGEST_IN_PROCESS=false` pour que l’API ne double pas le poll.
 
+### HTTPS Let's Encrypt (prod)
+
+Prérequis : un **nom de domaine** (DNS A/AAAA → IP du serveur), ports **80** et **443** ouverts.
+
+**Recommandé — nginx termine TLS** (renouvellement automatique) :
+
+```bash
+sudo ./scripts/setup-letsencrypt.sh ops.exemple.fr admin@exemple.fr
+# → WEB_BEHIND_PROXY=true, Vite sur 127.0.0.1:5173, nginx :80/:443
+sudo certbot renew --dry-run
+```
+
+**Alternatif — Vite lit les certificats LE** (sans nginx) :
+
+```bash
+sudo ./scripts/setup-letsencrypt.sh ops.exemple.fr admin@exemple.fr --vite-direct
+# → WEB_TLS_CERT / WEB_TLS_KEY dans .env, Vite sur :443
+```
+
+Garder `COOKIE_SECURE=true`. Conf nginx d’exemple : `deploy/nginx/sncf-alerts.conf`.
+
 Dev local (tout-en-un) : laisser `INGEST_IN_PROCESS=true` (défaut) et `npm run dev:api` + `npm run dev:web`.
 
 Sans token Navitia : `INGEST_PROVIDER=stub` + **Admin → Debug** (inject / historique) pour peupler le dashboard.
@@ -131,7 +152,7 @@ npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 - Notifications : `https://127.0.0.1:443/#/notifications`
 - Admin : `https://127.0.0.1:443/#/admin`
 
-> Port 443 = HTTPS. Le certificat Vite est auto-signé : le navigateur affichera un avertissement à accepter une fois (dev uniquement). Sur macOS, le bind 443 peut nécessiter `sudo`.
+> Port 443 = HTTPS. **Dev** : certificat Vite auto-signé (avertissement navigateur). **Prod** : Let's Encrypt via `scripts/setup-letsencrypt.sh` (voir section Systemd).
 > Avec HTTPS, garder `COOKIE_SECURE=true` pour la session admin (cookie httpOnly).
 - Health : `http://127.0.0.1:3001/v1/health`
 
