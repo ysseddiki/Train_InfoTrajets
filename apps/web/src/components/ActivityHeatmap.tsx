@@ -11,6 +11,7 @@ import {
   errorMessage,
   formatDateLongParis,
   formatTimeParis,
+  formatTrainNumber,
   kindLabel,
 } from "../lib/format";
 
@@ -270,6 +271,11 @@ function HeatmapDayPanel({
                         <span className="pill pill-muted">
                           {directionLabel(e.direction)}
                         </span>
+                        {e.trainNumber ? (
+                          <span className="pill pill-muted">
+                            {formatTrainNumber(e.trainNumber)}
+                          </span>
+                        ) : null}
                         {(e.kind === "delay" || e.delayMinutes != null) && (
                           <span className="pill pill-warn">
                             {formatDelayMinutes(e.delayMinutes, e.kind)}

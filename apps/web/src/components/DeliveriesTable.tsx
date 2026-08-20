@@ -1,5 +1,9 @@
 import type { AlertDeliveryDto } from "@sncf-alerts/shared";
-import { directionLabel, formatWhen } from "../lib/format";
+import {
+  directionLabel,
+  formatTrainNumber,
+  formatWhen,
+} from "../lib/format";
 import { StatusChip } from "./StatusChip";
 
 export function DeliveriesTable({
@@ -17,6 +21,7 @@ export function DeliveriesTable({
         <thead>
           <tr>
             <th>Date</th>
+            <th>Train</th>
             <th>Canal</th>
             <th>Statut</th>
             <th>Sens</th>
@@ -27,6 +32,7 @@ export function DeliveriesTable({
           {deliveries.map((d) => (
             <tr key={d.id}>
               <td>{formatWhen(d.createdAt)}</td>
+              <td>{formatTrainNumber(d.trainNumber)}</td>
               <td>{d.channel}</td>
               <td>
                 <StatusChip status={d.status} />

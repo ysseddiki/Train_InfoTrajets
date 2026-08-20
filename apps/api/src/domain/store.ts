@@ -266,6 +266,10 @@ function mapEvent(row: Record<string, unknown>): DisruptionEventDto {
     severity: row.severity as DisruptionSeverity,
     title: String(row.title),
     description: String(row.description ?? ""),
+    trainNumber:
+      row.train_number === null || row.train_number === undefined
+        ? null
+        : String(row.train_number).trim() || null,
     delayMinutes: row.delay_minutes === null ? null : Number(row.delay_minutes),
     delayReason:
       row.delay_reason === null || row.delay_reason === undefined
@@ -312,6 +316,10 @@ function mapDelivery(row: Record<string, unknown>): AlertDeliveryDto {
     channel: row.channel as DeliveryChannel,
     status: row.status as DeliveryStatus,
     detail: row.detail === null || row.detail === undefined ? null : String(row.detail),
+    trainNumber:
+      row.train_number === null || row.train_number === undefined
+        ? null
+        : String(row.train_number).trim() || null,
     sentAt: row.sent_at ? new Date(String(row.sent_at)).toISOString() : null,
     createdAt: new Date(String(row.created_at)).toISOString(),
   };
@@ -1325,8 +1333,8 @@ export class PgStore {
     const pool = getPool();
     // Masquer les « suppressed » bruit (canaux OFF) — legacy + inutiles en UI
     const noise = `NOT (
-      status = 'suppressed'
-      AND detail IN (
+      d.status = 'suppressed'
+      AND d.detail IN (
         'EMAIL_ENABLED=false',
         'TEAMS_ENABLED=false',
         'SMTP désactivé (admin)',
@@ -1335,17 +1343,21 @@ export class PgStore {
     )`;
     if (opts?.liaisonId) {
       const res = await pool.query(
-        `SELECT * FROM alert_deliveries
-         WHERE liaison_id = $1 AND ${noise}
-         ORDER BY created_at DESC LIMIT $2`,
+        `SELECT d.*, e.train_number
+         FROM alert_deliveries d
+         LEFT JOIN disruption_events e ON e.id = d.event_id
+         WHERE d.liaison_id = $1 AND ${noise}
+         ORDER BY d.created_at DESC LIMIT $2`,
         [opts.liaisonId, limit],
       );
       return res.rows.map(mapDelivery);
     }
     const res = await pool.query(
-      `SELECT * FROM alert_deliveries
+      `SELECT d.*, e.train_number
+       FROM alert_deliveries d
+       LEFT JOIN disruption_events e ON e.id = d.event_id
        WHERE ${noise}
-       ORDER BY created_at DESC LIMIT $1`,
+       ORDER BY d.created_at DESC LIMIT $1`,
       [limit],
     );
     return res.rows.map(mapDelivery);
@@ -1881,6 +1893,7 @@ export class PgStore {
               kind: latest.kind,
               severity: latest.severity,
               title: latest.title,
+              trainNumber: latest.trainNumber,
               delayMinutes: latest.delayMinutes,
               delayReason: latest.delayReason,
               detectedAt: latest.detectedAt,
@@ -2261,6 +2274,8 @@ export class PgStore {
     );
     const delayReason = input.delayReason ?? null;
     const delayReasonKey = input.delayReasonKey ?? null;
+    const trainNumber =
+      input.trainNumber?.trim() ? input.trainNumber.trim() : null;
     const weatherBucket = input.weatherBucket ?? null;
     const weatherCode = input.weatherCode ?? null;
     const weatherLabel = input.weatherLabel ?? null;
@@ -2275,7 +2290,8 @@ export class PgStore {
           title = $7, description = $8, delay_minutes = $9, starts_at = $10, ends_at = $11,
           source = $12, delay_reason = $13, delay_reason_key = $14,
           weather_bucket = $15, weather_code = $16, weather_label = $17,
-          precipitation_mm = $18, wind_speed_kmh = $19, temperature_c = $20
+          precipitation_mm = $18, wind_speed_kmh = $19, temperature_c = $20,
+          train_number = $21
          WHERE external_event_id = $1
          RETURNING *`,
         [
@@ -2299,6 +2315,7 @@ export class PgStore {
           precipitationMm,
           windSpeedKmh,
           temperatureC,
+          trainNumber,
         ],
       );
       return {
@@ -2318,8 +2335,9 @@ export class PgStore {
       `INSERT INTO disruption_events (
         external_event_id, journey_id, liaison_id, direction, kind, severity, title, description,
         delay_minutes, starts_at, ends_at, source, detected_at, delay_reason, delay_reason_key,
-        weather_bucket, weather_code, weather_label, precipitation_mm, wind_speed_kmh, temperature_c
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13::timestamptz, now()),$14,$15,$16,$17,$18,$19,$20,$21)
+        weather_bucket, weather_code, weather_label, precipitation_mm, wind_speed_kmh, temperature_c,
+        train_number
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13::timestamptz, now()),$14,$15,$16,$17,$18,$19,$20,$21,$22)
       RETURNING *`,
       [
         input.externalEventId,
@@ -2343,6 +2361,7 @@ export class PgStore {
         precipitationMm,
         windSpeedKmh,
         temperatureC,
+        trainNumber,
       ],
     );
     return {

@@ -283,6 +283,11 @@ async function ensureWeatherColumns(p: pg.Pool): Promise<void> {
       `ALTER TABLE disruption_events ADD COLUMN temperature_c REAL`,
     );
   }
+  if (!(await columnExists(p, "disruption_events", "train_number"))) {
+    await p.query(
+      `ALTER TABLE disruption_events ADD COLUMN train_number TEXT`,
+    );
+  }
 }
 
 async function ensureUserAccessColumns(p: pg.Pool): Promise<void> {

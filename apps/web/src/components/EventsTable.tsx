@@ -1,6 +1,11 @@
 import type { DisruptionEventDto } from "@sncf-alerts/shared";
 import { formatDelayMinutes } from "@sncf-alerts/shared";
-import { directionLabel, formatWhen, kindLabel } from "../lib/format";
+import {
+  directionLabel,
+  formatTrainNumber,
+  formatWhen,
+  kindLabel,
+} from "../lib/format";
 
 export function EventsTable({
   events,
@@ -19,6 +24,7 @@ export function EventsTable({
         <thead>
           <tr>
             <th>Détecté</th>
+            <th>Train</th>
             <th>Sens</th>
             <th>Type</th>
             <th>Titre</th>
@@ -30,6 +36,7 @@ export function EventsTable({
           {events.map((e) => (
             <tr key={e.id}>
               <td>{formatWhen(e.detectedAt)}</td>
+              <td>{formatTrainNumber(e.trainNumber)}</td>
               <td>{directionLabel(e.direction)}</td>
               <td>{kindLabel(e.kind)}</td>
               <td>{e.title}</td>

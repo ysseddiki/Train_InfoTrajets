@@ -5,6 +5,7 @@ import { boardClass } from "../lib/boardStatus";
 import {
   daysSummary,
   formatRelative,
+  formatTrainNumber,
   formatWhen,
   kindLabel,
 } from "../lib/format";
@@ -138,6 +139,11 @@ export function JourneyCard({
       {ev ? (
         <div className="journey-event">
           <span className="pill">{kindLabel(ev.kind)}</span>
+          {ev.trainNumber ? (
+            <span className="pill pill-muted">
+              {formatTrainNumber(ev.trainNumber)}
+            </span>
+          ) : null}
           {(ev.kind === "delay" || ev.delayMinutes != null) && (
             <span className="pill pill-warn">
               {formatDelayMinutes(ev.delayMinutes, ev.kind)}

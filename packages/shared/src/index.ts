@@ -348,6 +348,7 @@ export interface JourneyStatusCard {
     kind: DisruptionKind;
     severity: DisruptionSeverity;
     title: string;
+    trainNumber: string | null;
     delayMinutes: number | null;
     delayReason: string | null;
     detectedAt: string;
@@ -364,6 +365,8 @@ export interface DisruptionEventDto {
   severity: DisruptionSeverity;
   title: string;
   description: string;
+  /** Numéro de train (Navitia), null si inconnu */
+  trainNumber: string | null;
   /** null = durée unknown (jamais coercée en 0) */
   delayMinutes: number | null;
   /** Motif source (message / cause), null si inconnu */
@@ -406,6 +409,8 @@ export interface AlertDeliveryDto {
   channel: DeliveryChannel;
   status: DeliveryStatus;
   detail: string | null;
+  /** Numéro de train de l’événement lié, si connu */
+  trainNumber: string | null;
   sentAt: string | null;
   createdAt: string;
 }

@@ -65,9 +65,11 @@ async function deliverEvent(
     event.kind === "delay"
       ? `Retard: ${formatDelayMinutes(event.delayMinutes, event.kind)}`
       : null;
+  const trainLine = event.trainNumber ? `Train: N° ${event.trainNumber}` : null;
   const reasonLine = event.delayReason ? `Motif: ${event.delayReason}` : null;
   const body = [
     event.description,
+    trainLine,
     delayLine,
     reasonLine,
     `Sévérité: ${event.severity}`,

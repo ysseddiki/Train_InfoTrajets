@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS disruption_events (
   delay_minutes INT,
   delay_reason TEXT,
   delay_reason_key TEXT,
+  train_number TEXT,
   notified_delay_minutes INT,
   notified_severity TEXT,
   starts_at TIMESTAMPTZ NOT NULL,

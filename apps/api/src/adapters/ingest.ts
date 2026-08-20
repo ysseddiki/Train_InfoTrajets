@@ -47,6 +47,7 @@ export async function injectStubEvent(input?: {
   const externalEventId = `stub-${journey?.id ?? direction}-${now.toISOString()}`;
 
   const weather = await weatherForJourney(journey, "stub");
+  const trainNumber = `88${String(1000 + Math.floor(Math.random() * 9000))}`;
   const { event, created } = await store.upsertEvent({
     externalEventId,
     journeyId: journey?.id ?? null,
@@ -59,6 +60,7 @@ export async function injectStubEvent(input?: {
         ? `Suppression (stub) ${direction}`
         : `Retard ${delayMinutes} min (stub) ${direction}`,
     description: "Événement synthétique généré par l'ingest stub / debug admin.",
+    trainNumber,
     delayMinutes: kind === "delay" ? delayMinutes : null,
     delayReason: null,
     delayReasonKey: null,
@@ -166,6 +168,7 @@ export async function seedStubHistory(input?: {
       const externalEventId = `stub-hist-${journey.id}-${dayKey}-${i}`;
 
       const stubWeather = await weatherForJourney(journey, "stub");
+      const trainNumber = `88${String(1000 + Math.floor(Math.random() * 9000))}`;
       const { created: wasCreated } = await store.upsertEvent({
         externalEventId,
         journeyId: journey.id,
@@ -180,6 +183,7 @@ export async function seedStubHistory(input?: {
           ? `Suppression (stub hist) ${journey.direction}`
           : `Retard ${delayMinutes} min (stub hist) ${journey.direction}`,
         description: "Historique synthétique stub — 6 mois démo.",
+        trainNumber,
         delayMinutes,
         delayReason: null,
         delayReasonKey: null,
@@ -537,6 +541,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
             ? `Suppression — ${journey.originLabel} → ${directionText || journey.destinationLabel}`
             : `Retard ${delayLabel} — ${journey.originLabel} → ${directionText || journey.destinationLabel}`,
           description: `Départ gare ${journey.originLabel}, sens ${directionText || journey.destinationLabel}.`,
+          trainNumber: extractTrainNumber(dep),
           delayMinutes: cancelled ? null : delay,
           delayReason: reason.delayReason,
           delayReasonKey: reason.delayReasonKey,

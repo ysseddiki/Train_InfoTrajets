@@ -3,6 +3,7 @@ import { formatDelayMinutes } from "@sncf-alerts/shared";
 import {
   directionLabel,
   formatRelative,
+  formatTrainNumber,
   kindLabel,
 } from "../lib/format";
 import { StatusChip } from "./StatusChip";
@@ -24,6 +25,11 @@ export function EventsActivityFeed({
             <div className="activity-feed-tags">
               <span className="pill">{kindLabel(e.kind)}</span>
               <span className="pill pill-muted">{directionLabel(e.direction)}</span>
+              {e.trainNumber ? (
+                <span className="pill pill-muted">
+                  {formatTrainNumber(e.trainNumber)}
+                </span>
+              ) : null}
               {(e.kind === "delay" || e.delayMinutes != null) && (
                 <span className="pill pill-warn">
                   {formatDelayMinutes(e.delayMinutes, e.kind)}
@@ -64,6 +70,11 @@ export function DeliveriesActivityFeed({
               <span className="pill pill-muted">
                 {directionLabel(d.direction)}
               </span>
+              {d.trainNumber ? (
+                <span className="pill pill-muted">
+                  {formatTrainNumber(d.trainNumber)}
+                </span>
+              ) : null}
             </div>
             <p className="activity-feed-title muted">
               {d.detail?.trim() || "Livraison notification"}

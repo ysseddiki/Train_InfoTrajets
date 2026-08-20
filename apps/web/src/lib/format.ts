@@ -73,6 +73,14 @@ export function directionLabel(d: JourneyDirection | null | undefined): string {
   return "—";
 }
 
+/** Affiche `N° 881234` ou `—` si absent. */
+export function formatTrainNumber(
+  trainNumber: string | null | undefined,
+): string {
+  const n = trainNumber?.trim();
+  return n ? `N° ${n}` : "—";
+}
+
 export function daysSummary(days: number[]): string {
   if (days.length === 0) return "—";
   if (days.length === 5 && [1, 2, 3, 4, 5].every((d) => days.includes(d))) {
