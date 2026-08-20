@@ -38,6 +38,19 @@ const port = Number(
 );
 const host = process.env.WEB_HOST ?? (behindProxy ? "127.0.0.1" : "0.0.0.0");
 
+/** Hosts autorisés (Vite 6 bloque sinon le Host header / reverse-proxy). */
+function resolveAllowedHosts(): true | string[] {
+  if (process.env.WEB_ALLOWED_HOSTS?.trim() === "*") return true;
+  // Derrière nginx / certificat LE : accepter le FQDN public
+  if (behindProxy || process.env.WEB_TLS_CERT) return true;
+
+  const extra = (process.env.WEB_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return ["trains.yseddiki.fr", "localhost", "127.0.0.1", ...extra];
+}
+
 export default defineConfig({
   plugins: [react(), ...(https === true ? [basicSsl()] : [])],
   server: {
@@ -45,6 +58,7 @@ export default defineConfig({
     port,
     strictPort: true,
     https: https || undefined,
+    allowedHosts: resolveAllowedHosts(),
     proxy: {
       "/v1": {
         target: "http://127.0.0.1:3001",
