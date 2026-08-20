@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
+  snapshotFromDailyRow,
   syntheticWeatherForStub,
   weatherBucketFromCode,
   weatherBucketLabel,
@@ -21,6 +22,21 @@ describe("weatherBucketFromCode", () => {
 describe("weatherBucketLabel", () => {
   it("returns French labels", () => {
     assert.equal(weatherBucketLabel("rain"), "Pluie");
+  });
+});
+
+describe("snapshotFromDailyRow", () => {
+  it("maps rain daily totals", () => {
+    const snap = snapshotFromDailyRow({
+      weatherCode: 61,
+      temperatureC: 14.21,
+      precipitationMm: 3.44,
+      windSpeedKmh: 22.1,
+    });
+    assert.equal(snap.weatherBucket, "rain");
+    assert.equal(snap.temperatureC, 14.2);
+    assert.equal(snap.precipitationMm, 3.4);
+    assert.equal(snap.windSpeedKmh, 22.1);
   });
 });
 

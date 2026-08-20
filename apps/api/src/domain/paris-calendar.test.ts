@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   addDaysYmd,
   dashboardPeriodStarts,
+  isValidYmd,
   parisMidnightIso,
   parisYmd,
 } from "./paris-calendar.js";
@@ -16,6 +17,12 @@ describe("paris-calendar", () => {
   it("parisMidnightIso stays 00:00 on DST transition days", () => {
     assert.equal(parisMidnightIso("2026-03-29"), "2026-03-28T23:00:00.000Z");
     assert.equal(parisMidnightIso("2026-10-25"), "2026-10-24T22:00:00.000Z");
+  });
+
+  it("isValidYmd rejects non-calendar dates", () => {
+    assert.equal(isValidYmd("2026-08-19"), true);
+    assert.equal(isValidYmd("2026-02-31"), false);
+    assert.equal(isValidYmd("19-08-2026"), false);
   });
 
   it("addDaysYmd crosses month bounds", () => {

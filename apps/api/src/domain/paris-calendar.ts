@@ -20,6 +20,23 @@ export function parisYmd(now = new Date()): string {
   }).format(now);
 }
 
+const YMD_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/** Date civile calendaire (pas demain le 31 février). */
+export function isValidYmd(value: string): boolean {
+  const m = YMD_RE.exec(value);
+  if (!m) return false;
+  const y = Number(m[1]);
+  const month = Number(m[2]);
+  const d = Number(m[3]);
+  const dt = new Date(Date.UTC(y, month - 1, d));
+  return (
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === month - 1 &&
+    dt.getUTCDate() === d
+  );
+}
+
 function parisParts(now: Date): {
   year: number;
   month: number;

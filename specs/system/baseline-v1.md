@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.12.0`  
-> **Date** : 2026-08-19  
-> **Change** : `openspec/changes/weather-delay-correlation`  
+> **Version** : `1.13.0`  
+> **Date** : 2026-08-20  
+> **Change** : `openspec/changes/heatmap-day-detail`  
 > **Format** : OpenSpec
 
 ---
@@ -181,6 +181,7 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 | GET | `/v1/health` | Santé API (public) |
 | GET | `/v1/auth/config` | `{ visitorEnabled }` (public) |
 | GET | `/v1/dashboard/overview` | Stats + statut par liaison |
+| GET | `/v1/dashboard/day` | Détail jour heatmap (`?date=YYYY-MM-DD&liaisonId=`) |
 | GET | `/v1/liaisons` | Config publique des liaisons |
 | GET | `/v1/journeys` | Config publique des legs (flat) |
 | GET | `/v1/events` | Événements récents (`?direction=`) |

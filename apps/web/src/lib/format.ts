@@ -2,6 +2,32 @@ import type { JourneyDirection } from "@sncf-alerts/shared";
 
 const DAY_LABELS = ["", "Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
 
+export function formatTimeParis(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString("fr-FR", {
+      timeZone: "Europe/Paris",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    });
+  } catch {
+    return iso;
+  }
+}
+
+export function formatDateLongParis(ymd: string): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  if (!y || !m || !d) return ymd;
+  const utc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  return utc.toLocaleDateString("fr-FR", {
+    timeZone: "UTC",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
+
 export function formatWhen(iso: string | null): string {
   if (!iso) return "jamais";
   try {

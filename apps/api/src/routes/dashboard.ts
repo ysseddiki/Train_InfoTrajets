@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type {
   AlertDeliveryDto,
+  DashboardDayDetail,
   DashboardOverview,
   DisruptionEventDto,
   JourneyConfig,
@@ -9,6 +10,7 @@ import type {
 } from "@sncf-alerts/shared";
 import { store } from "../domain/store.js";
 import { requireViewer } from "../domain/auth.js";
+import { isValidYmd } from "../domain/paris-calendar.js";
 
 export async function registerDashboardRoutes(app: FastifyInstance) {
   app.get<{ Querystring: { liaisonId?: string } }>(
@@ -21,6 +23,36 @@ export async function registerDashboardRoutes(app: FastifyInstance) {
         const status = (err as { statusCode?: number }).statusCode ?? 500;
         return reply.code(status).send({
           type: status === 404 ? "/errors/not-found" : "/errors/server",
+          title: err instanceof Error ? err.message : "Error",
+          status,
+        });
+      }
+    },
+  );
+
+  app.get<{ Querystring: { date?: string; liaisonId?: string } }>(
+    "/v1/dashboard/day",
+    async (req, reply): Promise<DashboardDayDetail | void> => {
+      if (!(await requireViewer(req, reply))) return;
+      const date = req.query.date?.trim() ?? "";
+      if (!isValidYmd(date)) {
+        return reply.code(400).send({
+          type: "/errors/bad-request",
+          title: "date YYYY-MM-DD requise",
+          status: 400,
+        });
+      }
+      try {
+        return await store.getDayDetail(date, req.query.liaisonId);
+      } catch (err) {
+        const status = (err as { statusCode?: number }).statusCode ?? 500;
+        return reply.code(status).send({
+          type:
+            status === 404
+              ? "/errors/not-found"
+              : status === 400
+                ? "/errors/bad-request"
+                : "/errors/server",
           title: err instanceof Error ? err.message : "Error",
           status,
         });

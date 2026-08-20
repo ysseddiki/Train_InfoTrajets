@@ -3,6 +3,7 @@ import type {
   AlertDeliveryDto,
   ApiQuotaStatus,
   BoardTrafficStatus,
+  DashboardDayDetail,
   DashboardHeatmapDay,
   DashboardOverview,
   DashboardPeriodStats,
@@ -57,11 +58,18 @@ import { wouldRemoveLastAdmin } from "./access.js";
 import { isDepartureStillDue, isWithinWatchWindow } from "./matching.js";
 import { formatHmParis } from "./next-departure.js";
 import {
+  fetchWeatherForParisDay,
   fetchWeatherSnapshot,
   geocodeStationLabel,
   weatherBucketLabel,
 } from "./weather.js";
-import { dashboardPeriodStarts } from "./paris-calendar.js";
+import {
+  addDaysYmd,
+  dashboardPeriodStarts,
+  isValidYmd,
+  parisMidnightIso,
+  parisYmd,
+} from "./paris-calendar.js";
 
 const SESSION_COOKIE = "sncf_admin_session";
 const SESSION_TTL_HOURS = Number(process.env.SESSION_TTL_HOURS ?? 12);
@@ -1541,6 +1549,158 @@ export class PgStore {
       date: String(row.day),
       count: Number(row.count ?? 0),
     }));
+  }
+
+  /**
+   * Détail d’un jour civil Europe/Paris (clic heatmap).
+   * @param liaisonQuery `all` = global ; uuid = scoped ; undefined = default liaison
+   */
+  async getDayDetail(
+    dateYmd: string,
+    liaisonQuery?: string,
+  ): Promise<DashboardDayDetail> {
+    if (!isValidYmd(dateYmd)) {
+      throw Object.assign(new Error("date YYYY-MM-DD invalide"), {
+        statusCode: 400,
+      });
+    }
+    if (dateYmd > parisYmd()) {
+      throw Object.assign(new Error("date future"), { statusCode: 400 });
+    }
+
+    const allLiaisons = await this.listLiaisons();
+    let filterLiaisonId: string | undefined;
+    let weatherLiaison =
+      allLiaisons.find((l) => l.isDefault) ?? allLiaisons[0] ?? null;
+
+    if (liaisonQuery === "all") {
+      filterLiaisonId = undefined;
+    } else if (liaisonQuery) {
+      const found = allLiaisons.find((l) => l.id === liaisonQuery);
+      if (!found) {
+        throw Object.assign(new Error("Liaison not found"), { statusCode: 404 });
+      }
+      filterLiaisonId = found.id;
+      weatherLiaison = found;
+    } else if (weatherLiaison) {
+      filterLiaisonId = weatherLiaison.id;
+    }
+
+    const startIso = parisMidnightIso(dateYmd);
+    const endIso = parisMidnightIso(addDaysYmd(dateYmd, 1));
+    const pool = getPool();
+    const eventParams = filterLiaisonId
+      ? [startIso, endIso, filterLiaisonId]
+      : [startIso, endIso];
+    const eventFilter = filterLiaisonId
+      ? `detected_at >= $1 AND detected_at < $2 AND liaison_id = $3`
+      : `detected_at >= $1 AND detected_at < $2`;
+
+    const [eventRes, obsRes] = await Promise.all([
+      pool.query(
+        `SELECT * FROM disruption_events
+         WHERE ${eventFilter}
+           AND kind IN ('delay', 'cancellation')
+         ORDER BY detected_at ASC
+         LIMIT 100`,
+        eventParams,
+      ),
+      filterLiaisonId
+        ? pool.query(
+            `SELECT 1 FROM board_day_observations
+             WHERE day = $1::date AND liaison_id = $2
+             LIMIT 1`,
+            [dateYmd, filterLiaisonId],
+          )
+        : pool.query(
+            `SELECT 1 FROM board_day_observations
+             WHERE day = $1::date
+             LIMIT 1`,
+            [dateYmd],
+          ),
+    ]);
+
+    const events = eventRes.rows.map(mapEvent);
+    const hasObservation = (obsRes.rowCount ?? 0) > 0 || events.length > 0;
+
+    const reasonMap = new Map<
+      string,
+      { key: string; label: string; count: number }
+    >();
+    let delaysWithoutReason = 0;
+    for (const e of events) {
+      if (e.kind !== "delay") continue;
+      if (!e.delayReasonKey) {
+        delaysWithoutReason += 1;
+        continue;
+      }
+      const existing = reasonMap.get(e.delayReasonKey);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        reasonMap.set(e.delayReasonKey, {
+          key: e.delayReasonKey,
+          label: e.delayReason?.trim() || e.delayReasonKey,
+          count: 1,
+        });
+      }
+    }
+    const delayReasons = [...reasonMap.values()].sort(
+      (a, b) => b.count - a.count || a.key.localeCompare(b.key),
+    );
+
+    let weather: DashboardDayDetail["weather"] = null;
+    const origin = weatherLiaison?.outbound;
+    const stationLabel = origin?.originLabel?.trim() || null;
+    if (origin?.originId) {
+      const coords = await this.resolveStationCoordinates(
+        origin.originId,
+        origin.originLabel,
+      );
+      if (coords) {
+        const daily = await fetchWeatherForParisDay(
+          coords.latitude,
+          coords.longitude,
+          dateYmd,
+        );
+        if (daily) {
+          weather = {
+            ...daily,
+            source: "daily",
+            stationLabel,
+          };
+        }
+      }
+    }
+    if (!weather) {
+      const withWx = events.find(
+        (e) =>
+          (e.weatherBucket && e.weatherBucket !== "unknown") ||
+          e.weatherLabel ||
+          e.temperatureC != null,
+      );
+      if (withWx) {
+        weather = {
+          weatherBucket: withWx.weatherBucket,
+          weatherCode: withWx.weatherCode,
+          weatherLabel: withWx.weatherLabel,
+          precipitationMm: withWx.precipitationMm,
+          windSpeedKmh: withWx.windSpeedKmh,
+          temperatureC: withWx.temperatureC,
+          source: "event",
+          stationLabel,
+        };
+      }
+    }
+
+    return {
+      date: dateYmd,
+      hasObservation,
+      events,
+      delayReasons,
+      delaysWithoutReason,
+      weather,
+    };
   }
 
   /**

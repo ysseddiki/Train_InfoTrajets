@@ -352,6 +352,7 @@ export function DashboardPage() {
         <ActivityHeatmap
           days={data.activityHeatmap ?? []}
           scopeHint={scopeHint}
+          liaisonId={scope === "all" ? "all" : scope}
         />
       </section>
 

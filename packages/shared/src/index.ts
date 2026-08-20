@@ -238,6 +238,31 @@ export interface DashboardHeatmapDay {
   count: number;
 }
 
+/** Météo du jour civil (Open-Meteo daily) ou snapshot d’un événement. */
+export interface DashboardDayWeather {
+  weatherBucket: WeatherBucket | null;
+  weatherCode: number | null;
+  weatherLabel: string | null;
+  /** mm/jour si `source = daily` ; mm/h si `source = event` */
+  precipitationMm: number | null;
+  windSpeedKmh: number | null;
+  temperatureC: number | null;
+  source: "daily" | "event";
+  stationLabel: string | null;
+}
+
+/** Détail d’un jour heatmap (clic cellule). */
+export interface DashboardDayDetail {
+  /** YYYY-MM-DD Europe/Paris */
+  date: string;
+  /** Au moins un poll board ce jour (cellule verte si 0 retard). */
+  hasObservation: boolean;
+  events: DisruptionEventDto[];
+  delayReasons: Array<{ key: string; label: string; count: number }>;
+  delaysWithoutReason: number;
+  weather: DashboardDayWeather | null;
+}
+
 export interface LiaisonStatusCard {
   id: string;
   name: string;
