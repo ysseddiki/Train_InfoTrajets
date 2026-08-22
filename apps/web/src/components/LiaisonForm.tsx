@@ -205,9 +205,9 @@ function WatchFields({
       </label>
       {!watchAlways ? (
         <p className="muted field-hint">
-          La veille continue {DEFAULT_WATCH_LAG_HOURS} h après la fin du
-          trajet pour les trains théoriques déjà passés mais pas encore
-          partis (retard).
+          La veille démarre avant la plage trajet (poll anticipé) et continue{" "}
+          {DEFAULT_WATCH_LAG_HOURS} h après : seuls les trains dont l’heure
+          théorique est dans la plage trajet sont suivis.
         </p>
       ) : null}
       <input

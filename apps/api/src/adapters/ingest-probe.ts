@@ -1,5 +1,6 @@
 import type { IngestProbeResult, IngestProviderId } from "@sncf-alerts/shared";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
+import { formatNavitiaHttpError } from "./departures-navitia.js";
 
 /**
  * Vérifie qu’un credential donne une réponse positive de l’API cible.
@@ -75,7 +76,11 @@ export async function probeIngestCredential(
       provider,
       ok: false,
       httpStatus: res.status,
-      detail: `Navitia HTTP ${res.status} — token refusé ou erreur API`,
+      detail: formatNavitiaHttpError(
+        res.status,
+        bodyPreview,
+        "token / probe",
+      ).slice(0, 280),
       checkedAt,
     };
     appendIngestApiLog({

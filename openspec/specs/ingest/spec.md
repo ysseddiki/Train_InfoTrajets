@@ -62,15 +62,25 @@ La `time_window` d’un `JourneyConfig` MUST représenter la fenêtre **trajet**
 - si `watch_always = true` : veille sur les `days_of_week` configurés, sans borne horaire
 - sinon : de `time_window.start − watch_lead_hours` jusqu’à `time_window.end + 2 h` (TZ `Europe/Paris`), avec `watch_lead_hours` ∈ [0, 12] (défaut 4)
 
-Le lag de 2 h après `time_window.end` MUST permettre de suivre un train dont l’heure théorique est dans la fenêtre trajet mais dont l’heure réelle n’est pas encore échue (retard croissant). Après `time_window.end`, un départ dont l’heure théorique est **hors** fenêtre trajet MUST NOT être éligible.
+Le lag de 2 h après `time_window.end` MUST permettre de suivre un train dont l’heure théorique est dans la fenêtre trajet mais dont l’heure réelle n’est pas encore échue (retard croissant).
 
-`watch_lead_hours` MUST être ignoré pour le calcul de veille lorsque `watch_always` est vrai (valeur conservée pour réactivation).
+Pendant toute la veille (lead, fenêtre trajet, lag), un départ MUST être éligible board/alerte seulement si son heure **théorique** (`base` / scheduled) est dans `time_window` (sauf `watch_always`). Le lead démarre le poll plus tôt ; il MUST NOT élargir le set de trains aux départs hors plage trajet.
 
 #### Scenario: Lead 4 h
 
 - **GIVEN** Aller actif, fenêtre trajet 07:00–09:30, `watch_always = false`, `watch_lead_hours = 4`
 - **WHEN** il est mardi 04:30 Europe/Paris
 - **THEN** l’ingest poll ce sens (veille commencée)
+
+#### Scenario: Lead sans trains hors plage
+
+- **GIVEN** Retour actif, fenêtre trajet 16:00–20:00, `watch_lead_hours = 2`
+- **WHEN** il est 15:00 Europe/Paris
+- **THEN** l’ingest poll ce sens
+- **AND** un train théorique 15:20 retardé n’est pas éligible
+- **AND** un train théorique 16:30 est éligible
+
+`watch_lead_hours` MUST être ignoré pour le calcul de veille lorsque `watch_always` est vrai (valeur conservée pour réactivation).
 
 #### Scenario: Lag après fin de trajet
 
@@ -117,18 +127,36 @@ Le filtre de sens MUST matcher une **gare desservie** (libellé / id présents d
 #### Scenario: Enrichissement Navitia vehicle_journey
 
 - **GIVEN** filtre Monaco et un départ dont le texte de direction ne mentionne pas Monaco
-- **WHEN** le `vehicle_journey` Navitia liste `stop_area` Monaco
+- **WHEN** le `vehicle_journey` Navitia liste `stop_area` Monaco **après** l’origine surveillée
 - **THEN** le départ est éligible
+
+#### Scenario: Vehicle journey — gare filtre en amont rejetée
+
+- **GIVEN** Retour Monaco → Nice et un train Nice → Menton (Nice avant Monaco sur le parcours)
+- **WHEN** le matching enrichit via `vehicle_journey`
+- **THEN** le départ n’est **pas** éligible (Nice n’est pas après Monaco)
 
 ### Requirement: Pas de failover scrape Gares & Connexions
 
-Le pipeline d’ingest MUST NOT scraper Gares & Connexions ni exposer une source `garesetconnexions`. MUST NOT interroger les flux GTFS-RT / GTFS ZOU. En cas d’échec Navitia (token manquant, quota, erreur API), le poll MUST enregistrer un statut `error` ou `skipped` et MUST NOT basculer vers une autre source board.
+Le pipeline d’ingest MUST NOT scraper Gares & Connexions ni exposer une source `garesetconnexions`. MUST NOT interroger les flux GTFS-RT / GTFS ZOU. En cas d’échec Navitia (token manquant, erreur API / quota renvoyé par Navitia), le poll MUST enregistrer un statut `error` ou `skipped` et MUST NOT basculer vers une autre source board. Le compteur local `NAVITIA_DAILY_QUOTA` MUST rester une **jauge d’affichage** : il MUST NOT interrompre le poll tant que l’API Navitia répond.
 
 #### Scenario: Navitia KO
 
 - **GIVEN** provider actif `navitia`, token invalide ou API en erreur
 - **WHEN** le poll tourne
-- **THEN** `last_ingest_status` est `error` (ou `skipped` si hors fenêtre / quota)
+- **THEN** `last_ingest_status` est `error` (ou `skipped` si hors fenêtre)
+
+#### Scenario: Jauge locale dépassée sans erreur API
+
+- **GIVEN** le compteur local ≥ `NAVITIA_DAILY_QUOTA` mais Navitia répond encore 200
+- **WHEN** le poll tourne
+- **THEN** l’ingest continue et n’est pas marqué `skipped` pour cause de jauge locale
+
+#### Scenario: Quota refusé par Navitia
+
+- **GIVEN** Navitia répond HTTP 429 (ou message quota)
+- **WHEN** le poll appelle les départs
+- **THEN** `last_ingest_status` est `error` avec un détail indiquant le quota API
 - **AND** aucun appel HTTP vers `garesetconnexions.sncf` ni vers les flux ZOU n’est effectué
 
 ### Requirement: Board prochain train sans stub

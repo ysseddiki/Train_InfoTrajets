@@ -199,8 +199,9 @@ export function isScheduledInTravelWindow(
 }
 
 /**
- * Départ à suivre : encore dû en temps réel.
- * Après la fin de fenêtre trajet (lag) : seulement si l’heure théorique est dans la fenêtre.
+ * Départ à suivre pendant la veille : encore dû en temps réel, et heure
+ * **théorique** dans la fenêtre trajet (lead / lag ne changent pas le set de trains).
+ * `watch_always` : pas de filtre horaire sur le départ.
  */
 export function isWatchedDeparture(
   journey: Pick<
@@ -220,10 +221,8 @@ export function isWatchedDeparture(
   if (!cancelled && !isDepartureStillDue(realtime, scheduled, now)) {
     return false;
   }
-  if (journey.watchAlways || isInCoreWatchSchedule(journey, now)) {
-    return true;
-  }
   if (!isInWatchSchedule(journey, now)) return false;
+  if (journey.watchAlways) return true;
   if (!scheduled) return true;
   return isScheduledInTravelWindow(journey, scheduled);
 }

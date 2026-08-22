@@ -43,6 +43,26 @@ function navitiaAuthHeader(token: string): string {
   return `Basic ${Buffer.from(`${token}:`).toString("base64")}`;
 }
 
+/** Message d’erreur clair, surtout quota / rate-limit côté API SNCF. */
+export function formatNavitiaHttpError(
+  status: number,
+  body: string,
+  context?: string,
+): string {
+  const snippet = body.replace(/\s+/g, " ").trim().slice(0, 180);
+  const looksQuota =
+    status === 429 ||
+    status === 402 ||
+    /quota|rate.?limit|trop de requ|too many|dépass/i.test(snippet);
+  const ctx = context ? ` (${context})` : "";
+  if (looksQuota) {
+    return `Navitia quota dépassé — HTTP ${status}${ctx}${
+      snippet ? ` — ${snippet}` : ""
+    }`;
+  }
+  return `Navitia HTTP ${status}${ctx}${snippet ? ` — ${snippet}` : ""}`;
+}
+
 /** Lookback pour ne pas rater une base déjà passée (retard croissant). */
 const NAVITIA_DEPARTURES_LOOKBACK_MS = 60 * 60_000;
 /** Fenêtre demandée depuis from_datetime (1 h passé + ~5 h futur). */
@@ -72,7 +92,8 @@ export function extractVehicleJourneyId(dep: NavitiaDeparture): string | null {
 }
 
 /**
- * Liste les stop_area du parcours vehicle_journey (cache TTL).
+ * Liste ordonnée des stop_area du parcours vehicle_journey (cache TTL).
+ * L’ordre suit `stop_times` (1ʳᵉ occurrence conservée).
  */
 export async function fetchVehicleJourneyStopAreaIds(
   token: string,
@@ -109,21 +130,38 @@ export async function fetchVehicleJourneyStopAreaIds(
     }>;
   };
 
-  const ids = new Set<string>();
+  const list: string[] = [];
+  const seen = new Set<string>();
   for (const vj of body.vehicle_journeys ?? []) {
     for (const st of vj.stop_times ?? []) {
       const areaId = st.stop_point?.stop_area?.id;
-      if (areaId) ids.add(areaId);
+      if (!areaId || seen.has(areaId)) continue;
+      seen.add(areaId);
+      list.push(areaId);
     }
   }
-  const list = [...ids];
   vehicleJourneyStopsCache.set(vehicleJourneyId, list);
   return list;
 }
 
 /**
+ * True si le parcours dessert `destinationId` **après** `originId`
+ * (évite Nice→Menton matché en « Monaco → Nice » parce que Nice est en amont).
+ */
+export function vehicleJourneyServesOd(
+  stopAreaIds: string[],
+  originId: string,
+  destinationId: string,
+): boolean {
+  if (!originId || !destinationId || originId === destinationId) return false;
+  const oi = stopAreaIds.indexOf(originId);
+  if (oi < 0) return false;
+  return stopAreaIds.indexOf(destinationId, oi + 1) > oi;
+}
+
+/**
  * Filtre gare desservie : texte / id / corridor, puis enrichissement
- * vehicle_journey (la gare filtre est-elle sur le parcours ?).
+ * vehicle_journey (OD : filtre après l’origine sur le parcours).
  */
 export async function navitiaDepartureMatchesFilter(
   token: string,
@@ -141,13 +179,17 @@ export async function navitiaDepartureMatchesFilter(
     return true;
   }
 
-  if (!journey.destinationId) return false;
+  if (!journey.destinationId || !journey.originId) return false;
 
   const vjId = extractVehicleJourneyId(dep);
   if (!vjId) return false;
 
   const stops = await fetchVehicleJourneyStopAreaIds(token, vjId);
-  return stops.includes(journey.destinationId);
+  return vehicleJourneyServesOd(
+    stops,
+    journey.originId,
+    journey.destinationId,
+  );
 }
 
 /**
@@ -221,7 +263,9 @@ export class NavitiaDeparturesPort implements DeparturesPort {
           errBody || "(corps vide)",
         ],
       });
-      throw new Error(`Navitia HTTP ${res.status} (${journey.direction})`);
+      throw new Error(
+        formatNavitiaHttpError(res.status, errBody, journey.direction),
+      );
     }
 
     await store.recordApiRequest({ provider: "navitia", ok: true });

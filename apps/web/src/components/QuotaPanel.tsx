@@ -13,7 +13,9 @@ export function QuotaPanel({ quota }: { quota: ApiQuotaStatus }) {
       <div className="quota-head">
         <div>
           <h3>Quota Navitia</h3>
-          <p className="muted">{quota.day} · Europe/Paris</p>
+          <p className="muted">
+            {quota.day} · Europe/Paris · jauge locale (n’arrête pas le poll)
+          </p>
         </div>
         <p className="quota-used">
           <strong>{quota.used}</strong>
@@ -41,8 +43,9 @@ export function QuotaPanel({ quota }: { quota: ApiQuotaStatus }) {
         />
       </div>
       <p className="quota-bar-caption muted">
-        {quota.percent}% · {quota.remaining} restantes
-        {quota.exhausted ? " · épuisé" : ""}
+        {quota.percent}% de la jauge {quota.limit}
+        {quota.exhausted ? " · au‑delà de la jauge" : ` · ${quota.remaining} sous la jauge`}
+        {" · "}stop uniquement si l’API Navitia refuse (ex. HTTP 429)
       </p>
 
       <div className="quota-stats">
@@ -61,7 +64,7 @@ export function QuotaPanel({ quota }: { quota: ApiQuotaStatus }) {
           <strong>{quota.used}</strong>
         </div>
         <div className="quota-stat">
-          <span className="quota-stat-label">Limite</span>
+          <span className="quota-stat-label">Jauge</span>
           <strong>{quota.limit}</strong>
         </div>
       </div>

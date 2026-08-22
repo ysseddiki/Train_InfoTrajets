@@ -147,4 +147,48 @@ describe("watch window + delayed leftover trains", () => {
     const realtime = tueMorning("08:20");
     assert.equal(isWatchedDeparture(j, scheduled, realtime, now), true);
   });
+
+  it("during lead, only trains whose theoretical time is in travel window", () => {
+    const j = journey({
+      timeWindow: { start: "16:00", end: "20:00" },
+      watchLeadHours: 2,
+    });
+    const now = new Date("2026-08-18T15:00:00+02:00");
+    assert.equal(isInWatchSchedule(j, now), true);
+    assert.equal(
+      isWatchedDeparture(
+        j,
+        new Date("2026-08-18T15:20:00+02:00"),
+        new Date("2026-08-18T15:35:00+02:00"),
+        now,
+      ),
+      false,
+    );
+    assert.equal(
+      isWatchedDeparture(
+        j,
+        new Date("2026-08-18T16:30:00+02:00"),
+        new Date("2026-08-18T16:45:00+02:00"),
+        now,
+      ),
+      true,
+    );
+  });
+
+  it("drops a train scheduled before travel window even during the window", () => {
+    const j = journey({
+      timeWindow: { start: "16:00", end: "20:00" },
+      watchLeadHours: 0,
+    });
+    const now = new Date("2026-08-18T16:10:00+02:00");
+    assert.equal(
+      isWatchedDeparture(
+        j,
+        new Date("2026-08-18T15:40:00+02:00"),
+        new Date("2026-08-18T16:20:00+02:00"),
+        now,
+      ),
+      false,
+    );
+  });
 });

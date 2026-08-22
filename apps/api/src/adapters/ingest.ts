@@ -437,14 +437,8 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       throw new Error("Navitia token is required");
     }
 
-    const quota = await store.getApiQuota("navitia");
-    if (quota.exhausted) {
-      await store.setIngestResult({
-        status: "skipped",
-        detail: `Quota Navitia épuisé (${quota.used}/${quota.limit}) — jour ${quota.day}`,
-      });
-      return;
-    }
+    // Pas de stop sur le compteur local (NAVITIA_DAILY_QUOTA) :
+    // on continue jusqu’à l’erreur réelle renvoyée par l’API Navitia.
 
     const journeys = await store.listJourneys();
     const open = journeys.filter((j) => isWithinWatchWindow(j));

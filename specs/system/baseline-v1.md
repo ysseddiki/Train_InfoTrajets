@@ -233,7 +233,7 @@ Notifier seulement si :
 3. Jour + **fenêtre de veille** (TZ Paris) : `watch_always` ou `[start − watch_lead_hours, end + 2 h]`
 4. Sévérité dans la liste configurée
 5. Si retard avec durée connue : `delay_minutes >= min_delay_minutes` ; si `delay_minutes` null (unknown), le seuil numérique ne s’applique pas
-6. Après `time_window.end` : seulement les trains dont l’heure **théorique** est dans la fenêtre trajet et dont l’heure **réelle** n’est pas encore échue
+6. Hors `watch_always` : seulement les trains dont l’heure **théorique** est dans `time_window`, encore dus en temps réel (y compris pendant le lead et le lag)
 
 Le poll ingest et le board (`outside_window`) utilisent la même fenêtre de veille (`end + 2 h`). `time_window` reste l’ancre **trajet** configurée en admin.
 

@@ -626,15 +626,16 @@ export interface ApiQuotaStatus {
   provider: string;
   /** Jour civil Europe/Paris (YYYY-MM-DD) */
   day: string;
+  /** Jauge d’affichage (`NAVITIA_DAILY_QUOTA`) — n’arrête pas l’ingest */
   limit: number;
   success: number;
   failed: number;
   /** success + failed */
   used: number;
   remaining: number;
-  /** 0–100 */
+  /** 0–100 vs jauge locale */
   percent: number;
-  /** true si used >= limit */
+  /** true si used >= limit (jauge dépassée ; le poll continue jusqu’à l’erreur API) */
   exhausted: boolean;
 }
 
