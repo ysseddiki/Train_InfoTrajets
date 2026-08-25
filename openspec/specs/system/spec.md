@@ -16,7 +16,7 @@ Le système SHALL être un outil ops interne qui surveille une ou plusieurs liai
 
 - **GIVEN** le déploiement
 - **WHEN** un opérateur utilise le produit
-- **THEN** les surfaces Dashboard, Notifications et Admin (filtrée) sont disponibles
+- **THEN** les surfaces Dashboard, Notifications, Trains (admin) et Admin (filtrée) sont disponibles
 - **AND** aucun compte voyageur ni canal push n’existe
 - **AND** au moins une liaison est configurée (seed par défaut)
 - **AND** aucune source d’ingest scrape Gares & Connexions n’est disponible

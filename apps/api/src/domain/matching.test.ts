@@ -191,4 +191,24 @@ describe("watch window + delayed leftover trains", () => {
       false,
     );
   });
+
+  it("drops a cancelled train after its theoretical time (+ slack)", () => {
+    const j = journey({});
+    const now = tueMorning("08:30");
+    const scheduled = tueMorning("08:00");
+    assert.equal(
+      isWatchedDeparture(j, scheduled, scheduled, now, true),
+      false,
+    );
+  });
+
+  it("keeps a cancelled train until theoretical departure", () => {
+    const j = journey({});
+    const now = tueMorning("07:50");
+    const scheduled = tueMorning("08:00");
+    assert.equal(
+      isWatchedDeparture(j, scheduled, null, now, true),
+      true,
+    );
+  });
 });

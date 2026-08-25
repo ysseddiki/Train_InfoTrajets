@@ -10,6 +10,11 @@ export type NavitiaDisruption = {
   disruption_id?: string;
   cause?: string;
   category?: string;
+  status?: string;
+  severity?: {
+    name?: string;
+    effect?: string;
+  };
   messages?: Array<{ text?: string }>;
 };
 
@@ -29,6 +34,11 @@ export type NavitiaDeparture = {
   stop_date_time?: {
     base_departure_date_time?: string;
     departure_date_time?: string;
+    /** deleted | skipped | … (realtime) */
+    departure_status?: string;
+    arrival_status?: string;
+    additional_informations?: string[];
+    data_freshness?: string;
   };
   stop_point?: { id?: string };
   links?: Array<{ type?: string; id?: string; href?: string }>;
@@ -82,6 +92,120 @@ export function formatNavitiaLocalDateTime(at: Date): string {
   }).formatToParts(at);
   const g = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
   return `${g("year")}${g("month")}${g("day")}T${g("hour")}${g("minute")}${g("second")}`;
+}
+
+/**
+ * Parse un datetime local Navitia (`YYYYMMDDThhmmss`) comme mur Europe/Paris → Instant UTC.
+ * `new Date("…T16:47:00")` sans offset dépend du TZ process (UTC → affiche 18:47 Paris en été).
+ */
+export function parseNavitiaLocalDateTime(value?: string): Date | null {
+  if (!value || value.length < 15) return null;
+  const y = Number(value.slice(0, 4));
+  const mo = Number(value.slice(4, 6));
+  const d = Number(value.slice(6, 8));
+  const h = Number(value.slice(9, 11));
+  const mi = Number(value.slice(11, 13));
+  const s = Number(value.slice(13, 15) || "00");
+  if (![y, mo, d, h, mi, s].every((n) => Number.isFinite(n))) return null;
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59 || s > 59) {
+    return null;
+  }
+
+  let t = Date.UTC(y, mo - 1, d, h, mi, s);
+  for (let i = 0; i < 4; i++) {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Paris",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+    }).formatToParts(new Date(t));
+    const get = (type: string) =>
+      Number(parts.find((p) => p.type === type)?.value);
+    const actual = Date.UTC(
+      get("year"),
+      get("month") - 1,
+      get("day"),
+      get("hour"),
+      get("minute"),
+      get("second"),
+    );
+    const wanted = Date.UTC(y, mo - 1, d, h, mi, s);
+    const diff = wanted - actual;
+    if (diff === 0) break;
+    t += diff;
+  }
+  return new Date(t);
+}
+
+const CANCEL_EFFECTS = new Set(["NO_SERVICE", "DELETED_DEPARTURE"]);
+
+function looksCancelledText(raw: string): boolean {
+  return /supprim|cancel|annul|no[_\s-]?service|deleted/i.test(raw);
+}
+
+/**
+ * Départ Navitia annulé / stop supprimé (board + alertes).
+ * Signaux : departure_status, additional_informations, disruption NO_SERVICE, texte.
+ */
+export function isNavitiaDepartureCancelled(
+  dep: NavitiaDeparture,
+  disruptions: NavitiaDisruption[] = [],
+): boolean {
+  const sdt = dep.stop_date_time;
+  const depStatus = String(sdt?.departure_status ?? "").toLowerCase();
+  if (
+    depStatus === "deleted" ||
+    depStatus === "skipped" ||
+    depStatus === "no_service"
+  ) {
+    return true;
+  }
+  for (const info of sdt?.additional_informations ?? []) {
+    if (looksCancelledText(String(info))) return true;
+  }
+
+  const base = sdt?.base_departure_date_time;
+  const real = sdt?.departure_date_time;
+  if (base && !real) return true;
+
+  const dir = [
+    dep.display_informations?.direction,
+    dep.display_informations?.headsign,
+    dep.route?.direction?.name,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  if (looksCancelledText(dir)) return true;
+
+  const ids = new Set(
+    (dep.links ?? [])
+      .filter((l) => l.type === "disruption" && l.id)
+      .map((l) => String(l.id)),
+  );
+  if (ids.size === 0 || disruptions.length === 0) return false;
+
+  for (const d of disruptions) {
+    const match =
+      (d.id && ids.has(d.id)) ||
+      (d.disruption_id && ids.has(d.disruption_id));
+    if (!match) continue;
+    const effect = String(d.severity?.effect ?? "").toUpperCase();
+    if (CANCEL_EFFECTS.has(effect)) return true;
+    const blob = [
+      d.severity?.name,
+      d.cause,
+      d.category,
+      ...(d.messages ?? []).map((m) => m.text),
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (looksCancelledText(blob)) return true;
+  }
+  return false;
 }
 
 export function extractVehicleJourneyId(dep: NavitiaDeparture): string | null {

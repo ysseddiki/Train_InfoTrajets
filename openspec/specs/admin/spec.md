@@ -193,3 +193,19 @@ La console SHALL exposer, pour un `admin` uniquement, une section **Comptes** (c
 - **GIVEN** un admin sur Accès
 - **WHEN** il désactive le mode visiteur
 - **THEN** `PUT /v1/admin/settings/access` persiste `visitorEnabled: false`
+
+### Requirement: Onglet Statuts trains (debug admin)
+
+Le shell MUST exposer un onglet **Trains** (remplace l’ancienne surface « Réponse API ») accessible uniquement aux sessions `admin`. Cet onglet MUST lister les dernières observations `board_train_observations` (numéro, départ théorique gare surveillée, statut à l’heure / retard / suppression, retard en minutes si connu) via `GET /v1/admin/debug/train-observations`. Les rôles `reader` / `liaison_editor` MUST NOT voir le lien ni accéder à l’endpoint (`403`).
+
+#### Scenario: Admin lit les observations
+
+- **GIVEN** une session `admin` et des observations ingest
+- **WHEN** il ouvre l’onglet Trains
+- **THEN** la liste affiche train, départ théorique, statut et retard
+
+#### Scenario: Non-admin refusé
+
+- **GIVEN** une session `liaison_editor`
+- **WHEN** il appelle `GET /v1/admin/debug/train-observations`
+- **THEN** l’API retourne `403`

@@ -5,8 +5,8 @@ import {
   LayoutDashboard,
   LogIn,
   LogOut,
-  Radio,
   Settings2,
+  TrainFront,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
@@ -31,8 +31,8 @@ const NAV = [
   },
   {
     to: "/live",
-    label: "Réponse",
-    icon: Radio,
+    label: "Trains",
+    icon: TrainFront,
     end: false,
     require: "admin" as const,
   },
@@ -78,7 +78,11 @@ export function Layout() {
                 className={({ isActive }) =>
                   `sidebar-link${isActive ? " sidebar-link-active" : ""}`
                 }
-                title={to === "/live" ? "Dernière réponse API ingest" : label}
+                title={
+                  to === "/live"
+                    ? "Derniers statuts trains (debug)"
+                    : label
+                }
               >
                 <Icon size={20} strokeWidth={2} aria-hidden />
                 <span className="nav-label">{label}</span>

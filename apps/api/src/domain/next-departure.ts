@@ -1,4 +1,5 @@
 import type { NextDepartureInfo, NextDepartureStatus } from "@sncf-alerts/shared";
+import { parisMidnightIso, parisYmd } from "./paris-calendar.js";
 
 export function formatHmParis(isoOrDate: string | Date | null | undefined): string | null {
   if (!isoOrDate) return null;
@@ -16,7 +17,7 @@ export function formatHmParis(isoOrDate: string | Date | null | undefined): stri
   }
 }
 
-/** Parse HH:mm du jour (Europe/Paris) → ISO approximatif. */
+/** Parse HH:mm du jour (Europe/Paris) → ISO UTC. */
 export function hmTodayToIso(hm: string | null | undefined): string | null {
   if (!hm) return null;
   const m = hm.trim().match(/^(\d{1,2})[:hH](\d{2})/);
@@ -24,20 +25,8 @@ export function hmTodayToIso(hm: string | null | undefined): string | null {
   const hour = Number(m[1]);
   const minute = Number(m[2]);
   if (hour > 23 || minute > 59) return null;
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Paris",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "";
-  const y = Number(get("year"));
-  const mo = Number(get("month"));
-  const day = Number(get("day"));
-  const guess = new Date(
-    `${y}-${String(mo).padStart(2, "0")}-${String(day).padStart(2, "0")}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00`,
-  );
-  return Number.isNaN(guess.getTime()) ? null : guess.toISOString();
+  const midnight = new Date(parisMidnightIso(parisYmd())).getTime();
+  return new Date(midnight + hour * 3_600_000 + minute * 60_000).toISOString();
 }
 
 export function buildNextDepartureStatus(input: {

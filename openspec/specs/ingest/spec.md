@@ -193,6 +193,27 @@ Pour chaque départ Navitia matché (filtre destination + fenêtre trajet / veil
 - **AND** aucun événement d’alerte n’est créé pour ce départ
 - **AND** le compteur `on_time_count` du jour (liaison) est incrémenté à la première observation
 
+### Requirement: Horaires Navitia en Europe/Paris
+
+Les datetimes Navitia (`YYYYMMDDThhmmss`) MUST être interprétés comme mur **Europe/Paris**, indépendamment du fuseau du process API. L’affichage board (théorique / temps réel) MUST correspondre à l’horaire affiché Gares & Connexions pour le même train.
+
+#### Scenario: Process UTC
+
+- **GIVEN** un départ Navitia `base_departure_date_time = 20260825T164700`
+- **WHEN** le process API tourne en `TZ=UTC`
+- **THEN** le board affiche théorique `16:47` (pas `18:47`)
+
+### Requirement: Suppressions Navitia
+
+Un départ MUST être traité comme `cancelled` si Navitia signale `departure_status` deleted/skipped, `additional_informations` de suppression, ou une disruption liée d’effet `NO_SERVICE` / `DELETED_DEPARTURE`. Les suppressions MUST alimenter observations, alertes (si sévérité activée) et le board lorsque ce train est le prochain chronologique.
+
+#### Scenario: Disruption NO_SERVICE
+
+- **GIVEN** un départ surveillé lié à une disruption `severity.effect = NO_SERVICE`
+- **WHEN** le poll traite ce départ
+- **THEN** une observation / événement `cancelled` est créé
+- **AND** si c’est le prochain train chronologique, le board affiche « Supprimé »
+
 Le poll ingest SHALL pouvoir tourner hors du process API (`INGEST_IN_PROCESS=false` + worker dédié). Des unités systemd SHALL être fournies en exemple (`deploy/systemd/`).
 
 ### Requirement: Cache départs

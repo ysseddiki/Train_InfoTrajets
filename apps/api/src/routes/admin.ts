@@ -483,6 +483,16 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   });
 
   app.get<{
+    Querystring: { limit?: string };
+  }>("/v1/admin/debug/train-observations", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const raw = Number(req.query?.limit ?? 100);
+    const limit = Number.isFinite(raw) ? raw : 100;
+    const entries = await store.listRecentTrainObservations(limit);
+    return { entries };
+  });
+
+  app.get<{
     Querystring: { source?: string };
   }>("/v1/admin/debug/ingest-logs", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;

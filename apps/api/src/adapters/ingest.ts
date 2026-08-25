@@ -9,8 +9,11 @@ import { store } from "../domain/store.js";
 import { syntheticWeatherForStub } from "../domain/weather.js";
 import {
   NavitiaDeparturesPort,
+  isNavitiaDepartureCancelled,
   navitiaDepartureMatchesFilter,
+  parseNavitiaLocalDateTime,
   type NavitiaDeparture,
+  type NavitiaDisruption,
 } from "./departures-navitia.js";
 
 export interface DisruptionIngestPort {
@@ -249,30 +252,15 @@ export class StubIngestAdapter implements DisruptionIngestPort {
   }
 }
 
-function navitiaLocalToDate(value?: string): Date | null {
-  if (!value || value.length < 15) return null;
-  const iso = `${value.slice(0, 4)}-${value.slice(4, 6)}-${value.slice(6, 8)}T${value.slice(9, 11)}:${value.slice(11, 13)}:${value.slice(13, 15) || "00"}`;
-  return new Date(iso);
-}
-
 function delayMinutesFromDeparture(dep: NavitiaDeparture): number | null {
   const base = dep.stop_date_time?.base_departure_date_time;
   const real = dep.stop_date_time?.departure_date_time;
   if (!base || !real) return null;
   if (base === real) return 0;
-  const b = navitiaLocalToDate(base);
-  const r = navitiaLocalToDate(real);
+  const b = parseNavitiaLocalDateTime(base);
+  const r = parseNavitiaLocalDateTime(real);
   if (!b || !r) return null;
   return Math.round((r.getTime() - b.getTime()) / 60_000);
-}
-
-function isCancelled(dep: NavitiaDeparture): boolean {
-  const base = dep.stop_date_time?.base_departure_date_time;
-  const real = dep.stop_date_time?.departure_date_time;
-  const dir = `${dep.display_informations?.direction ?? ""} ${dep.display_informations?.headsign ?? ""}`.toLowerCase();
-  if (dir.includes("supprim") || dir.includes("cancel")) return true;
-  if (base && !real) return true;
-  return false;
 }
 
 function extractTrainNumber(dep: NavitiaDeparture): string | null {
@@ -297,8 +285,12 @@ function extractTrainNumber(dep: NavitiaDeparture): string | null {
 }
 
 function departureSortKey(dep: NavitiaDeparture): number {
-  const real = navitiaLocalToDate(dep.stop_date_time?.departure_date_time);
-  const base = navitiaLocalToDate(dep.stop_date_time?.base_departure_date_time);
+  const real = parseNavitiaLocalDateTime(
+    dep.stop_date_time?.departure_date_time,
+  );
+  const base = parseNavitiaLocalDateTime(
+    dep.stop_date_time?.base_departure_date_time,
+  );
   return (real ?? base)?.getTime() ?? Number.MAX_SAFE_INTEGER;
 }
 
@@ -306,6 +298,7 @@ async function saveNextFromNavitia(
   token: string,
   journey: JourneyConfig,
   departures: NavitiaDeparture[],
+  disruptions: NavitiaDisruption[],
 ): Promise<void> {
   const now = new Date();
   const matched: NavitiaDeparture[] = [];
@@ -313,11 +306,11 @@ async function saveNextFromNavitia(
     if (!(await navitiaDepartureMatchesFilter(token, journey, dep))) {
       continue;
     }
-    const cancelled = isCancelled(dep);
-    const baseDate = navitiaLocalToDate(
+    const cancelled = isNavitiaDepartureCancelled(dep, disruptions);
+    const baseDate = parseNavitiaLocalDateTime(
       dep.stop_date_time?.base_departure_date_time,
     );
-    const realDate = navitiaLocalToDate(
+    const realDate = parseNavitiaLocalDateTime(
       dep.stop_date_time?.departure_date_time,
     );
     if (!isWatchedDeparture(journey, baseDate, realDate, now, cancelled)) {
@@ -325,22 +318,30 @@ async function saveNextFromNavitia(
     }
     matched.push(dep);
   }
-  matched.sort((a, b) => departureSortKey(a) - departureSortKey(b));
+  // Chronologique (théorique puis réel) — y compris trains supprimés
+  matched.sort((a, b) => {
+    const aBase =
+      parseNavitiaLocalDateTime(a.stop_date_time?.base_departure_date_time)?.getTime() ??
+      departureSortKey(a);
+    const bBase =
+      parseNavitiaLocalDateTime(b.stop_date_time?.base_departure_date_time)?.getTime() ??
+      departureSortKey(b);
+    if (aBase !== bBase) return aBase - bBase;
+    return departureSortKey(a) - departureSortKey(b);
+  });
 
-  // Prochain valide : non supprimé en priorité, sinon premier match
-  const next =
-    matched.find((d) => !isCancelled(d)) ?? matched[0] ?? null;
+  const next = matched[0] ?? null;
   if (!next) {
     await store.clearJourneyBoardSnapshot(journey.id);
     return;
   }
 
-  const cancelled = isCancelled(next);
+  const cancelled = isNavitiaDepartureCancelled(next, disruptions);
   const delay = delayMinutesFromDeparture(next);
-  const baseDate = navitiaLocalToDate(
+  const baseDate = parseNavitiaLocalDateTime(
     next.stop_date_time?.base_departure_date_time,
   );
-  const realDate = navitiaLocalToDate(
+  const realDate = parseNavitiaLocalDateTime(
     next.stop_date_time?.departure_date_time,
   );
   const { status, statusLabel } = buildNextDepartureStatus({
@@ -480,7 +481,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
   ): Promise<number> {
     const port = new NavitiaDeparturesPort(token);
     const { departures, disruptions } = await port.fetchDepartures(journey);
-    await saveNextFromNavitia(token, journey, departures);
+    await saveNextFromNavitia(token, journey, departures, disruptions);
     let createdCount = 0;
 
     for (const dep of departures) {
@@ -494,12 +495,12 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
         dep.display_informations?.headsign ??
         "";
 
-      const cancelled = isCancelled(dep);
+      const cancelled = isNavitiaDepartureCancelled(dep, disruptions);
       const delay = delayMinutesFromDeparture(dep);
-      const baseDate = navitiaLocalToDate(
+      const baseDate = parseNavitiaLocalDateTime(
         dep.stop_date_time?.base_departure_date_time,
       );
-      const realDate = navitiaLocalToDate(
+      const realDate = parseNavitiaLocalDateTime(
         dep.stop_date_time?.departure_date_time,
       );
       if (!isWatchedDeparture(journey, baseDate, realDate, new Date(), cancelled)) {
@@ -518,6 +519,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
         journeyId: journey.id,
         baseDepartureKey: `${base}-${directionText || "dest"}`,
         trainNumber,
+        scheduledAt: baseDate?.toISOString() ?? null,
         status,
         delayMinutes: cancelled ? null : delay,
       });

@@ -218,7 +218,9 @@ export function isWatchedDeparture(
   cancelled = false,
 ): boolean {
   if (!journey.active) return false;
-  if (!cancelled && !isDepartureStillDue(realtime, scheduled, now)) {
+  // Supprimés : encore visibles jusqu’à l’heure théorique (+ slack), pas toute la journée
+  const dueRealtime = cancelled ? scheduled : realtime;
+  if (!isDepartureStillDue(dueRealtime, scheduled, now)) {
     return false;
   }
   if (!isInWatchSchedule(journey, now)) return false;

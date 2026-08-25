@@ -161,9 +161,14 @@ CREATE TABLE IF NOT EXISTS board_train_observations (
   journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
   base_departure_key TEXT NOT NULL,
   train_number TEXT,
+  /** Départ théorique gare surveillée (origine journey). */
+  scheduled_at TIMESTAMPTZ,
   status TEXT NOT NULL
     CHECK (status IN ('on_time', 'delayed', 'cancelled', 'unknown')),
   delay_minutes INT,
   observed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (journey_id, base_departure_key)
 );
+
+CREATE INDEX IF NOT EXISTS board_train_observations_observed_at_idx
+  ON board_train_observations (observed_at DESC);

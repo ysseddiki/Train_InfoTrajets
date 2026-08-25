@@ -664,6 +664,32 @@ export interface IngestApiLogsResponse {
   entries: IngestApiLogEntry[];
 }
 
+/** Observation train (debug admin — derniers status). */
+export type TrainObservationStatus =
+  | "on_time"
+  | "delayed"
+  | "cancelled"
+  | "unknown";
+
+export interface TrainObservationDto {
+  journeyId: string;
+  liaisonId: string | null;
+  liaisonName: string | null;
+  direction: JourneyDirection;
+  originLabel: string;
+  destinationLabel: string;
+  trainNumber: string | null;
+  /** Départ théorique gare surveillée (origine). */
+  scheduledAt: string | null;
+  status: TrainObservationStatus;
+  delayMinutes: number | null;
+  observedAt: string;
+}
+
+export interface TrainObservationsResponse {
+  entries: TrainObservationDto[];
+}
+
 /** Sources décorrélées pour vider les stats dashboard (retards, etc.). */
 export interface ClearStatsRequest {
   /** Supprime les événements ingest de ces sources (et livraisons liées). */

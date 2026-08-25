@@ -33,6 +33,7 @@ import type {
   Station,
   StationUpsertBody,
   TeamsConfigPublic,
+  TrainObservationDto,
   UserCreateBody,
   UserPatchBody,
   UserPublic,
@@ -2155,6 +2156,7 @@ export class PgStore {
     journeyId: string;
     baseDepartureKey: string;
     trainNumber: string | null;
+    scheduledAt: string | null;
     status: "on_time" | "delayed" | "cancelled" | "unknown";
     delayMinutes: number | null;
     observedAt?: string;
@@ -2163,10 +2165,12 @@ export class PgStore {
     const observedAt = input.observedAt ?? new Date().toISOString();
     const insert = await pool.query(
       `INSERT INTO board_train_observations (
-         journey_id, base_departure_key, train_number, status, delay_minutes, observed_at
-       ) VALUES ($1,$2,$3,$4,$5,$6)
+         journey_id, base_departure_key, train_number, scheduled_at,
+         status, delay_minutes, observed_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7)
        ON CONFLICT (journey_id, base_departure_key) DO UPDATE SET
          train_number = COALESCE(EXCLUDED.train_number, board_train_observations.train_number),
+         scheduled_at = COALESCE(EXCLUDED.scheduled_at, board_train_observations.scheduled_at),
          status = EXCLUDED.status,
          delay_minutes = EXCLUDED.delay_minutes,
          observed_at = EXCLUDED.observed_at
@@ -2175,6 +2179,7 @@ export class PgStore {
         input.journeyId,
         input.baseDepartureKey.slice(0, 200),
         input.trainNumber,
+        input.scheduledAt,
         input.status,
         input.delayMinutes,
         observedAt,
@@ -2220,6 +2225,60 @@ export class PgStore {
     }
 
     return { created };
+  }
+
+  /** Dernières observations trains (debug admin), plus récentes d’abord. */
+  async listRecentTrainObservations(
+    limit = 100,
+  ): Promise<TrainObservationDto[]> {
+    const pool = getPool();
+    const capped = Math.min(Math.max(1, Math.floor(limit)), 500);
+    const res = await pool.query(
+      `SELECT
+         o.journey_id,
+         o.train_number,
+         o.scheduled_at,
+         o.status,
+         o.delay_minutes,
+         o.observed_at,
+         j.direction,
+         j.origin_label,
+         j.destination_label,
+         j.liaison_id,
+         l.name AS liaison_name
+       FROM board_train_observations o
+       JOIN journeys j ON j.id = o.journey_id
+       LEFT JOIN liaisons l ON l.id = j.liaison_id
+       ORDER BY o.observed_at DESC
+       LIMIT $1`,
+      [capped],
+    );
+    return res.rows.map((row) => ({
+      journeyId: String(row.journey_id),
+      liaisonId: row.liaison_id ? String(row.liaison_id) : null,
+      liaisonName: row.liaison_name ? String(row.liaison_name) : null,
+      direction: (row.direction === "inbound" ? "inbound" : "outbound") as
+        | "outbound"
+        | "inbound",
+      originLabel: String(row.origin_label ?? ""),
+      destinationLabel: String(row.destination_label ?? ""),
+      trainNumber: row.train_number ? String(row.train_number) : null,
+      scheduledAt: row.scheduled_at
+        ? new Date(row.scheduled_at as string | Date).toISOString()
+        : null,
+      status: (["on_time", "delayed", "cancelled", "unknown"].includes(
+        String(row.status),
+      )
+        ? String(row.status)
+        : "unknown") as
+        | "on_time"
+        | "delayed"
+        | "cancelled"
+        | "unknown",
+      delayMinutes:
+        row.delay_minutes == null ? null : Number(row.delay_minutes),
+      observedAt: new Date(row.observed_at as string | Date).toISOString(),
+    }));
   }
 
   async upsertJourneyBoardSnapshot(input: {

@@ -4,10 +4,10 @@ import { ApiStatusProvider } from "./api/ApiStatusContext";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { Layout } from "./components/Layout";
 import { AdminPage } from "./pages/AdminPage";
-import { ApiLivePage } from "./pages/ApiLivePage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { GatePage } from "./pages/GatePage";
 import { NotificationsPage } from "./pages/NotificationsPage";
+import { TrainStatusPage } from "./pages/TrainStatusPage";
 
 function GuardedApp() {
   const { loading, showGate, me } = useAuth();
@@ -28,7 +28,7 @@ function GuardedApp() {
           path="/live"
           element={
             me?.role === "admin" ? (
-              <ApiLivePage />
+              <TrainStatusPage />
             ) : (
               <Navigate to="/" replace />
             )
