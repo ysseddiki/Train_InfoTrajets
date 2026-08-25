@@ -296,6 +296,12 @@ export function DashboardPage() {
         <div className="stat-card-grid">
           <StatCard label="Événements" value={p.events} hint="détectés" />
           <StatCard
+            label="À l’heure"
+            value={p.onTimeTrains ?? 0}
+            hint="partis sans retard"
+            tone="accent"
+          />
+          <StatCard
             label="Retards"
             value={p.delays}
             hint={

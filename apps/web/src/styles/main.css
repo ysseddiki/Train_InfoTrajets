@@ -1951,7 +1951,7 @@ button.danger-action:disabled {
 .stat-card-grid {
   display: grid;
   gap: 0.9rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
 }
 
 .stat-card-grid-secondary {

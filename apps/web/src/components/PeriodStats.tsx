@@ -21,6 +21,10 @@ export function PeriodStats({
           <span className="kpi-label">Événements</span>
         </div>
         <div className="kpi">
+          <span className="kpi-value">{stats.onTimeTrains ?? 0}</span>
+          <span className="kpi-label">À l’heure</span>
+        </div>
+        <div className="kpi">
           <span className="kpi-value">{stats.delays}</span>
           <span className="kpi-label">Retards</span>
         </div>

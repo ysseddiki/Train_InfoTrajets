@@ -1436,6 +1436,21 @@ export class PgStore {
          AND delay_minutes IS NOT NULL`,
       params,
     );
+    const onTimeFilter = liaisonId
+      ? `o.status = 'on_time'
+         AND COALESCE(o.scheduled_at, o.observed_at) >= $1::timestamptz
+         AND COALESCE(o.scheduled_at, o.observed_at) <= now()
+         AND j.liaison_id = $2`
+      : `o.status = 'on_time'
+         AND COALESCE(o.scheduled_at, o.observed_at) >= $1::timestamptz
+         AND COALESCE(o.scheduled_at, o.observed_at) <= now()`;
+    const onTimeRes = await pool.query(
+      `SELECT COUNT(*)::int AS n
+       FROM board_train_observations o
+       JOIN journeys j ON j.id = o.journey_id
+       WHERE ${onTimeFilter}`,
+      params,
+    );
     const e = res.rows[0] ?? {};
     const d = delRes.rows[0] ?? {};
     const delaysWithWeather = Number(weatherCountRes.rows[0]?.n ?? 0);
@@ -1493,6 +1508,7 @@ export class PgStore {
         corrN >= 5 && corrR != null && Number.isFinite(corrR)
           ? Math.round(corrR * 100) / 100
           : null,
+      onTimeTrains: Number(onTimeRes.rows[0]?.n ?? 0),
     };
   }
 

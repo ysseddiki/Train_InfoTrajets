@@ -224,6 +224,11 @@ export interface DashboardPeriodStats {
   weatherCorrelation: WeatherDelayCorrelation[];
   /** Pearson r précipitation (mm) vs durée retard ; null si n < 5 */
   precipitationDelayCorrelation: number | null;
+  /**
+   * Trains déjà partis de la gare surveillée sans jamais de retard observé
+   * (`board_train_observations.status = on_time`, départ théorique écoulé).
+   */
+  onTimeTrains: number;
 }
 
 /** Jour calendaire (Europe/Paris) pour heatmap retards */
