@@ -2564,7 +2564,12 @@ export class PgStore {
   async clearStats(input: {
     eventSources?: IngestEventSource[];
     deliveries?: boolean;
-  }): Promise<{ deletedEvents: number; deletedDeliveries: number }> {
+  }): Promise<{
+    deletedEvents: number;
+    deletedDeliveries: number;
+    deletedBoardDays: number;
+    deletedTrainObservations: number;
+  }> {
     const sources = [...new Set(input.eventSources ?? [])].filter(
       (s): s is IngestEventSource =>
         s === "stub" || s === "prim" || s === "navitia" || s === "zou",
@@ -2580,6 +2585,8 @@ export class PgStore {
     const client = await pool.connect();
     let deletedEvents = 0;
     let deletedDeliveries = 0;
+    let deletedBoardDays = 0;
+    let deletedTrainObservations = 0;
     try {
       await client.query("BEGIN");
 
@@ -2600,6 +2607,17 @@ export class PgStore {
           );
           deletedDeliveries += linked.rowCount ?? 0;
         }
+
+        // Heatmap / indicateurs board : mêmes compteurs que le dashboard
+        // (jours verts à l’heure + observations trains). Rebuild au prochain poll.
+        const days = await client.query(
+          `DELETE FROM board_day_observations RETURNING day`,
+        );
+        deletedBoardDays = days.rowCount ?? 0;
+        const trains = await client.query(
+          `DELETE FROM board_train_observations RETURNING journey_id`,
+        );
+        deletedTrainObservations = trains.rowCount ?? 0;
       }
 
       if (clearDeliveries) {
@@ -2615,7 +2633,12 @@ export class PgStore {
       client.release();
     }
 
-    return { deletedEvents, deletedDeliveries };
+    return {
+      deletedEvents,
+      deletedDeliveries,
+      deletedBoardDays,
+      deletedTrainObservations,
+    };
   }
 
   async listStations(): Promise<Station[]> {

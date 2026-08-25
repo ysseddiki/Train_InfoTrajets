@@ -675,6 +675,9 @@ export interface ClearStatsRequest {
 export interface ClearStatsResult {
   deletedEvents: number;
   deletedDeliveries: number;
+  /** Jours heatmap / observations board purgés (avec les événements). */
+  deletedBoardDays: number;
+  deletedTrainObservations: number;
 }
 
 export interface HealthResponse {

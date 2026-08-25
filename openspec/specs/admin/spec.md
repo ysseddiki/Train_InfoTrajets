@@ -93,12 +93,22 @@ La console SHALL exposer `notify_step_minutes` (minutes, 0–60, défaut 5) au m
 
 Un admin authentifié SHALL pouvoir effacer les données de statistiques dashboard (événements / livraisons) en sélectionnant indépendamment les sources : événements `stub`, `navitia`, `zou` (legacy), `prim` (legacy), et/ou livraisons email/Teams.
 
+Quand au moins une source d’événements est sélectionnée, le clear MUST aussi purger `board_day_observations` et `board_train_observations` afin que la **heatmap** et les **indicateurs** liés aux jours observés se vident comme les agrégats retards (rebuild au prochain poll).
+
 #### Scenario: Clear événements stub seulement
 
 - **GIVEN** un admin authentifié
 - **WHEN** il envoie `POST /v1/admin/stats/clear` avec `eventSources: ["stub"]`
 - **THEN** seuls les événements `source=stub` (et livraisons liées) sont supprimés
 - **AND** les événements Navitia restent
+- **AND** les observations heatmap board sont aussi purgées
+
+#### Scenario: Clear livraisons seules
+
+- **GIVEN** un admin authentifié
+- **WHEN** il envoie `POST /v1/admin/stats/clear` avec `deliveries: true` sans `eventSources`
+- **THEN** seules les livraisons sont supprimées
+- **AND** la heatmap / observations board ne sont pas touchées
 
 ### Requirement: Catalogue de gares
 

@@ -36,11 +36,12 @@ export function ClearStatsPanel() {
     const parts: string[] = [];
     if (selectedSources.length > 0) {
       parts.push(`événements (${selectedSources.join(", ")})`);
+      parts.push("heatmap / observations board");
     }
     if (deliveries) parts.push("livraisons email/Teams");
     if (
       !window.confirm(
-        `Effacer définitivement : ${parts.join(" + ")} ?\nLes stats dashboard (retards, suppressions, notifs) seront recalculées.`,
+        `Effacer définitivement : ${parts.join(" + ")} ?\nIndicateurs et heatmap dashboard seront recalculés (vides jusqu’au prochain poll).`,
       )
     ) {
       return;
@@ -53,8 +54,18 @@ export function ClearStatsPanel() {
         eventSources: selectedSources,
         deliveries,
       });
+      const bits = [
+        `${res.deletedEvents} événement(s)`,
+        `${res.deletedDeliveries} livraison(s)`,
+      ];
+      if (selectedSources.length > 0) {
+        bits.push(
+          `${res.deletedBoardDays ?? 0} jour(s) heatmap`,
+          `${res.deletedTrainObservations ?? 0} obs. train`,
+        );
+      }
       setMsg({
-        text: `Effacé : ${res.deletedEvents} événement(s), ${res.deletedDeliveries} livraison(s).`,
+        text: `Effacé : ${bits.join(", ")}.`,
         ok: true,
       });
       setSources({
