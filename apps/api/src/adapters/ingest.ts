@@ -506,13 +506,29 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
         continue;
       }
 
+      const base = dep.stop_date_time?.base_departure_date_time ?? "unknown";
+      const trainNumber = extractTrainNumber(dep);
+      const { status } = buildNextDepartureStatus({
+        cancelled,
+        delayMinutes: delay,
+      });
+
+      // Observation train (à l’heure inclus) — pas de notif
+      await store.upsertBoardTrainObservation({
+        journeyId: journey.id,
+        baseDepartureKey: `${base}-${directionText || "dest"}`,
+        trainNumber,
+        status,
+        delayMinutes: cancelled ? null : delay,
+      });
+
+      // Alertes uniquement retard ≥ seuil / suppression
       if (!cancelled) {
         if (delay === null) continue;
         if (delay < journey.minDelayMinutes) continue;
         if (delay <= 0) continue;
       }
 
-      const base = dep.stop_date_time?.base_departure_date_time ?? "unknown";
       const externalEventId =
         `navitia-${journey.id}-${base}-${directionText}`.slice(0, 200);
 
@@ -535,7 +551,7 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
             ? `Suppression — ${journey.originLabel} → ${directionText || journey.destinationLabel}`
             : `Retard ${delayLabel} — ${journey.originLabel} → ${directionText || journey.destinationLabel}`,
           description: `Départ gare ${journey.originLabel}, sens ${directionText || journey.destinationLabel}.`,
-          trainNumber: extractTrainNumber(dep),
+          trainNumber,
           delayMinutes: cancelled ? null : delay,
           delayReason: reason.delayReason,
           delayReasonKey: reason.delayReasonKey,

@@ -146,9 +146,24 @@ CREATE TABLE IF NOT EXISTS journey_board_snapshots (
   fetched_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-/** Jours avec au moins un poll board réussi (heatmap : vert si 0 retard). */
+/** Jours avec observations board / trains (heatmap). */
 CREATE TABLE IF NOT EXISTS board_day_observations (
   day DATE NOT NULL,
   liaison_id UUID NOT NULL REFERENCES liaisons(id) ON DELETE CASCADE,
+  on_time_count INT NOT NULL DEFAULT 0,
+  delayed_count INT NOT NULL DEFAULT 0,
+  cancelled_count INT NOT NULL DEFAULT 0,
   PRIMARY KEY (day, liaison_id)
+);
+
+/** Observation idempotente d’un train surveillé (à l’heure / retard / supprimé). */
+CREATE TABLE IF NOT EXISTS board_train_observations (
+  journey_id UUID NOT NULL REFERENCES journeys(id) ON DELETE CASCADE,
+  base_departure_key TEXT NOT NULL,
+  train_number TEXT,
+  status TEXT NOT NULL
+    CHECK (status IN ('on_time', 'delayed', 'cancelled', 'unknown')),
+  delay_minutes INT,
+  observed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (journey_id, base_departure_key)
 );

@@ -14,7 +14,7 @@ function nextDepartureBlock(card: JourneyStatusCard) {
   const n = card.nextDeparture;
   if (!n) {
     return (
-      <p className="muted next-train-empty">Prochain train : pas encore de poll</p>
+      <p className="muted next-train-empty">Pas de prochain train</p>
     );
   }
 

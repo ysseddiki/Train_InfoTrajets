@@ -75,6 +75,7 @@ type CellLevel = "future" | "none" | 0 | 1 | 2 | 3 | 4;
 type Cell = {
   date: string;
   count: number;
+  onTimeCount: number;
   level: CellLevel;
   hasData: boolean;
 };
@@ -88,7 +89,12 @@ function buildWeeks(days: DashboardHeatmapDay[]): {
   weeks: WeekCol[];
   max: number;
 } {
-  const byDate = new Map(days.map((d) => [d.date, d.count]));
+  const byDate = new Map(
+    days.map((d) => [
+      d.date,
+      { count: d.count, onTimeCount: d.onTimeCount ?? 0 },
+    ]),
+  );
   const todayP = parisToday();
   const todayKey = toDateKey(todayP.y, todayP.m, todayP.day);
 
@@ -104,14 +110,16 @@ function buildWeeks(days: DashboardHeatmapDay[]): {
       cursor.getUTCMonth() + 1,
       cursor.getUTCDate(),
     );
-    const hasData = byDate.has(key);
-    const count = byDate.get(key) ?? 0;
+    const entry = byDate.get(key);
+    const hasData = entry != null;
+    const count = entry?.count ?? 0;
+    const onTimeCount = entry?.onTimeCount ?? 0;
     const future = key > todayKey;
     let level: CellLevel;
     if (future) level = "future";
     else if (!hasData) level = "none";
     else level = levelForCount(count);
-    cells.push({ date: key, count, level, hasData });
+    cells.push({ date: key, count, onTimeCount, level, hasData });
     cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
 
@@ -141,8 +149,10 @@ function cellClass(level: CellLevel): string {
 function cellTitle(cell: Cell): string | undefined {
   if (cell.level === "future") return undefined;
   if (!cell.hasData) return `${cell.date} · aucune donnée`;
-  if (cell.count <= 0) return `${cell.date} · aucun retard`;
-  return `${cell.date} · score retard ${cell.count}`;
+  const onTime =
+    cell.onTimeCount > 0 ? ` · ${cell.onTimeCount} à l’heure` : "";
+  if (cell.count <= 0) return `${cell.date} · aucun retard${onTime}`;
+  return `${cell.date} · score ${cell.count}${onTime}`;
 }
 
 function dayPath(date: string, liaisonId?: string): string {
@@ -252,10 +262,12 @@ function HeatmapDayPanel({
 
           <section className="heatmap-day-events">
             <h5>Retards</h5>
-            {detail.events.length === 0 ? (
+                {detail.events.length === 0 ? (
               <p className="muted">
                 {detail.hasObservation
-                  ? "Aucun retard ce jour."
+                  ? detail.onTimeCount > 0
+                    ? `Aucun retard · ${detail.onTimeCount} train${detail.onTimeCount > 1 ? "s" : ""} à l’heure.`
+                    : "Aucun retard ce jour."
                   : "Aucune donnée d’observation ce jour."}
               </p>
             ) : (

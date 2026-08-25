@@ -181,6 +181,18 @@ Les snapshots `journey_board_snapshots` affichés sur le dashboard MUST provenir
 - **WHEN** le dashboard charge l’overview
 - **THEN** ce snapshot n’est pas exposé comme `nextDeparture`
 
+### Requirement: Observations trains à l’heure
+
+Pour chaque départ Navitia matché (filtre destination + fenêtre trajet / veille), l’ingest MUST enregistrer une observation idempotente (`on_time` | `delayed` | `cancelled` | `unknown`) même si le train est à l’heure. Ces observations MUST NOT déclencher de notification. Elles MUST alimenter les compteurs journaliers utilisés par la heatmap.
+
+#### Scenario: Train à l’heure observé
+
+- **GIVEN** un départ surveillé avec `delay_minutes = 0`
+- **WHEN** le poll Navitia traite ce départ
+- **THEN** une observation `on_time` est persistée
+- **AND** aucun événement d’alerte n’est créé pour ce départ
+- **AND** le compteur `on_time_count` du jour (liaison) est incrémenté à la première observation
+
 Le poll ingest SHALL pouvoir tourner hors du process API (`INGEST_IN_PROCESS=false` + worker dédié). Des unités systemd SHALL être fournies en exemple (`deploy/systemd/`).
 
 ### Requirement: Cache départs

@@ -231,11 +231,13 @@ export interface DashboardHeatmapDay {
   /** YYYY-MM-DD */
   date: string;
   /**
-   * Score retards du jour (minutes de retard + pénalité suppressions).
+   * Score retard pondéré (minutes + pénalité suppressions, dilué par trains à l’heure).
    * Intensité heatmap vert → rouge.
    * Absence du jour dans `activityHeatmap` = aucune donnée (cellule grise).
    */
   count: number;
+  /** Trains observés à l’heure ce jour (pondération / info UI). */
+  onTimeCount: number;
 }
 
 /** Météo du jour civil (Open-Meteo daily) ou snapshot d’un événement. */
@@ -255,8 +257,10 @@ export interface DashboardDayWeather {
 export interface DashboardDayDetail {
   /** YYYY-MM-DD Europe/Paris */
   date: string;
-  /** Au moins un poll board ce jour (cellule verte si 0 retard). */
+  /** Au moins un poll / observation train ce jour (cellule verte si 0 retard). */
   hasObservation: boolean;
+  /** Trains à l’heure observés (ingest) ce jour. */
+  onTimeCount: number;
   events: DisruptionEventDto[];
   delayReasons: Array<{ key: string; label: string; count: number }>;
   delaysWithoutReason: number;

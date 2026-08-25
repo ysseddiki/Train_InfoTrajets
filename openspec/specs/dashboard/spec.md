@@ -87,6 +87,33 @@ Si le dernier poll ingest a échoué (`last_ingest_status = error`) et qu’aucu
 - **WHEN** le dashboard charge
 - **THEN** le boardStatusLabel indique une erreur d’ingest
 
+### Requirement: Statut en cours = prochain train
+
+Le bandeau de statut d’une carte Aller/Retour MUST refléter le **prochain train** surveillé (`nextDeparture` : à l’heure / retard / supprimé), pas le seul succès du dernier poll ni le dernier événement d’alerte. Si aucun prochain train n’est disponible en fenêtre, le statut MUST être `no_data` (ex. « Pas de prochain train »), même si `last_ingest_status = ok`.
+
+#### Scenario: Poll OK sans prochain train
+
+- **GIVEN** un sens en fenêtre, dernier ingest `ok`, pas de `nextDeparture`
+- **WHEN** le dashboard charge
+- **THEN** le board n’affiche pas « À l’heure » pour cause de poll OK
+- **AND** le libellé indique l’absence de prochain train
+
+#### Scenario: Prochain train en retard
+
+- **GIVEN** un `nextDeparture` avec `status = delayed`
+- **WHEN** le dashboard charge
+- **THEN** `boardStatus` / `boardStatusLabel` correspondent à ce train
+
+### Requirement: Heatmap pondérée trains à l’heure
+
+La heatmap MUST colorer un jour seulement s’il y a observation (trains surveillés et/ou événements). Un jour avec trains à l’heure et sans retard MUST être vert. Le score d’intensité MUST être dilué par le volume de trains à l’heure observés ce jour.
+
+#### Scenario: Journée calme observée
+
+- **GIVEN** des observations `on_time` sans événement retard/suppression ce jour
+- **WHEN** le dashboard charge la heatmap
+- **THEN** le jour est présent avec `count = 0` (vert) et `onTimeCount > 0`
+
 ### Requirement: Ops room lecture
 
 Le dashboard SHALL présenter une vue ops (statut liaisons A/R en premier, puis indicateurs, puis fil d’activité). Les données de démo SHALL être générables depuis Admin → Debug (stub).

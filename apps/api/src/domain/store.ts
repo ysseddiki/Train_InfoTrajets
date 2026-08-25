@@ -327,12 +327,10 @@ function mapDelivery(row: Record<string, unknown>): AlertDeliveryDto {
 
 function resolveBoardStatus(input: {
   journey: JourneyConfig;
-  latest: DisruptionEventDto | null;
   lastIngestAt: string | null;
   lastIngestStatus: IngestRunStatus | null;
-  recentMs: number;
 }): { boardStatus: BoardTrafficStatus; boardStatusLabel: string } {
-  const { journey, latest, lastIngestAt, lastIngestStatus, recentMs } = input;
+  const { journey, lastIngestAt, lastIngestStatus } = input;
 
   if (!journey.active) {
     return { boardStatus: "paused", boardStatusLabel: "Pause (inactif)" };
@@ -343,37 +341,23 @@ function resolveBoardStatus(input: {
       boardStatusLabel: "Hors fenêtre de veille",
     };
   }
-  if (!lastIngestAt || lastIngestStatus === "error") {
+  if (lastIngestStatus === "error") {
     return {
       boardStatus: "no_data",
-      boardStatusLabel:
-        lastIngestStatus === "error"
-          ? "Ingest en erreur"
-          : "Pas de données (pas encore de poll)",
+      boardStatusLabel: "Ingest en erreur",
     };
   }
-
-  const recent =
-    latest &&
-    Date.now() - new Date(latest.detectedAt).getTime() <= recentMs
-      ? latest
-      : null;
-
-  if (recent?.kind === "cancellation") {
-    return { boardStatus: "cancelled", boardStatusLabel: "Suppression détectée" };
-  }
-  if (recent?.kind === "delay") {
-    const d = recent.delayMinutes;
+  if (!lastIngestAt) {
     return {
-      boardStatus: "delayed",
-      boardStatusLabel:
-        d != null ? `Retard ${d} min` : "Retard unknown",
+      boardStatus: "no_data",
+      boardStatusLabel: "Pas de données (pas encore de poll)",
     };
   }
-  if (lastIngestStatus === "ok" || lastIngestStatus === "skipped") {
-    return { boardStatus: "on_time", boardStatusLabel: "À l’heure" };
-  }
-  return { boardStatus: "no_data", boardStatusLabel: "Pas de données" };
+  // Trafic = prochain train uniquement (affiné dans getOverview via nextDeparture)
+  return {
+    boardStatus: "no_data",
+    boardStatusLabel: "Pas de prochain train",
+  };
 }
 
 function httpError(status: number, message: string): Error {
@@ -1511,7 +1495,7 @@ export class PgStore {
     };
   }
 
-  /** Compteurs journaliers retards (Europe/Paris) sur ~53 semaines pour la heatmap. */
+  /** Compteurs journaliers (Europe/Paris) — score retard pondéré par trains à l’heure. */
   async activityHeatmapDays(
     sinceIso: string,
     liaisonId?: string,
@@ -1537,30 +1521,45 @@ export class PgStore {
                END
              ),
              0
-           )::int AS count
+           )::int AS delay_score
          FROM disruption_events
          WHERE ${eventFilter}
          GROUP BY 1
        ),
        observed AS (
-         SELECT to_char(day, 'YYYY-MM-DD') AS day, 0::int AS count
+         SELECT
+           to_char(day, 'YYYY-MM-DD') AS day,
+           COALESCE(SUM(on_time_count), 0)::int AS on_time_count
          FROM board_day_observations
          WHERE ${obsFilter}
+         GROUP BY 1
        )
-       SELECT day, MAX(count)::int AS count
-       FROM (
-         SELECT day, count FROM scores
-         UNION ALL
-         SELECT day, count FROM observed
-       ) u
-       GROUP BY day
-       ORDER BY day`,
+       SELECT
+         COALESCE(o.day, s.day) AS day,
+         COALESCE(s.delay_score, 0)::int AS delay_score,
+         COALESCE(o.on_time_count, 0)::int AS on_time_count
+       FROM observed o
+       FULL OUTER JOIN scores s ON s.day = o.day
+       ORDER BY 1`,
       params,
     );
-    return res.rows.map((row) => ({
-      date: String(row.day),
-      count: Number(row.count ?? 0),
-    }));
+    return res.rows.map((row) => {
+      const delayScore = Number(row.delay_score ?? 0);
+      const onTimeCount = Number(row.on_time_count ?? 0);
+      // Pondération : plus de trains à l’heure → intensité retard diluée
+      const count =
+        delayScore <= 0
+          ? 0
+          : Math.max(
+              1,
+              Math.round(delayScore / (1 + onTimeCount * 0.5)),
+            );
+      return {
+        date: String(row.day),
+        count,
+        onTimeCount,
+      };
+    });
   }
 
   /**
@@ -1619,21 +1618,22 @@ export class PgStore {
       ),
       filterLiaisonId
         ? pool.query(
-            `SELECT 1 FROM board_day_observations
-             WHERE day = $1::date AND liaison_id = $2
-             LIMIT 1`,
+            `SELECT COALESCE(SUM(on_time_count), 0)::int AS on_time_count
+             FROM board_day_observations
+             WHERE day = $1::date AND liaison_id = $2`,
             [dateYmd, filterLiaisonId],
           )
         : pool.query(
-            `SELECT 1 FROM board_day_observations
-             WHERE day = $1::date
-             LIMIT 1`,
+            `SELECT COALESCE(SUM(on_time_count), 0)::int AS on_time_count
+             FROM board_day_observations
+             WHERE day = $1::date`,
             [dateYmd],
           ),
     ]);
 
     const events = eventRes.rows.map(mapEvent);
-    const hasObservation = (obsRes.rowCount ?? 0) > 0 || events.length > 0;
+    const onTimeCount = Number(obsRes.rows[0]?.on_time_count ?? 0);
+    const hasObservation = obsRes.rows.length > 0 || events.length > 0;
 
     const reasonMap = new Map<
       string,
@@ -1708,6 +1708,7 @@ export class PgStore {
     return {
       date: dateYmd,
       hasObservation,
+      onTimeCount,
       events,
       delayReasons,
       delaysWithoutReason,
@@ -1789,7 +1790,6 @@ export class PgStore {
       ? String(s.last_ingest_detail)
       : null;
 
-    const RECENT_MS = 3 * 60 * 60 * 1000;
     const scopedLiaisons =
       scope === "all"
         ? allLiaisons
@@ -1830,15 +1830,13 @@ export class PgStore {
 
       let { boardStatus, boardStatusLabel } = resolveBoardStatus({
         journey: j,
-        latest,
         lastIngestAt,
         lastIngestStatus,
-        recentMs: RECENT_MS,
       });
 
       const nextDeparture = boardByJourney.get(j.id) ?? null;
       const ingestDegraded = lastIngestStatus === "error";
-      // Affiner le board avec le prochain train (snapshot connu)
+      // Statut en cours = prochain train (horaire), pas le dernier événement / poll OK
       if (
         nextDeparture &&
         boardStatus !== "paused" &&
@@ -1854,13 +1852,19 @@ export class PgStore {
           boardStatus = "on_time";
           boardStatusLabel = nextDeparture.statusLabel;
         } else if (nextDeparture.status === "unknown") {
+          boardStatus = "no_data";
           boardStatusLabel = nextDeparture.statusLabel;
         }
         if (ingestDegraded) {
           boardStatusLabel = `Ingest KO · ${boardStatusLabel}`;
         }
-      } else if (ingestDegraded && boardStatus === "no_data") {
-        boardStatusLabel = "Ingest en erreur";
+      } else if (
+        boardStatus !== "paused" &&
+        boardStatus !== "outside_window" &&
+        !ingestDegraded
+      ) {
+        boardStatus = "no_data";
+        boardStatusLabel = "Pas de prochain train";
       }
 
       const originStation = stationByExt.get(j.originId);
@@ -2141,6 +2145,81 @@ export class PgStore {
       `DELETE FROM journey_board_snapshots WHERE journey_id = $1`,
       [journeyId],
     );
+  }
+
+  /**
+   * Observation idempotente d’un train surveillé (à l’heure / retard / supprimé).
+   * Incrémente les compteurs journaliers seulement à la première vue.
+   */
+  async upsertBoardTrainObservation(input: {
+    journeyId: string;
+    baseDepartureKey: string;
+    trainNumber: string | null;
+    status: "on_time" | "delayed" | "cancelled" | "unknown";
+    delayMinutes: number | null;
+    observedAt?: string;
+  }): Promise<{ created: boolean }> {
+    const pool = getPool();
+    const observedAt = input.observedAt ?? new Date().toISOString();
+    const insert = await pool.query(
+      `INSERT INTO board_train_observations (
+         journey_id, base_departure_key, train_number, status, delay_minutes, observed_at
+       ) VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (journey_id, base_departure_key) DO UPDATE SET
+         train_number = COALESCE(EXCLUDED.train_number, board_train_observations.train_number),
+         status = EXCLUDED.status,
+         delay_minutes = EXCLUDED.delay_minutes,
+         observed_at = EXCLUDED.observed_at
+       RETURNING (xmax = 0) AS inserted`,
+      [
+        input.journeyId,
+        input.baseDepartureKey.slice(0, 200),
+        input.trainNumber,
+        input.status,
+        input.delayMinutes,
+        observedAt,
+      ],
+    );
+    const created = Boolean(insert.rows[0]?.inserted);
+
+    if (created) {
+      const col =
+        input.status === "on_time"
+          ? "on_time_count"
+          : input.status === "cancelled"
+            ? "cancelled_count"
+            : input.status === "delayed"
+              ? "delayed_count"
+              : null;
+      if (col) {
+        await pool.query(
+          `INSERT INTO board_day_observations (day, liaison_id, ${col})
+           SELECT
+             (($1::timestamptz) AT TIME ZONE 'Europe/Paris')::date,
+             j.liaison_id,
+             1
+           FROM journeys j
+           WHERE j.id = $2::uuid AND j.liaison_id IS NOT NULL
+           ON CONFLICT (day, liaison_id) DO UPDATE SET
+             ${col} = board_day_observations.${col} + 1`,
+          [observedAt, input.journeyId],
+        );
+      } else {
+        // unknown : marque le jour observé sans incrémenter un compteur métier
+        await pool.query(
+          `INSERT INTO board_day_observations (day, liaison_id)
+           SELECT
+             (($1::timestamptz) AT TIME ZONE 'Europe/Paris')::date,
+             j.liaison_id
+           FROM journeys j
+           WHERE j.id = $2::uuid AND j.liaison_id IS NOT NULL
+           ON CONFLICT DO NOTHING`,
+          [observedAt, input.journeyId],
+        );
+      }
+    }
+
+    return { created };
   }
 
   async upsertJourneyBoardSnapshot(input: {
