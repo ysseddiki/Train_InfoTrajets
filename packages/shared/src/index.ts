@@ -231,6 +231,11 @@ export interface DashboardPeriodStats {
    * (`board_train_observations.status = on_time`, départ théorique écoulé).
    */
   onTimeTrains: number;
+  /**
+   * Total trains déjà partis comptabilisés sur la période
+   * (observations board : à l’heure + retard + suppression).
+   */
+  observedTrains: number;
 }
 
 /** Jour calendaire (Europe/Paris) pour heatmap retards */

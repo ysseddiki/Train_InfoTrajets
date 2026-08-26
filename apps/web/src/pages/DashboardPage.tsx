@@ -294,7 +294,11 @@ export function DashboardPage() {
           {periodMeta.label} · {periodMeta.hint} · {scopeHint}
         </p>
         <div className="stat-card-grid">
-          <StatCard label="Événements" value={p.events} hint="détectés" />
+          <StatCard
+            label="Trains"
+            value={p.observedTrains ?? 0}
+            hint="comptabilisés"
+          />
           <StatCard
             label="À l’heure"
             value={p.onTimeTrains ?? 0}

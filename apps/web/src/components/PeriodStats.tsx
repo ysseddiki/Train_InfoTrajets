@@ -19,8 +19,8 @@ export function PeriodStats({
       <h3>{label}</h3>
       <div className="kpi-row">
         <div className="kpi">
-          <span className="kpi-value">{stats.events}</span>
-          <span className="kpi-label">Événements</span>
+          <span className="kpi-value">{stats.observedTrains ?? 0}</span>
+          <span className="kpi-label">Trains</span>
         </div>
         <div className="kpi">
           <span className="kpi-value">{stats.onTimeTrains ?? 0}</span>

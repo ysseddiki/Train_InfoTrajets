@@ -1437,19 +1437,19 @@ export class PgStore {
          AND delay_minutes IS NOT NULL`,
       params,
     );
-    const onTimeFilter = liaisonId
-      ? `o.status = 'on_time'
-         AND COALESCE(o.scheduled_at, o.observed_at) >= $1::timestamptz
+    const trainObsFilter = liaisonId
+      ? `COALESCE(o.scheduled_at, o.observed_at) >= $1::timestamptz
          AND COALESCE(o.scheduled_at, o.observed_at) <= now()
          AND j.liaison_id = $2`
-      : `o.status = 'on_time'
-         AND COALESCE(o.scheduled_at, o.observed_at) >= $1::timestamptz
+      : `COALESCE(o.scheduled_at, o.observed_at) >= $1::timestamptz
          AND COALESCE(o.scheduled_at, o.observed_at) <= now()`;
-    const onTimeRes = await pool.query(
-      `SELECT COUNT(*)::int AS n
+    const trainObsRes = await pool.query(
+      `SELECT
+         COUNT(*)::int AS observed,
+         COUNT(*) FILTER (WHERE o.status = 'on_time')::int AS on_time
        FROM board_train_observations o
        JOIN journeys j ON j.id = o.journey_id
-       WHERE ${onTimeFilter}`,
+       WHERE ${trainObsFilter}`,
       params,
     );
     const e = res.rows[0] ?? {};
@@ -1477,6 +1477,7 @@ export class PgStore {
     const corrRow = corrRes.rows[0] ?? {};
     const corrN = Number(corrRow.n ?? 0);
     const corrR = corrRow.r === null || corrRow.r === undefined ? null : Number(corrRow.r);
+    const trainObs = trainObsRes.rows[0] ?? {};
     return {
       events: Number(e.events ?? 0),
       delays: Number(e.delays ?? 0),
@@ -1513,7 +1514,8 @@ export class PgStore {
         corrN >= 5 && corrR != null && Number.isFinite(corrR)
           ? Math.round(corrR * 100) / 100
           : null,
-      onTimeTrains: Number(onTimeRes.rows[0]?.n ?? 0),
+      onTimeTrains: Number(trainObs.on_time ?? 0),
+      observedTrains: Number(trainObs.observed ?? 0),
     };
   }
 
