@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from "react";
 import { useAuth } from "../auth/AuthContext";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 export function GatePage() {
   const { login, continueAsVisitor, visitorEnabled } = useAuth();
@@ -25,6 +26,9 @@ export function GatePage() {
 
   return (
     <div className="gate-page">
+      <div className="gate-theme-bar">
+        <ThemeToggle variant="gate" />
+      </div>
       <div className="admin-login-card card gate-card">
         <p className="eyebrow">SNCF-Alerts</p>
         <h1>Accès</h1>

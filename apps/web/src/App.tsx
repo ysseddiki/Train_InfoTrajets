@@ -8,6 +8,7 @@ import { DashboardPage } from "./pages/DashboardPage";
 import { GatePage } from "./pages/GatePage";
 import { NotificationsPage } from "./pages/NotificationsPage";
 import { TrainStatusPage } from "./pages/TrainStatusPage";
+import { ThemeProvider } from "./theme/ThemeContext";
 
 function GuardedApp() {
   const { loading, showGate, me } = useAuth();
@@ -51,10 +52,12 @@ function GuardedApp() {
 
 export function App() {
   return (
-    <ApiStatusProvider>
-      <AuthProvider>
-        <GuardedApp />
-      </AuthProvider>
-    </ApiStatusProvider>
+    <ThemeProvider>
+      <ApiStatusProvider>
+        <AuthProvider>
+          <GuardedApp />
+        </AuthProvider>
+      </ApiStatusProvider>
+    </ThemeProvider>
   );
 }

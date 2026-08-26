@@ -13,6 +13,7 @@ import { Link, NavLink, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { AdminAccountPanel } from "./AdminAccountPanel";
 import { ApiStatusLine } from "./ApiStatusLine";
+import { ThemeToggle } from "./ThemeToggle";
 
 const NAV = [
   {
@@ -97,6 +98,7 @@ export function Layout() {
                 {me.username}
               </p>
               <div className="sidebar-account-actions">
+                <ThemeToggle />
                 <button
                   type="button"
                   className="sidebar-account-btn"
@@ -118,14 +120,17 @@ export function Layout() {
               </div>
             </div>
           ) : (
-            <button
-              type="button"
-              className="sidebar-account-btn sidebar-login-btn"
-              onClick={requestLogin}
-            >
-              <LogIn size={16} strokeWidth={2} aria-hidden />
-              <span className="sidebar-account-label">Se connecter</span>
-            </button>
+            <div className="sidebar-account-actions sidebar-guest-actions">
+              <ThemeToggle />
+              <button
+                type="button"
+                className="sidebar-account-btn sidebar-login-btn"
+                onClick={requestLogin}
+              >
+                <LogIn size={16} strokeWidth={2} aria-hidden />
+                <span className="sidebar-account-label">Se connecter</span>
+              </button>
+            </div>
           )}
           <ApiStatusLine />
         </div>
