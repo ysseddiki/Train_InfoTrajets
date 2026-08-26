@@ -1,5 +1,6 @@
 import type { EventWeatherSnapshot, WeatherBucket } from "@sncf-alerts/shared";
 import { TtlCache } from "./departures-cache.js";
+import { loggedFetch } from "./outbound-http-log.js";
 import { addDaysYmd, parisYmd } from "./paris-calendar.js";
 
 const CACHE_TTL_MS = 10 * 60_000;
@@ -67,7 +68,11 @@ export async function geocodeStationLabel(
       format: "json",
     }).toString();
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    const res = await loggedFetch(
+      url,
+      { signal: AbortSignal.timeout(8_000) },
+      { provider: "open-meteo", detail: "geocode" },
+    );
     if (!res.ok) return null;
     const body = (await res.json()) as {
       results?: Array<{ latitude?: number; longitude?: number }>;
@@ -100,7 +105,11 @@ async function fetchOpenMeteoCurrent(
       timezone: "Europe/Paris",
     }).toString();
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    const res = await loggedFetch(
+      url,
+      { signal: AbortSignal.timeout(8_000) },
+      { provider: "open-meteo", detail: "forecast current" },
+    );
     if (!res.ok) return null;
     const body = (await res.json()) as {
       current?: {
@@ -193,7 +202,14 @@ async function fetchOpenMeteoDailyUrl(
   ymd: string,
 ): Promise<EventWeatherSnapshot | null> {
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
+    const res = await loggedFetch(
+      url,
+      { signal: AbortSignal.timeout(8_000) },
+      {
+        provider: "open-meteo",
+        detail: url.includes("archive") ? "archive daily" : "forecast daily",
+      },
+    );
     if (!res.ok) return null;
     return parseDailyBody((await res.json()) as DailyMeteoBody, ymd);
   } catch {

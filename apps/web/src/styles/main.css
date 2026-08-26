@@ -2932,6 +2932,59 @@ td {
   opacity: 0.85;
 }
 
+.debug-outbound-card {
+  margin-top: 1.25rem;
+}
+
+.debug-outbound-actions {
+  margin: 0.75rem 0 1rem;
+}
+
+.debug-outbound-table-wrap {
+  overflow-x: auto;
+  max-height: min(28rem, 55vh);
+  overflow-y: auto;
+  border: 1px solid var(--border, #e2e2e8);
+  border-radius: 6px;
+}
+
+.debug-outbound-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.debug-outbound-table th,
+.debug-outbound-table td {
+  padding: 0.45rem 0.65rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border, #ebebf0);
+}
+
+.debug-outbound-table th {
+  position: sticky;
+  top: 0;
+  background: var(--surface, #fafafa);
+  font-weight: 650;
+  white-space: nowrap;
+  z-index: 1;
+}
+
+.debug-outbound-table tr.is-error td {
+  background: color-mix(in srgb, #c0392b 8%, transparent);
+}
+
+.debug-outbound-url code {
+  display: inline-block;
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
 /* --- Réponse API (sidebar) --- */
 .api-live-page .dash-head {
   margin-bottom: 1.25rem;

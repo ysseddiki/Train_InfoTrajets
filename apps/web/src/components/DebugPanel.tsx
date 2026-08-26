@@ -4,6 +4,8 @@ import type {
   IngestApiLogsResponse,
   JourneyDirection,
   LiaisonConfig,
+  OutboundHttpEntry,
+  OutboundHttpLogsResponse,
 } from "@sncf-alerts/shared";
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Trash2 } from "lucide-react";
@@ -19,6 +21,14 @@ const SOURCES: { id: IngestApiLogSource; label: string }[] = [
   { id: "navitia", label: "Navitia" },
   { id: "stub", label: "Stub" },
 ];
+
+const PROVIDER_LABEL: Record<OutboundHttpEntry["provider"], string> = {
+  navitia: "Navitia",
+  "open-meteo": "Open-Meteo",
+  teams: "Teams",
+  smtp: "SMTP",
+  other: "Autre",
+};
 
 function formatAt(iso: string): string {
   try {
@@ -46,6 +56,13 @@ export function DebugPanel({
   const [loading, setLoading] = useState(false);
   const [auto, setAuto] = useState(true);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const [outbound, setOutbound] = useState<OutboundHttpEntry[]>([]);
+  const [outboundLoading, setOutboundLoading] = useState(false);
+  const [outboundMsg, setOutboundMsg] = useState<{
+    text: string;
+    ok: boolean;
+  } | null>(null);
 
   const [stubDirection, setStubDirection] =
     useState<JourneyDirection>("outbound");
@@ -78,17 +95,37 @@ export function DebugPanel({
     }
   }, [source]);
 
+  const reloadOutbound = useCallback(async () => {
+    setOutboundLoading(true);
+    try {
+      const res = await apiGet<OutboundHttpLogsResponse>(
+        "/v1/admin/debug/outbound-http",
+      );
+      setOutbound(res.entries);
+      setOutboundMsg(null);
+    } catch (err) {
+      setOutboundMsg({ text: errorMessage(err), ok: false });
+    } finally {
+      setOutboundLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void reload();
   }, [reload]);
 
   useEffect(() => {
+    void reloadOutbound();
+  }, [reloadOutbound]);
+
+  useEffect(() => {
     if (!auto) return;
     const id = window.setInterval(() => {
       void reload();
+      void reloadOutbound();
     }, 5000);
     return () => window.clearInterval(id);
-  }, [auto, reload]);
+  }, [auto, reload, reloadOutbound]);
 
   async function clearLogs() {
     try {
@@ -97,6 +134,16 @@ export function DebugPanel({
       setMsg({ text: `Logs ${source} effacés`, ok: true });
     } catch (err) {
       setMsg({ text: errorMessage(err), ok: false });
+    }
+  }
+
+  async function clearOutbound() {
+    try {
+      await apiSend("/v1/admin/debug/outbound-http", "DELETE");
+      await reloadOutbound();
+      setOutboundMsg({ text: "Requêtes sortantes effacées", ok: true });
+    } catch (err) {
+      setOutboundMsg({ text: errorMessage(err), ok: false });
     }
   }
 
@@ -411,6 +458,82 @@ export function DebugPanel({
         </button>
         {stubMsg && (
           <p className={stubMsg.ok ? "ok" : "error"}>{stubMsg.text}</p>
+        )}
+      </section>
+
+      <section className="card debug-outbound-card">
+        <h3>Requêtes API sortantes</h3>
+        <p className="muted debug-logs-lead">
+          Journal mémoire des appels HTTP/SMTP du serveur (Navitia, météo,
+          Teams, e-mail). URLs sanitisées — pas de clés ni webhooks.
+        </p>
+        <div className="debug-logs-actions debug-outbound-actions">
+          <button
+            type="button"
+            className="debug-action-btn"
+            onClick={() => void reloadOutbound()}
+            disabled={outboundLoading}
+          >
+            <RefreshCw size={16} aria-hidden />
+            Actualiser
+          </button>
+          <button
+            type="button"
+            className="debug-action-btn debug-action-danger"
+            onClick={() => void clearOutbound()}
+          >
+            <Trash2 size={16} aria-hidden />
+            Effacer
+          </button>
+        </div>
+        {outboundMsg && (
+          <p className={outboundMsg.ok ? "ok" : "error"}>{outboundMsg.text}</p>
+        )}
+        {outbound.length === 0 ? (
+          <p className="muted debug-log-empty">
+            Aucune requête enregistrée depuis le démarrage du serveur.
+          </p>
+        ) : (
+          <div className="debug-outbound-table-wrap">
+            <table className="debug-outbound-table">
+              <thead>
+                <tr>
+                  <th scope="col">Heure</th>
+                  <th scope="col">Fournisseur</th>
+                  <th scope="col">Méthode</th>
+                  <th scope="col">Statut</th>
+                  <th scope="col">Durée</th>
+                  <th scope="col">URL</th>
+                  <th scope="col">Détail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {outbound.map((row) => (
+                  <tr
+                    key={row.id}
+                    className={row.ok ? undefined : "is-error"}
+                  >
+                    <td className="debug-log-time">{formatAt(row.at)}</td>
+                    <td>{PROVIDER_LABEL[row.provider]}</td>
+                    <td>
+                      <code>{row.method}</code>
+                    </td>
+                    <td>
+                      {row.httpStatus == null ? "—" : row.httpStatus}
+                      {!row.ok && row.httpStatus == null ? " err" : ""}
+                    </td>
+                    <td>
+                      {row.durationMs == null ? "—" : `${row.durationMs} ms`}
+                    </td>
+                    <td className="debug-outbound-url">
+                      <code title={row.url}>{row.url}</code>
+                    </td>
+                    <td className="muted">{row.detail ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

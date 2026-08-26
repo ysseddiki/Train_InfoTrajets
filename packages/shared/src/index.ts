@@ -671,6 +671,31 @@ export interface IngestApiLogsResponse {
   entries: IngestApiLogEntry[];
 }
 
+/** Requêtes HTTP/SMTP sortantes (Admin → Debug). */
+export type OutboundHttpProvider =
+  | "navitia"
+  | "open-meteo"
+  | "teams"
+  | "smtp"
+  | "other";
+
+export interface OutboundHttpEntry {
+  id: string;
+  at: string;
+  provider: OutboundHttpProvider;
+  method: string;
+  /** URL sanitisée (pas de clé / webhook secret) */
+  url: string;
+  httpStatus: number | null;
+  ok: boolean;
+  durationMs: number | null;
+  detail: string | null;
+}
+
+export interface OutboundHttpLogsResponse {
+  entries: OutboundHttpEntry[];
+}
+
 /** Observation train (debug admin — derniers status). */
 export type TrainObservationStatus =
   | "on_time"

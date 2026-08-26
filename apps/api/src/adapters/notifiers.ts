@@ -1,4 +1,8 @@
 import nodemailer from "nodemailer";
+import {
+  appendOutboundHttp,
+  loggedFetch,
+} from "../domain/outbound-http-log.js";
 import { store } from "../domain/store.js";
 
 export interface EmailNotifierPort {
@@ -46,15 +50,33 @@ export class SmtpEmailNotifier implements EmailNotifierPort {
     });
 
     try {
+      const started = Date.now();
       await transporter.sendMail({
         from: cfg.fromAddress,
         to: input.to.join(", "),
         subject: input.subject,
         text: input.body,
       });
+      appendOutboundHttp({
+        provider: "smtp",
+        method: "SMTP",
+        url: `smtp://${cfg.host}:${cfg.port}`,
+        httpStatus: null,
+        ok: true,
+        durationMs: Date.now() - started,
+        detail: `to=${input.to.length} recip.`,
+      });
       return { ok: true };
     } catch (err) {
       const message = err instanceof Error ? err.message : "SMTP send failed";
+      appendOutboundHttp({
+        provider: "smtp",
+        method: "SMTP",
+        url: `smtp://${cfg.host}:${cfg.port}`,
+        httpStatus: null,
+        ok: false,
+        detail: message.slice(0, 200),
+      });
       return { ok: false, detail: message };
     }
   }
@@ -74,18 +96,22 @@ export class TeamsWebhookNotifier implements TeamsNotifierPort {
     }
 
     try {
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          "@type": "MessageCard",
-          "@context": "http://schema.org/extensions",
-          summary: input.title,
-          themeColor: "0076D7",
-          title: input.title,
-          text: input.body,
-        }),
-      });
+      const res = await loggedFetch(
+        url,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            "@type": "MessageCard",
+            "@context": "http://schema.org/extensions",
+            summary: input.title,
+            themeColor: "0076D7",
+            title: input.title,
+            text: input.body,
+          }),
+        },
+        { provider: "teams", detail: "incoming webhook" },
+      );
       if (!res.ok) {
         return { ok: false, detail: `Teams HTTP ${res.status}` };
       }

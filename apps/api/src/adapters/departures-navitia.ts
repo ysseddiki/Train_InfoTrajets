@@ -2,6 +2,7 @@ import type { JourneyConfig } from "@sncf-alerts/shared";
 import { departuresCache, TtlCache } from "../domain/departures-cache.js";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
 import { matchesDestinationFilterAsync } from "../domain/matching.js";
+import { loggedFetch } from "../domain/outbound-http-log.js";
 import type { DeparturesPort } from "../ports/departures.js";
 import { store } from "../domain/store.js";
 
@@ -235,10 +236,14 @@ export async function fetchVehicleJourneyStopAreaIds(
 
   let res: Response;
   try {
-    res = await fetch(url, {
-      headers: { Authorization: navitiaAuthHeader(token) },
-      signal: AbortSignal.timeout(12_000),
-    });
+    res = await loggedFetch(
+      url,
+      {
+        headers: { Authorization: navitiaAuthHeader(token) },
+        signal: AbortSignal.timeout(12_000),
+      },
+      { provider: "navitia", detail: "vehicle_journey" },
+    );
   } catch {
     await store.recordApiRequest({ provider: "navitia", ok: false });
     return [];
@@ -359,11 +364,18 @@ export class NavitiaDeparturesPort implements DeparturesPort {
 
     let res: Response;
     try {
-      res = await fetch(url, {
-        headers: {
-          Authorization: navitiaAuthHeader(this.token),
+      res = await loggedFetch(
+        url,
+        {
+          headers: {
+            Authorization: navitiaAuthHeader(this.token),
+          },
         },
-      });
+        {
+          provider: "navitia",
+          detail: `departures ${journey.direction}`,
+        },
+      );
     } catch (err) {
       await store.recordApiRequest({ provider: "navitia", ok: false });
       appendIngestApiLog({

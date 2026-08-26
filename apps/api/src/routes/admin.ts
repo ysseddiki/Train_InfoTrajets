@@ -29,6 +29,10 @@ import {
   isIngestApiLogSource,
   listIngestApiLogs,
 } from "../domain/ingest-api-logs.js";
+import {
+  clearOutboundHttp,
+  listOutboundHttp,
+} from "../domain/outbound-http-log.js";
 import { sendTestNotification } from "../domain/notify.js";
 import {
   checkLoginRateLimit,
@@ -548,6 +552,17 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     const source =
       raw && isIngestApiLogSource(raw) ? raw : null;
     const deleted = clearIngestApiLogs(source);
+    return { ok: true, deleted };
+  });
+
+  app.get("/v1/admin/debug/outbound-http", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return { entries: listOutboundHttp(200) };
+  });
+
+  app.delete("/v1/admin/debug/outbound-http", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const deleted = clearOutboundHttp();
     return { ok: true, deleted };
   });
 

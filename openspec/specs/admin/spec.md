@@ -209,3 +209,14 @@ Le shell MUST exposer un onglet **Trains** (remplace l’ancienne surface « Ré
 - **GIVEN** une session `liaison_editor`
 - **WHEN** il appelle `GET /v1/admin/debug/train-observations`
 - **THEN** l’API retourne `403`
+
+### Requirement: Journal des requêtes sortantes (Debug)
+
+L’onglet Admin → **Debug** MUST afficher en bas une liste des dernières requêtes sortantes du serveur (Navitia, Open-Meteo, Teams, SMTP) via `GET /v1/admin/debug/outbound-http`. Les URLs MUST être sanitisées (pas de token, clé API, ni chemin webhook Teams). `DELETE /v1/admin/debug/outbound-http` MUST vider le journal. Accès `admin` uniquement (`403` sinon).
+
+#### Scenario: Admin consulte le journal
+
+- **GIVEN** une session `admin` et au moins un appel Navitia après démarrage
+- **WHEN** il ouvre Debug et charge `GET /v1/admin/debug/outbound-http`
+- **THEN** la réponse liste méthode, URL sanitisée, statut HTTP, fournisseur et horodatage
+- **AND** aucune valeur de secret n’apparaît dans `url`
