@@ -6,6 +6,22 @@ import { loggedNavitiaFetch } from "../domain/navitia-request-samples.js";
 import type { DeparturesPort } from "../ports/departures.js";
 import { store } from "../domain/store.js";
 
+export type NavitiaImpactedStop = {
+  stop_point?: {
+    id?: string;
+    name?: string;
+    label?: string;
+  };
+  base_arrival_time?: string;
+  base_departure_time?: string;
+  amended_arrival_time?: string;
+  amended_departure_time?: string;
+  cause?: string;
+  stop_time_effect?: string;
+  departure_status?: string;
+  arrival_status?: string;
+};
+
 export type NavitiaDisruption = {
   id?: string;
   disruption_id?: string;
@@ -17,6 +33,15 @@ export type NavitiaDisruption = {
     effect?: string;
   };
   messages?: Array<{ text?: string }>;
+  impacted_objects?: Array<{
+    pt_object?: {
+      id?: string;
+      name?: string;
+      embedded_type?: string;
+      trip?: { id?: string; name?: string };
+    };
+    impacted_stops?: NavitiaImpactedStop[];
+  }>;
 };
 
 export type NavitiaDeparture = {
@@ -143,26 +168,156 @@ export function parseNavitiaLocalDateTime(value?: string): Date | null {
 }
 
 const CANCEL_EFFECTS = new Set(["NO_SERVICE", "DELETED_DEPARTURE"]);
+const CANCEL_STOP_STATUSES = new Set([
+  "deleted",
+  "skipped",
+  "no_service",
+]);
 
 function looksCancelledText(raw: string): boolean {
   return /supprim|cancel|annul|no[_\s-]?service|deleted/i.test(raw);
 }
 
+/** Clé UIC commune `stop_area:SNCF:87756486` ↔ `stop_point:SNCF:87756486:Train`. */
+export function navitiaStopIdKey(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const m = String(raw).match(/(?:stop_(?:area|point):)?(?:SNCF:)?(\d{6,8})/i);
+  return m?.[1] ?? null;
+}
+
+function departureTrainTokens(dep: NavitiaDeparture): Set<string> {
+  const out = new Set<string>();
+  const info = dep.display_informations;
+  for (const c of [
+    info?.trip_short_name,
+    info?.headsign,
+    info?.number,
+    info?.name,
+    info?.label,
+  ]) {
+    const t = String(c ?? "").trim();
+    if (!t) continue;
+    out.add(t.toUpperCase());
+    const m = t.match(/\b([A-Z]?\d{3,5})\b/i);
+    if (m?.[1]) out.add(m[1].toUpperCase());
+  }
+  return out;
+}
+
+function disruptionLinkIds(dep: NavitiaDeparture): Set<string> {
+  return new Set(
+    (dep.links ?? [])
+      .filter((l) => l.type === "disruption" && (l.id || l.href))
+      .flatMap((l) =>
+        [String(l.id ?? ""), String(l.href ?? "")].filter(Boolean),
+      ),
+  );
+}
+
+function disruptionIdsMatch(
+  d: NavitiaDisruption,
+  linkIds: Set<string>,
+): boolean {
+  if (linkIds.size === 0) return false;
+  const dIds = [d.id, d.disruption_id].filter(Boolean).map(String);
+  return dIds.some(
+    (did) =>
+      linkIds.has(did) ||
+      [...linkIds].some((lid) => lid.endsWith(did) || did.endsWith(lid)),
+  );
+}
+
+function disruptionTripMatchesDeparture(
+  d: NavitiaDisruption,
+  trainTokens: Set<string>,
+): boolean {
+  if (trainTokens.size === 0) return false;
+  for (const obj of d.impacted_objects ?? []) {
+    const tripName = String(obj.pt_object?.trip?.name ?? "").trim().toUpperCase();
+    if (tripName && trainTokens.has(tripName)) return true;
+    const tripId = String(obj.pt_object?.trip?.id ?? obj.pt_object?.id ?? "");
+    for (const tok of trainTokens) {
+      if (tok.length >= 3 && tripId.toUpperCase().includes(tok)) return true;
+    }
+  }
+  return false;
+}
+
+function baseTimeHms(dep: NavitiaDeparture): string | null {
+  const base = dep.stop_date_time?.base_departure_date_time;
+  if (!base || base.length < 15) return null;
+  return base.slice(9, 15);
+}
+
+function impactedStopMatchesOrigin(
+  stop: NavitiaImpactedStop,
+  originKey: string,
+  baseHms: string | null,
+): boolean {
+  const stopKey = navitiaStopIdKey(stop.stop_point?.id);
+  if (!stopKey || stopKey !== originKey) return false;
+  if (!baseHms) return true;
+  const stopBase = String(
+    stop.base_departure_time ?? stop.base_arrival_time ?? "",
+  ).replace(/\D/g, "");
+  if (!stopBase) return true;
+  // Confirmation horaire si présente (évite collision rare même UIC)
+  return stopBase === baseHms || stopBase.padStart(6, "0") === baseHms;
+}
+
+function isImpactedStopCancelled(stop: NavitiaImpactedStop): boolean {
+  const depStatus = String(stop.departure_status ?? "").toLowerCase();
+  const effect = String(stop.stop_time_effect ?? "").toLowerCase();
+  return (
+    CANCEL_STOP_STATUSES.has(depStatus) || CANCEL_STOP_STATUSES.has(effect)
+  );
+}
+
+/**
+ * Arrêt impacté correspondant à la gare surveillée pour ce départ
+ * (lien disruption, ou même n° de train sur impacted_objects).
+ */
+export function findImpactedStopForDeparture(
+  dep: NavitiaDeparture,
+  disruptions: NavitiaDisruption[],
+  originStopId: string | null | undefined,
+): NavitiaImpactedStop | null {
+  const originKey = navitiaStopIdKey(originStopId);
+  if (!originKey || disruptions.length === 0) return null;
+
+  const linkIds = disruptionLinkIds(dep);
+  const trainTokens = departureTrainTokens(dep);
+  const baseHms = baseTimeHms(dep);
+
+  for (const d of disruptions) {
+    const applies =
+      disruptionIdsMatch(d, linkIds) ||
+      disruptionTripMatchesDeparture(d, trainTokens);
+    if (!applies) continue;
+    for (const obj of d.impacted_objects ?? []) {
+      for (const stop of obj.impacted_stops ?? []) {
+        if (impactedStopMatchesOrigin(stop, originKey, baseHms)) {
+          return stop;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 /**
  * Départ Navitia annulé / stop supprimé (board + alertes).
- * Signaux : departure_status, additional_informations, disruption NO_SERVICE, texte.
+ * Signaux : departure_status, additional_informations, disruption NO_SERVICE,
+ * et `impacted_stops` de la gare surveillée (`departure_status` / `stop_time_effect`).
  */
 export function isNavitiaDepartureCancelled(
   dep: NavitiaDeparture,
   disruptions: NavitiaDisruption[] = [],
+  originStopId?: string | null,
 ): boolean {
   const sdt = dep.stop_date_time;
   const depStatus = String(sdt?.departure_status ?? "").toLowerCase();
-  if (
-    depStatus === "deleted" ||
-    depStatus === "skipped" ||
-    depStatus === "no_service"
-  ) {
+  if (CANCEL_STOP_STATUSES.has(depStatus)) {
     return true;
   }
   for (const info of sdt?.additional_informations ?? []) {
@@ -182,21 +337,20 @@ export function isNavitiaDepartureCancelled(
     .join(" ");
   if (looksCancelledText(dir)) return true;
 
-  const ids = new Set(
-    (dep.links ?? [])
-      .filter((l) => l.type === "disruption" && (l.id || l.href))
-      .flatMap((l) => [String(l.id ?? ""), String(l.href ?? "")].filter(Boolean)),
+  const impacted = findImpactedStopForDeparture(
+    dep,
+    disruptions,
+    originStopId,
   );
+  if (impacted && isImpactedStopCancelled(impacted)) {
+    return true;
+  }
+
+  const ids = disruptionLinkIds(dep);
   if (ids.size === 0 || disruptions.length === 0) return false;
 
   for (const d of disruptions) {
-    const dIds = [d.id, d.disruption_id].filter(Boolean).map(String);
-    const match = dIds.some(
-      (did) =>
-        ids.has(did) ||
-        [...ids].some((lid) => lid.endsWith(did) || did.endsWith(lid)),
-    );
-    if (!match) continue;
+    if (!disruptionIdsMatch(d, ids)) continue;
     const effect = String(d.severity?.effect ?? "").toUpperCase();
     if (CANCEL_EFFECTS.has(effect)) return true;
     const blob = [

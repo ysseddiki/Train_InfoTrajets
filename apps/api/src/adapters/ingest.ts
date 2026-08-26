@@ -1,6 +1,6 @@
 import type { EventWeatherSnapshot, JourneyConfig, JourneyDirection } from "@sncf-alerts/shared";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
-import { delayReasonFromNavitia } from "../domain/delay-reason.js";
+import { delayReasonFromNavitia, delayReasonFromParts } from "../domain/delay-reason.js";
 import { isWatchedDeparture, isWithinWatchWindow } from "../domain/matching.js";
 import { buildNextDepartureStatus } from "../domain/next-departure.js";
 import { notifyForEvent, processNotifyJobs } from "../domain/notify.js";
@@ -9,6 +9,7 @@ import { store } from "../domain/store.js";
 import { syntheticWeatherForStub } from "../domain/weather.js";
 import {
   NavitiaDeparturesPort,
+  findImpactedStopForDeparture,
   isNavitiaDepartureCancelled,
   navitiaDepartureMatchesFilter,
   parseNavitiaLocalDateTime,
@@ -306,7 +307,11 @@ async function saveNextFromNavitia(
     if (!(await navitiaDepartureMatchesFilter(token, journey, dep))) {
       continue;
     }
-    const cancelled = isNavitiaDepartureCancelled(dep, disruptions);
+    const cancelled = isNavitiaDepartureCancelled(
+      dep,
+      disruptions,
+      journey.originId,
+    );
     const baseDate = parseNavitiaLocalDateTime(
       dep.stop_date_time?.base_departure_date_time,
     );
@@ -336,7 +341,11 @@ async function saveNextFromNavitia(
     return;
   }
 
-  const cancelled = isNavitiaDepartureCancelled(next, disruptions);
+  const cancelled = isNavitiaDepartureCancelled(
+    next,
+    disruptions,
+    journey.originId,
+  );
   const delay = delayMinutesFromDeparture(next);
   const baseDate = parseNavitiaLocalDateTime(
     next.stop_date_time?.base_departure_date_time,
@@ -495,7 +504,11 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
         dep.display_informations?.headsign ??
         "";
 
-      const cancelled = isNavitiaDepartureCancelled(dep, disruptions);
+      const cancelled = isNavitiaDepartureCancelled(
+        dep,
+        disruptions,
+        journey.originId,
+      );
       const delay = delayMinutesFromDeparture(dep);
       const baseDate = parseNavitiaLocalDateTime(
         dep.stop_date_time?.base_departure_date_time,
@@ -538,7 +551,14 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       if (!journey.severities.includes(kind)) continue;
 
       const delayLabel = delay == null ? "unknown" : `${delay} min`;
-      const reason = delayReasonFromNavitia(dep, disruptions);
+      const impacted = findImpactedStopForDeparture(
+        dep,
+        disruptions,
+        journey.originId,
+      );
+      const reason = impacted?.cause?.trim()
+        ? delayReasonFromParts({ cause: impacted.cause })
+        : delayReasonFromNavitia(dep, disruptions);
       const created = await persistAlertAndMaybeNotify({
         journey,
         event: {

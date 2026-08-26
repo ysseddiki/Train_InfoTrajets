@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   formatNavitiaLocalDateTime,
   isNavitiaDepartureCancelled,
+  navitiaStopIdKey,
   parseNavitiaLocalDateTime,
   type NavitiaDeparture,
   type NavitiaDisruption,
@@ -77,5 +78,58 @@ describe("isNavitiaDepartureCancelled", () => {
       },
     ];
     assert.equal(isNavitiaDepartureCancelled(dep, disruptions), false);
+  });
+
+  it("detects impacted_stops deleted at watched origin via trip number", () => {
+    const dep: NavitiaDeparture = {
+      display_informations: { trip_short_name: "881218" },
+      stop_date_time: {
+        base_departure_date_time: "20260826T095200",
+        departure_date_time: "20260826T095200",
+        departure_status: "unchanged",
+      },
+    };
+    const disruptions: NavitiaDisruption[] = [
+      {
+        id: "d-impact",
+        severity: { effect: "REDUCED_SERVICE", name: "travaux" },
+        impacted_objects: [
+          {
+            pt_object: {
+              trip: { id: "SNCF:2026-08-26:881218:5111:Train", name: "881218" },
+            },
+            impacted_stops: [
+              {
+                stop_point: { id: "stop_point:SNCF:87756486:Train", name: "Menton" },
+                base_departure_time: "095200",
+                cause: "Travaux en cours sur le réseau ferré",
+                stop_time_effect: "deleted",
+                departure_status: "deleted",
+              },
+              {
+                stop_point: { id: "stop_point:SNCF:87756478:Train", name: "Carnoles" },
+                base_departure_time: "095500",
+                departure_status: "unchanged",
+                stop_time_effect: "unchanged",
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    assert.equal(
+      isNavitiaDepartureCancelled(dep, disruptions, "stop_area:SNCF:87756486"),
+      true,
+    );
+    // Autre gare surveillée : pas de suppression à cet arrêt
+    assert.equal(
+      isNavitiaDepartureCancelled(dep, disruptions, "stop_area:SNCF:87756478"),
+      false,
+    );
+  });
+
+  it("navitiaStopIdKey normalizes stop_area and stop_point", () => {
+    assert.equal(navitiaStopIdKey("stop_area:SNCF:87756486"), "87756486");
+    assert.equal(navitiaStopIdKey("stop_point:SNCF:87756486:Train"), "87756486");
   });
 });

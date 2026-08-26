@@ -56,6 +56,7 @@ export const NAVITIA_REQUEST_CATALOG: NavitiaRequestCatalogEntry[] = [
       "from_datetime = maintenant (Europe/Paris) − 1 h de lookback",
       "duration = 6 h de fenêtre après from_datetime",
       "Le token n’est jamais mis en query : uniquement header Basic",
+      "Suppressions : aussi via disruptions.impacted_stops (gare originId)",
     ],
   },
   {

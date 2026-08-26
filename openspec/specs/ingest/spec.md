@@ -205,7 +205,7 @@ Les datetimes Navitia (`YYYYMMDDThhmmss`) MUST être interprétés comme mur **E
 
 ### Requirement: Suppressions Navitia
 
-Un départ MUST être traité comme `cancelled` si Navitia signale `departure_status` deleted/skipped, `additional_informations` de suppression, ou une disruption liée d’effet `NO_SERVICE` / `DELETED_DEPARTURE`. Les suppressions MUST alimenter observations, alertes (si sévérité activée) et le board lorsque ce train est le prochain chronologique.
+Un départ MUST être traité comme `cancelled` si Navitia signale `departure_status` deleted/skipped, `additional_informations` de suppression, une disruption liée d’effet `NO_SERVICE` / `DELETED_DEPARTURE`, **ou** un `impacted_stops` de la **gare surveillée** (`originId`) avec `departure_status` / `stop_time_effect` deleted/skipped (jointure via `links` disruption et/ou n° de train `pt_object.trip.name`, clé UIC `stop_point` ↔ `stop_area`). Le `cause` de cet `impacted_stop` SHOULD alimenter le motif. Une suppression sur un autre arrêt du même trip MUST NOT annuler le départ à l’origine surveillée. Les suppressions MUST alimenter observations, alertes (si sévérité activée) et le board lorsque ce train est le prochain chronologique.
 
 #### Scenario: Disruption NO_SERVICE
 
@@ -213,6 +213,13 @@ Un départ MUST être traité comme `cancelled` si Navitia signale `departure_st
 - **WHEN** le poll traite ce départ
 - **THEN** une observation / événement `cancelled` est créé
 - **AND** si c’est le prochain train chronologique, le board affiche « Supprimé »
+
+#### Scenario: impacted_stops deleted à la gare d’origine
+
+- **GIVEN** un départ board `departure_status=unchanged` pour le train `881218`
+- **AND** une disruption dont `impacted_objects.trip.name = 881218` et `impacted_stops` Menton (`stop_point:SNCF:87756486`) a `departure_status=deleted`
+- **WHEN** le poll traite le sens dont `originId` est Menton
+- **THEN** le départ est `cancelled` avec motif issu de `impacted_stops.cause` si présent
 
 Le poll ingest SHALL pouvoir tourner hors du process API (`INGEST_IN_PROCESS=false` + worker dédié). Des unités systemd SHALL être fournies en exemple (`deploy/systemd/`).
 
