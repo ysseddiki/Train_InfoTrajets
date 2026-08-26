@@ -97,6 +97,12 @@ export function addHoursHm(hm: string, hours: number): string {
 /** Tolérance : un départ réel d’il y a quelques minutes est encore « en gare ». */
 export const DEPARTURE_STILL_DUE_SLACK_MS = 5 * 60_000;
 
+/**
+ * Les suppressions restent affichées / observées bien après l’heure théorique
+ * (G&C les garde longtemps sur le board).
+ */
+export const CANCELLED_STILL_VISIBLE_SLACK_MS = 3 * 60 * 60_000;
+
 type WatchSchedule = Pick<
   JourneyConfig,
   "daysOfWeek" | "timeWindow" | "watchAlways" | "watchLeadHours"
@@ -218,9 +224,14 @@ export function isWatchedDeparture(
   cancelled = false,
 ): boolean {
   if (!journey.active) return false;
-  // Supprimés : encore visibles jusqu’à l’heure théorique (+ slack), pas toute la journée
-  const dueRealtime = cancelled ? scheduled : realtime;
-  if (!isDepartureStillDue(dueRealtime, scheduled, now)) {
+  if (cancelled) {
+    // Garder les suppressions ~3 h après le théorique (sinon elles ne sont jamais persistées)
+    if (scheduled) {
+      if (scheduled.getTime() < now.getTime() - CANCELLED_STILL_VISIBLE_SLACK_MS) {
+        return false;
+      }
+    }
+  } else if (!isDepartureStillDue(realtime, scheduled, now)) {
     return false;
   }
   if (!isInWatchSchedule(journey, now)) return false;

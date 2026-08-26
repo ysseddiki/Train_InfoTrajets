@@ -2623,6 +2623,29 @@ td {
   box-shadow: 0 1px 2px rgba(20, 28, 36, 0.12);
 }
 
+.train-debug-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.65rem 0.85rem;
+  margin: 1rem 0 0.85rem;
+}
+
+.train-debug-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 10rem;
+}
+
+.train-debug-search input {
+  min-width: 12rem;
+}
+
+.train-row-cancelled td {
+  background: color-mix(in srgb, #9b1d1d 6%, transparent);
+}
+
 .debug-logs-actions {
   display: flex;
   flex-wrap: wrap;

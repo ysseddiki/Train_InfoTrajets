@@ -2244,11 +2244,36 @@ export class PgStore {
   }
 
   /** Dernières observations trains (debug admin), plus récentes d’abord. */
-  async listRecentTrainObservations(
-    limit = 100,
-  ): Promise<TrainObservationDto[]> {
+  async listRecentTrainObservations(input?: {
+    limit?: number;
+    trainNumber?: string | null;
+    status?: "on_time" | "delayed" | "cancelled" | "unknown" | null;
+  }): Promise<TrainObservationDto[]> {
     const pool = getPool();
-    const capped = Math.min(Math.max(1, Math.floor(limit)), 500);
+    const capped = Math.min(
+      Math.max(1, Math.floor(input?.limit ?? 100)),
+      500,
+    );
+    const trainQ = input?.trainNumber?.trim().replace(/\s+/g, "") ?? "";
+    const status = input?.status ?? null;
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    let i = 1;
+    if (trainQ) {
+      clauses.push(
+        `regexp_replace(upper(COALESCE(o.train_number, '')), '[^A-Z0-9]', '', 'g')
+         LIKE '%' || $${i} || '%'`,
+      );
+      params.push(trainQ.toUpperCase().replace(/[^A-Z0-9]/gi, ""));
+      i += 1;
+    }
+    if (status) {
+      clauses.push(`o.status = $${i}`);
+      params.push(status);
+      i += 1;
+    }
+    const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    params.push(capped);
     const res = await pool.query(
       `SELECT
          o.journey_id,
@@ -2265,9 +2290,12 @@ export class PgStore {
        FROM board_train_observations o
        JOIN journeys j ON j.id = o.journey_id
        LEFT JOIN liaisons l ON l.id = j.liaison_id
-       ORDER BY o.observed_at DESC
-       LIMIT $1`,
-      [capped],
+       ${where}
+       ORDER BY
+         CASE o.status WHEN 'cancelled' THEN 0 WHEN 'delayed' THEN 1 ELSE 2 END,
+         o.observed_at DESC
+       LIMIT $${i}`,
+      params,
     );
     return res.rows.map((row) => ({
       journeyId: String(row.journey_id),

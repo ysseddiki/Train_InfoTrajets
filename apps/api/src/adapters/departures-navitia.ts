@@ -183,15 +183,18 @@ export function isNavitiaDepartureCancelled(
 
   const ids = new Set(
     (dep.links ?? [])
-      .filter((l) => l.type === "disruption" && l.id)
-      .map((l) => String(l.id)),
+      .filter((l) => l.type === "disruption" && (l.id || l.href))
+      .flatMap((l) => [String(l.id ?? ""), String(l.href ?? "")].filter(Boolean)),
   );
   if (ids.size === 0 || disruptions.length === 0) return false;
 
   for (const d of disruptions) {
-    const match =
-      (d.id && ids.has(d.id)) ||
-      (d.disruption_id && ids.has(d.disruption_id));
+    const dIds = [d.id, d.disruption_id].filter(Boolean).map(String);
+    const match = dIds.some(
+      (did) =>
+        ids.has(did) ||
+        [...ids].some((lid) => lid.endsWith(did) || did.endsWith(lid)),
+    );
     if (!match) continue;
     const effect = String(d.severity?.effect ?? "").toUpperCase();
     if (CANCEL_EFFECTS.has(effect)) return true;
@@ -199,6 +202,7 @@ export function isNavitiaDepartureCancelled(
       d.severity?.name,
       d.cause,
       d.category,
+      d.status,
       ...(d.messages ?? []).map((m) => m.text),
     ]
       .filter(Boolean)

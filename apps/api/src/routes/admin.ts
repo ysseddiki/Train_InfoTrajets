@@ -483,12 +483,33 @@ export async function registerAdminRoutes(app: FastifyInstance) {
   });
 
   app.get<{
-    Querystring: { limit?: string };
+    Querystring: { limit?: string; trainNumber?: string; status?: string };
   }>("/v1/admin/debug/train-observations", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const raw = Number(req.query?.limit ?? 100);
     const limit = Number.isFinite(raw) ? raw : 100;
-    const entries = await store.listRecentTrainObservations(limit);
+    const statusRaw = req.query?.status?.trim() || null;
+    const allowed = ["on_time", "delayed", "cancelled", "unknown"] as const;
+    if (
+      statusRaw &&
+      !allowed.includes(statusRaw as (typeof allowed)[number])
+    ) {
+      return reply.code(400).send({
+        type: "/errors/validation",
+        title: "status must be on_time | delayed | cancelled | unknown",
+        status: 400,
+      });
+    }
+    const entries = await store.listRecentTrainObservations({
+      limit,
+      trainNumber: req.query?.trainNumber ?? null,
+      status: statusRaw as
+        | "on_time"
+        | "delayed"
+        | "cancelled"
+        | "unknown"
+        | null,
+    });
     return { entries };
   });
 
