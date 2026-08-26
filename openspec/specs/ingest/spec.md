@@ -221,6 +221,13 @@ Un départ MUST être traité comme `cancelled` si Navitia signale `departure_st
 - **WHEN** le poll traite le sens dont `originId` est Menton
 - **THEN** le départ est `cancelled` avec motif issu de `impacted_stops.cause` si présent
 
+#### Scenario: Suppression orpheline (hors board departures) — FEATURE
+
+- **GIVEN** un train présent uniquement dans `disruptions.impacted_objects` avec `impacted_stops` deleted à l’`originId`, absent de `departures[]`
+- **WHEN** le poll Navitia tourne (feature `navitia-orphan-cancellations-from-impacted-objects`)
+- **THEN** une observation / alerte `cancellation` est créée et le board MAY afficher « Supprimé » si c’est le prochain chronologique
+- **AND** la feature MUST être revertible via la phrase README `Revert FEATURE:navitia-orphan-cancellations-from-impacted-objects`
+
 Le poll ingest SHALL pouvoir tourner hors du process API (`INGEST_IN_PROCESS=false` + worker dédié). Des unités systemd SHALL être fournies en exemple (`deploy/systemd/`).
 
 ### Requirement: Cache départs

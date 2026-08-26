@@ -16,6 +16,14 @@ import {
   type NavitiaDeparture,
   type NavitiaDisruption,
 } from "./departures-navitia.js";
+// BEGIN FEATURE:navitia-orphan-cancellations-from-impacted-objects
+import {
+  coveredKeysFromDepartures,
+  listOrphanCancellationsFromImpactedObjects,
+  type OrphanCancellation,
+} from "./navitia-orphan-cancellations.js";
+import { parisYmd } from "../domain/paris-calendar.js";
+// END FEATURE:navitia-orphan-cancellations-from-impacted-objects
 
 export interface DisruptionIngestPort {
   poll(): Promise<void>;
@@ -300,9 +308,21 @@ async function saveNextFromNavitia(
   journey: JourneyConfig,
   departures: NavitiaDeparture[],
   disruptions: NavitiaDisruption[],
+  // BEGIN FEATURE:navitia-orphan-cancellations-from-impacted-objects
+  orphanCancellations: OrphanCancellation[] = [],
+  // END FEATURE:navitia-orphan-cancellations-from-impacted-objects
 ): Promise<void> {
   const now = new Date();
-  const matched: NavitiaDeparture[] = [];
+  type Candidate = {
+    trainNumber: string | null;
+    baseDate: Date | null;
+    realDate: Date | null;
+    cancelled: boolean;
+    delay: number | null;
+    sortBase: number;
+    sortReal: number;
+  };
+  const matched: Candidate[] = [];
   for (const dep of departures) {
     if (!(await navitiaDepartureMatchesFilter(token, journey, dep))) {
       continue;
@@ -321,18 +341,45 @@ async function saveNextFromNavitia(
     if (!isWatchedDeparture(journey, baseDate, realDate, now, cancelled)) {
       continue;
     }
-    matched.push(dep);
+    matched.push({
+      trainNumber: extractTrainNumber(dep),
+      baseDate,
+      realDate,
+      cancelled,
+      delay: delayMinutesFromDeparture(dep),
+      sortBase: baseDate?.getTime() ?? departureSortKey(dep),
+      sortReal: departureSortKey(dep),
+    });
   }
-  // Chronologique (théorique puis réel) — y compris trains supprimés
+
+  // BEGIN FEATURE:navitia-orphan-cancellations-from-impacted-objects
+  for (const orphan of orphanCancellations) {
+    if (
+      !isWatchedDeparture(
+        journey,
+        orphan.scheduledAt,
+        orphan.scheduledAt,
+        now,
+        true,
+      )
+    ) {
+      continue;
+    }
+    matched.push({
+      trainNumber: orphan.trainNumber,
+      baseDate: orphan.scheduledAt,
+      realDate: orphan.scheduledAt,
+      cancelled: true,
+      delay: null,
+      sortBase: orphan.scheduledAt.getTime(),
+      sortReal: orphan.scheduledAt.getTime(),
+    });
+  }
+  // END FEATURE:navitia-orphan-cancellations-from-impacted-objects
+
   matched.sort((a, b) => {
-    const aBase =
-      parseNavitiaLocalDateTime(a.stop_date_time?.base_departure_date_time)?.getTime() ??
-      departureSortKey(a);
-    const bBase =
-      parseNavitiaLocalDateTime(b.stop_date_time?.base_departure_date_time)?.getTime() ??
-      departureSortKey(b);
-    if (aBase !== bBase) return aBase - bBase;
-    return departureSortKey(a) - departureSortKey(b);
+    if (a.sortBase !== b.sortBase) return a.sortBase - b.sortBase;
+    return a.sortReal - b.sortReal;
   });
 
   const next = matched[0] ?? null;
@@ -341,30 +388,18 @@ async function saveNextFromNavitia(
     return;
   }
 
-  const cancelled = isNavitiaDepartureCancelled(
-    next,
-    disruptions,
-    journey.originId,
-  );
-  const delay = delayMinutesFromDeparture(next);
-  const baseDate = parseNavitiaLocalDateTime(
-    next.stop_date_time?.base_departure_date_time,
-  );
-  const realDate = parseNavitiaLocalDateTime(
-    next.stop_date_time?.departure_date_time,
-  );
   const { status, statusLabel } = buildNextDepartureStatus({
-    cancelled,
-    delayMinutes: delay,
+    cancelled: next.cancelled,
+    delayMinutes: next.delay,
   });
   const fetchedAt = new Date().toISOString();
   await store.upsertJourneyBoardSnapshot({
     journeyId: journey.id,
-    trainNumber: extractTrainNumber(next),
-    scheduledAt: baseDate?.toISOString() ?? null,
-    realtimeAt: realDate?.toISOString() ?? null,
-    delayMinutes: cancelled ? null : delay,
-    cancelled,
+    trainNumber: next.trainNumber,
+    scheduledAt: next.baseDate?.toISOString() ?? null,
+    realtimeAt: next.realDate?.toISOString() ?? null,
+    delayMinutes: next.cancelled ? null : next.delay,
+    cancelled: next.cancelled,
     status,
     statusLabel,
     source: "navitia",
@@ -490,7 +525,25 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
   ): Promise<number> {
     const port = new NavitiaDeparturesPort(token);
     const { departures, disruptions } = await port.fetchDepartures(journey);
-    await saveNextFromNavitia(token, journey, departures, disruptions);
+
+    // BEGIN FEATURE:navitia-orphan-cancellations-from-impacted-objects
+    const orphanCancellations = listOrphanCancellationsFromImpactedObjects({
+      disruptions,
+      originStopId: journey.originId,
+      coveredKeys: coveredKeysFromDepartures(departures),
+      dayYmd: parisYmd(new Date()).replace(/-/g, ""),
+    });
+    // END FEATURE:navitia-orphan-cancellations-from-impacted-objects
+
+    await saveNextFromNavitia(
+      token,
+      journey,
+      departures,
+      disruptions,
+      // BEGIN FEATURE:navitia-orphan-cancellations-from-impacted-objects
+      orphanCancellations,
+      // END FEATURE:navitia-orphan-cancellations-from-impacted-objects
+    );
     let createdCount = 0;
 
     for (const dep of departures) {
@@ -584,6 +637,63 @@ export class NavitiaDeparturesAdapter implements DisruptionIngestPort {
       });
       if (created) createdCount += 1;
     }
+
+    // BEGIN FEATURE:navitia-orphan-cancellations-from-impacted-objects
+    for (const orphan of orphanCancellations) {
+      if (
+        !isWatchedDeparture(
+          journey,
+          orphan.scheduledAt,
+          orphan.scheduledAt,
+          new Date(),
+          true,
+        )
+      ) {
+        continue;
+      }
+      if (!journey.severities.includes("cancellation")) continue;
+
+      const directionText = journey.destinationLabel || "dest";
+      const base = orphan.baseDepartureKey;
+      await store.upsertBoardTrainObservation({
+        journeyId: journey.id,
+        baseDepartureKey: `${base}-${directionText}-orphan`,
+        trainNumber: orphan.trainNumber,
+        scheduledAt: orphan.scheduledAt.toISOString(),
+        status: "cancelled",
+        delayMinutes: null,
+      });
+
+      const reason = orphan.cause
+        ? delayReasonFromParts({ cause: orphan.cause })
+        : { delayReason: null, delayReasonKey: null };
+      const created = await persistAlertAndMaybeNotify({
+        journey,
+        event: {
+          externalEventId:
+            `navitia-orphan-${journey.id}-${base}-${orphan.trainNumber}`.slice(
+              0,
+              200,
+            ),
+          journeyId: journey.id,
+          liaisonId: journey.liaisonId,
+          direction: journey.direction,
+          kind: "cancellation",
+          severity: "critical",
+          title: `Suppression — ${journey.originLabel} → ${journey.destinationLabel}`,
+          description: `Départ gare ${journey.originLabel} (hors board Navitia, via impacted_stops).`,
+          trainNumber: orphan.trainNumber,
+          delayMinutes: null,
+          delayReason: reason.delayReason,
+          delayReasonKey: reason.delayReasonKey,
+          startsAt: new Date().toISOString(),
+          endsAt: null,
+          source: "navitia",
+        },
+      });
+      if (created) createdCount += 1;
+    }
+    // END FEATURE:navitia-orphan-cancellations-from-impacted-objects
 
     return createdCount;
   }

@@ -263,3 +263,21 @@ Travailler par **deltas** (`ADDED` / `MODIFIED` / `REMOVED`) avant d’étendre 
 ## Cursor
 
 Règles dans `.cursor/rules/` : une règle **globale** + règles par domaine (`api`, `web`, `admin`, `dashboard`, `notifications`, `ingest`, `openspec`).
+
+## Features marquées (revert)
+
+Certaines expérimentations sont encapsulées derrière un id stable `FEATURE:…` (commentaires `BEGIN` / `END` + module dédié).
+
+| Feature id | Rôle |
+|------------|------|
+| `navitia-orphan-cancellations-from-impacted-objects` | Remonte les trains **supprimés** présents dans `disruptions.impacted_objects` / `impacted_stops` même s’ils ont disparu du listing `departures[]` (board + alertes). |
+
+### Retirer une feature
+
+Phrase exacte à donner à l’agent (ou à chercher dans le dépôt) :
+
+```text
+Revert FEATURE:navitia-orphan-cancellations-from-impacted-objects
+```
+
+Effet attendu : supprimer `apps/api/src/adapters/navitia-orphan-cancellations.ts` (+ son test) et tous les blocs `BEGIN FEATURE:…` / `END FEATURE:…` / imports associés dans `ingest.ts` (et mentions OpenSpec / README de cette feature).
