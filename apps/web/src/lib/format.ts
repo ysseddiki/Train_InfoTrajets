@@ -81,6 +81,18 @@ export function formatTrainNumber(
   return n ? `N° ${n}` : "—";
 }
 
+/** Cumul de minutes → `45 min`, `2 h`, `2 h 15`. */
+export function formatDurationMinutes(
+  minutes: number | null | undefined,
+): string {
+  if (minutes == null || !Number.isFinite(minutes)) return "—";
+  const total = Math.max(0, Math.round(minutes));
+  if (total < 60) return `${total} min`;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m === 0 ? `${h} h` : `${h} h ${m}`;
+}
+
 export function daysSummary(days: number[]): string {
   if (days.length === 0) return "—";
   if (days.length === 5 && [1, 2, 3, 4, 5].every((d) => days.includes(d))) {

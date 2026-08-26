@@ -25,7 +25,7 @@ import {
 } from "../components/LiaisonScopePicker";
 import { StatCard } from "../components/StatCard";
 import { WeatherCorrelationPanel } from "../components/WeatherCorrelationPanel";
-import { errorMessage, formatRelative, formatWhen } from "../lib/format";
+import { errorMessage, formatDurationMinutes, formatRelative, formatWhen } from "../lib/format";
 
 const STORAGE_KEY = "sncf.dashboard.liaisonScope";
 const PERIOD_KEY = "sncf.dashboard.indicatorPeriod";
@@ -328,6 +328,16 @@ export function DashboardPage() {
           />
         </div>
         <div className="stat-card-grid stat-card-grid-secondary">
+          <StatCard
+            label="Cumul retards"
+            value={formatDurationMinutes(p.totalDelayMinutes)}
+            hint={
+              p.avgDelayMinutes != null
+                ? `moy. ${p.avgDelayMinutes} min`
+                : "durées connues"
+            }
+            compact
+          />
           <StatCard
             label="Retard max"
             value={p.maxDelayMinutes != null ? `${p.maxDelayMinutes} min` : "—"}

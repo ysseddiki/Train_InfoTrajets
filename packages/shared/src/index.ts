@@ -207,6 +207,8 @@ export interface DashboardPeriodStats {
   otherKinds: number;
   avgDelayMinutes: number | null;
   maxDelayMinutes: number | null;
+  /** Somme des `delay_minutes` connus (retards unknown exclus). */
+  totalDelayMinutes: number | null;
   deliveriesSent: number;
   deliveriesFailed: number;
   byDirection: {

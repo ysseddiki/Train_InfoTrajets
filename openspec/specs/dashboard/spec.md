@@ -31,13 +31,20 @@ Le dashboard SHALL afficher l’état de chaque liaison (Aller `outbound` + Reto
 
 ### Requirement: Stats motifs de retard
 
-Les agrégats période SHALL exposer `today` (jour civil Europe/Paris depuis 00:00), `last24h` (glissant), `week` (lundi 00:00 Paris), `month` (1er du mois 00:00 Paris) et `year` (1er janvier 00:00 Paris). Chaque agrégat SHALL inclure un décompte des retards **par `delay_reason_key`** (top motifs), le nombre de retards **sans motif**, et `onTimeTrains` : trains **déjà partis** de la gare surveillée dont le statut d’observation reste `on_time` (jamais de retard observé). Un motif manquant MUST NOT être affiché comme une cause inventée. Les champs `last7d` / `last30d` MAY rester en rolling pour compat.
+Les agrégats période SHALL exposer `today` (jour civil Europe/Paris depuis 00:00), `last24h` (glissant), `week` (lundi 00:00 Paris), `month` (1er du mois 00:00 Paris) et `year` (1er janvier 00:00 Paris). Chaque agrégat SHALL inclure un décompte des retards **par `delay_reason_key`** (top motifs), le nombre de retards **sans motif**, `onTimeTrains` : trains **déjà partis** de la gare surveillée dont le statut d’observation reste `on_time` (jamais de retard observé), et `totalDelayMinutes` : somme des `delay_minutes` connus sur la période (retards `unknown` exclus). Un motif manquant MUST NOT être affiché comme une cause inventée. Les champs `last7d` / `last30d` MAY rester en rolling pour compat.
 
 #### Scenario: Mix motifs
 
 - **GIVEN** 3 retards « travaux », 1 sans motif, sur la journée en cours
 - **WHEN** le dashboard charge la période Journée
 - **THEN** les stats listent travaux (3) et un compteur sans motif (1)
+
+#### Scenario: Cumul des retards
+
+- **GIVEN** des retards de 10, 20 et 5 min (et un retard unknown) sur la période
+- **WHEN** le dashboard charge les indicateurs
+- **THEN** `totalDelayMinutes = 35`
+- **AND** l’UI affiche le cumul en temps (ex. `35 min` ou `1 h 15`)
 
 #### Scenario: Partis à l’heure
 

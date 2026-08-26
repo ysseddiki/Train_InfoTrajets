@@ -1,4 +1,5 @@
 import type { DashboardPeriodStats } from "@sncf-alerts/shared";
+import { formatDurationMinutes } from "../lib/format";
 
 export function PeriodStats({
   label,
@@ -11,6 +12,7 @@ export function PeriodStats({
     stats.avgDelayMinutes == null ? "—" : `${stats.avgDelayMinutes} min`;
   const max =
     stats.maxDelayMinutes == null ? "—" : `${stats.maxDelayMinutes} min`;
+  const total = formatDurationMinutes(stats.totalDelayMinutes);
 
   return (
     <article className="stats-period">
@@ -61,6 +63,8 @@ export function PeriodStats({
           )}
         </p>
         <p>
+          <span className="muted">Cumul</span> <strong>{total}</strong>
+          {" · "}
           <span className="muted">Retard moyen</span> <strong>{avg}</strong>
           {" · "}
           <span className="muted">Max</span> <strong>{max}</strong>

@@ -1372,6 +1372,7 @@ export class PgStore {
         )::int AS other_kinds,
         ROUND(AVG(delay_minutes) FILTER (WHERE delay_minutes IS NOT NULL))::int AS avg_delay,
         MAX(delay_minutes) FILTER (WHERE delay_minutes IS NOT NULL)::int AS max_delay,
+        SUM(delay_minutes) FILTER (WHERE delay_minutes IS NOT NULL)::int AS total_delay,
         COUNT(*) FILTER (WHERE direction = 'outbound')::int AS outbound,
         COUNT(*) FILTER (WHERE direction = 'inbound')::int AS inbound,
         COUNT(*) FILTER (WHERE direction IS NULL)::int AS unmatched,
@@ -1489,6 +1490,10 @@ export class PgStore {
         e.max_delay === null || e.max_delay === undefined
           ? null
           : Number(e.max_delay),
+      totalDelayMinutes:
+        e.total_delay === null || e.total_delay === undefined
+          ? null
+          : Number(e.total_delay),
       deliveriesSent: Number(d.sent ?? 0),
       deliveriesFailed: Number(d.failed ?? 0),
       byDirection: {
