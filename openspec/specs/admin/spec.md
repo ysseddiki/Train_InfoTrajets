@@ -210,13 +210,13 @@ Le shell MUST exposer un onglet **Trains** (remplace l’ancienne surface « Ré
 - **WHEN** il appelle `GET /v1/admin/debug/train-observations`
 - **THEN** l’API retourne `403`
 
-### Requirement: Journal des requêtes sortantes (Debug)
+### Requirement: Échantillons requêtes Navitia (Debug)
 
-L’onglet Admin → **Debug** MUST afficher en bas une liste des dernières requêtes sortantes du serveur (Navitia, Open-Meteo, Teams, SMTP) via `GET /v1/admin/debug/outbound-http`. Les URLs MUST être sanitisées (pas de token, clé API, ni chemin webhook Teams). `DELETE /v1/admin/debug/outbound-http` MUST vider le journal. Accès `admin` uniquement (`403` sinon).
+L’onglet Admin → **Debug** MUST afficher en bas une doc des appels Navitia (`catalog` : situation, template URL, headers) et une liste d’échantillons bruts (`samples` : dump HTTP avec `Authorization: Basic ***`) via `GET /v1/admin/debug/outbound-http`. `DELETE` MUST vider les échantillons live. Accès `admin` uniquement. MUST NOT exposer le token.
 
-#### Scenario: Admin consulte le journal
+#### Scenario: Admin consulte la doc + samples
 
-- **GIVEN** une session `admin` et au moins un appel Navitia après démarrage
+- **GIVEN** une session `admin` et au moins un poll Navitia après démarrage
 - **WHEN** il ouvre Debug et charge `GET /v1/admin/debug/outbound-http`
-- **THEN** la réponse liste méthode, URL sanitisée, statut HTTP, fournisseur et horodatage
-- **AND** aucune valeur de secret n’apparaît dans `url`
+- **THEN** la réponse inclut le catalogue des 3 kinds (`departures`, `vehicle_journey`, `probe`)
+- **AND** chaque sample contient `rawRequest` sans secret réel

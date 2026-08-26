@@ -1,6 +1,6 @@
 import type { IngestProbeResult, IngestProviderId } from "@sncf-alerts/shared";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
-import { loggedFetch } from "../domain/outbound-http-log.js";
+import { loggedNavitiaFetch } from "../domain/navitia-request-samples.js";
 import { formatNavitiaHttpError } from "./departures-navitia.js";
 
 /**
@@ -49,7 +49,7 @@ export async function probeIngestCredential(
   }
 
   try {
-    const res = await loggedFetch(
+    const res = await loggedNavitiaFetch(
       "https://api.sncf.com/v1/coverage/sncf",
       {
         headers: {
@@ -57,7 +57,10 @@ export async function probeIngestCredential(
         },
         signal: AbortSignal.timeout(12_000),
       },
-      { provider: "navitia", detail: "probe coverage/sncf" },
+      {
+        kind: "probe",
+        situation: "Probe Admin — vérification token (GET coverage/sncf)",
+      },
     );
     const bodyPreview = (await res.text().catch(() => "")).slice(0, 400);
     if (res.ok) {

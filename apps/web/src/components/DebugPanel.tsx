@@ -4,8 +4,9 @@ import type {
   IngestApiLogsResponse,
   JourneyDirection,
   LiaisonConfig,
-  OutboundHttpEntry,
-  OutboundHttpLogsResponse,
+  NavitiaRequestCatalogEntry,
+  NavitiaRequestSample,
+  NavitiaRequestSamplesResponse,
 } from "@sncf-alerts/shared";
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw, Trash2 } from "lucide-react";
@@ -21,14 +22,6 @@ const SOURCES: { id: IngestApiLogSource; label: string }[] = [
   { id: "navitia", label: "Navitia" },
   { id: "stub", label: "Stub" },
 ];
-
-const PROVIDER_LABEL: Record<OutboundHttpEntry["provider"], string> = {
-  navitia: "Navitia",
-  "open-meteo": "Open-Meteo",
-  teams: "Teams",
-  smtp: "SMTP",
-  other: "Autre",
-};
 
 function formatAt(iso: string): string {
   try {
@@ -57,9 +50,14 @@ export function DebugPanel({
   const [auto, setAuto] = useState(true);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
 
-  const [outbound, setOutbound] = useState<OutboundHttpEntry[]>([]);
-  const [outboundLoading, setOutboundLoading] = useState(false);
-  const [outboundMsg, setOutboundMsg] = useState<{
+  const [navitiaCatalog, setNavitiaCatalog] = useState<
+    NavitiaRequestCatalogEntry[]
+  >([]);
+  const [navitiaSamples, setNavitiaSamples] = useState<NavitiaRequestSample[]>(
+    [],
+  );
+  const [navitiaLoading, setNavitiaLoading] = useState(false);
+  const [navitiaMsg, setNavitiaMsg] = useState<{
     text: string;
     ok: boolean;
   } | null>(null);
@@ -95,18 +93,19 @@ export function DebugPanel({
     }
   }, [source]);
 
-  const reloadOutbound = useCallback(async () => {
-    setOutboundLoading(true);
+  const reloadNavitiaSamples = useCallback(async () => {
+    setNavitiaLoading(true);
     try {
-      const res = await apiGet<OutboundHttpLogsResponse>(
+      const res = await apiGet<NavitiaRequestSamplesResponse>(
         "/v1/admin/debug/outbound-http",
       );
-      setOutbound(res.entries);
-      setOutboundMsg(null);
+      setNavitiaCatalog(res.catalog ?? []);
+      setNavitiaSamples(res.samples ?? []);
+      setNavitiaMsg(null);
     } catch (err) {
-      setOutboundMsg({ text: errorMessage(err), ok: false });
+      setNavitiaMsg({ text: errorMessage(err), ok: false });
     } finally {
-      setOutboundLoading(false);
+      setNavitiaLoading(false);
     }
   }, []);
 
@@ -115,17 +114,17 @@ export function DebugPanel({
   }, [reload]);
 
   useEffect(() => {
-    void reloadOutbound();
-  }, [reloadOutbound]);
+    void reloadNavitiaSamples();
+  }, [reloadNavitiaSamples]);
 
   useEffect(() => {
     if (!auto) return;
     const id = window.setInterval(() => {
       void reload();
-      void reloadOutbound();
+      void reloadNavitiaSamples();
     }, 5000);
     return () => window.clearInterval(id);
-  }, [auto, reload, reloadOutbound]);
+  }, [auto, reload, reloadNavitiaSamples]);
 
   async function clearLogs() {
     try {
@@ -137,13 +136,13 @@ export function DebugPanel({
     }
   }
 
-  async function clearOutbound() {
+  async function clearNavitiaSamples() {
     try {
       await apiSend("/v1/admin/debug/outbound-http", "DELETE");
-      await reloadOutbound();
-      setOutboundMsg({ text: "Requêtes sortantes effacées", ok: true });
+      await reloadNavitiaSamples();
+      setNavitiaMsg({ text: "Échantillons Navitia effacés", ok: true });
     } catch (err) {
-      setOutboundMsg({ text: errorMessage(err), ok: false });
+      setNavitiaMsg({ text: errorMessage(err), ok: false });
     }
   }
 
@@ -462,17 +461,42 @@ export function DebugPanel({
       </section>
 
       <section className="card debug-outbound-card">
-        <h3>Requêtes API sortantes</h3>
+        <h3>Échantillons Navitia</h3>
         <p className="muted debug-logs-lead">
-          Journal mémoire des appels HTTP/SMTP du serveur (Navitia, météo,
-          Teams, e-mail). URLs sanitisées — pas de clés ni webhooks.
+          Doc des appels réellement envoyés à{" "}
+          <code>api.sncf.com</code> : templates par situation, puis dump brut
+          des dernières requêtes (Authorization masquée).
         </p>
+
+        <h4 className="debug-navitia-sub">Situations</h4>
+        <div className="debug-navitia-catalog">
+          {navitiaCatalog.map((item) => (
+            <article key={item.kind} className="debug-navitia-doc">
+              <header>
+                <strong>{item.title}</strong>
+                <span className="muted"> · {item.kind}</span>
+              </header>
+              <p>{item.situation}</p>
+              <pre className="debug-navitia-raw">{`${item.method} ${item.urlTemplate}
+${item.headers.join("\n")}`}</pre>
+              {item.notes.length > 0 && (
+                <ul className="debug-navitia-notes">
+                  {item.notes.map((n) => (
+                    <li key={n}>{n}</li>
+                  ))}
+                </ul>
+              )}
+            </article>
+          ))}
+        </div>
+
         <div className="debug-logs-actions debug-outbound-actions">
+          <h4 className="debug-navitia-sub">Dernières requêtes envoyées</h4>
           <button
             type="button"
             className="debug-action-btn"
-            onClick={() => void reloadOutbound()}
-            disabled={outboundLoading}
+            onClick={() => void reloadNavitiaSamples()}
+            disabled={navitiaLoading}
           >
             <RefreshCw size={16} aria-hidden />
             Actualiser
@@ -480,59 +504,43 @@ export function DebugPanel({
           <button
             type="button"
             className="debug-action-btn debug-action-danger"
-            onClick={() => void clearOutbound()}
+            onClick={() => void clearNavitiaSamples()}
           >
             <Trash2 size={16} aria-hidden />
             Effacer
           </button>
         </div>
-        {outboundMsg && (
-          <p className={outboundMsg.ok ? "ok" : "error"}>{outboundMsg.text}</p>
+        {navitiaMsg && (
+          <p className={navitiaMsg.ok ? "ok" : "error"}>{navitiaMsg.text}</p>
         )}
-        {outbound.length === 0 ? (
+        {navitiaSamples.length === 0 ? (
           <p className="muted debug-log-empty">
-            Aucune requête enregistrée depuis le démarrage du serveur.
+            Aucun échantillon depuis le démarrage — lance un poll Navitia ou un
+            probe Admin → Ingest.
           </p>
         ) : (
-          <div className="debug-outbound-table-wrap">
-            <table className="debug-outbound-table">
-              <thead>
-                <tr>
-                  <th scope="col">Heure</th>
-                  <th scope="col">Fournisseur</th>
-                  <th scope="col">Méthode</th>
-                  <th scope="col">Statut</th>
-                  <th scope="col">Durée</th>
-                  <th scope="col">URL</th>
-                  <th scope="col">Détail</th>
-                </tr>
-              </thead>
-              <tbody>
-                {outbound.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={row.ok ? undefined : "is-error"}
-                  >
-                    <td className="debug-log-time">{formatAt(row.at)}</td>
-                    <td>{PROVIDER_LABEL[row.provider]}</td>
-                    <td>
-                      <code>{row.method}</code>
-                    </td>
-                    <td>
-                      {row.httpStatus == null ? "—" : row.httpStatus}
-                      {!row.ok && row.httpStatus == null ? " err" : ""}
-                    </td>
-                    <td>
-                      {row.durationMs == null ? "—" : `${row.durationMs} ms`}
-                    </td>
-                    <td className="debug-outbound-url">
-                      <code title={row.url}>{row.url}</code>
-                    </td>
-                    <td className="muted">{row.detail ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="debug-navitia-samples">
+            {navitiaSamples.map((sample) => (
+              <article
+                key={sample.id}
+                className={`debug-navitia-sample${sample.ok ? "" : " is-error"}`}
+              >
+                <header className="debug-log-entry-head">
+                  <span className="debug-log-time">{formatAt(sample.at)}</span>
+                  <span>
+                    {sample.kind}
+                    {sample.httpStatus != null
+                      ? ` · HTTP ${sample.httpStatus}`
+                      : " · erreur réseau"}
+                    {sample.durationMs != null
+                      ? ` · ${sample.durationMs} ms`
+                      : ""}
+                  </span>
+                </header>
+                <p className="debug-navitia-situation">{sample.situation}</p>
+                <pre className="debug-navitia-raw">{sample.rawRequest}</pre>
+              </article>
+            ))}
           </div>
         )}
       </section>

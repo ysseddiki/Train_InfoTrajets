@@ -30,9 +30,10 @@ import {
   listIngestApiLogs,
 } from "../domain/ingest-api-logs.js";
 import {
-  clearOutboundHttp,
-  listOutboundHttp,
-} from "../domain/outbound-http-log.js";
+  clearNavitiaRequestSamples,
+  listNavitiaRequestSamples,
+  NAVITIA_REQUEST_CATALOG,
+} from "../domain/navitia-request-samples.js";
 import { sendTestNotification } from "../domain/notify.js";
 import {
   checkLoginRateLimit,
@@ -557,12 +558,15 @@ export async function registerAdminRoutes(app: FastifyInstance) {
 
   app.get("/v1/admin/debug/outbound-http", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
-    return { entries: listOutboundHttp(200) };
+    return {
+      catalog: NAVITIA_REQUEST_CATALOG,
+      samples: listNavitiaRequestSamples(80),
+    };
   });
 
   app.delete("/v1/admin/debug/outbound-http", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
-    const deleted = clearOutboundHttp();
+    const deleted = clearNavitiaRequestSamples();
     return { ok: true, deleted };
   });
 

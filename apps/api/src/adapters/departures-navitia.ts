@@ -2,7 +2,7 @@ import type { JourneyConfig } from "@sncf-alerts/shared";
 import { departuresCache, TtlCache } from "../domain/departures-cache.js";
 import { appendIngestApiLog } from "../domain/ingest-api-logs.js";
 import { matchesDestinationFilterAsync } from "../domain/matching.js";
-import { loggedFetch } from "../domain/outbound-http-log.js";
+import { loggedNavitiaFetch } from "../domain/navitia-request-samples.js";
 import type { DeparturesPort } from "../ports/departures.js";
 import { store } from "../domain/store.js";
 
@@ -236,13 +236,16 @@ export async function fetchVehicleJourneyStopAreaIds(
 
   let res: Response;
   try {
-    res = await loggedFetch(
+    res = await loggedNavitiaFetch(
       url,
       {
         headers: { Authorization: navitiaAuthHeader(token) },
         signal: AbortSignal.timeout(12_000),
       },
-      { provider: "navitia", detail: "vehicle_journey" },
+      {
+        kind: "vehicle_journey",
+        situation: `Enrichissement parcours — matching destination (vj ${vehicleJourneyId})`,
+      },
     );
   } catch {
     await store.recordApiRequest({ provider: "navitia", ok: false });
@@ -364,7 +367,7 @@ export class NavitiaDeparturesPort implements DeparturesPort {
 
     let res: Response;
     try {
-      res = await loggedFetch(
+      res = await loggedNavitiaFetch(
         url,
         {
           headers: {
@@ -372,8 +375,8 @@ export class NavitiaDeparturesPort implements DeparturesPort {
           },
         },
         {
-          provider: "navitia",
-          detail: `departures ${journey.direction}`,
+          kind: "departures",
+          situation: `Poll board départs — ${journey.originLabel || journey.originId} [${journey.direction}]`,
         },
       );
     } catch (err) {

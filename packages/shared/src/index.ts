@@ -676,29 +676,38 @@ export interface IngestApiLogsResponse {
   entries: IngestApiLogEntry[];
 }
 
-/** Requêtes HTTP/SMTP sortantes (Admin → Debug). */
-export type OutboundHttpProvider =
-  | "navitia"
-  | "open-meteo"
-  | "teams"
-  | "smtp"
-  | "other";
+/** Catalogue + échantillons bruts Navitia (Admin → Debug). */
+export type NavitiaRequestKind =
+  | "departures"
+  | "vehicle_journey"
+  | "probe";
 
-export interface OutboundHttpEntry {
+export interface NavitiaRequestCatalogEntry {
+  kind: NavitiaRequestKind;
+  title: string;
+  situation: string;
+  method: "GET";
+  urlTemplate: string;
+  headers: string[];
+  notes: string[];
+}
+
+export interface NavitiaRequestSample {
   id: string;
   at: string;
-  provider: OutboundHttpProvider;
+  kind: NavitiaRequestKind;
+  situation: string;
   method: string;
-  /** URL sanitisée (pas de clé / webhook secret) */
   url: string;
+  rawRequest: string;
   httpStatus: number | null;
   ok: boolean;
   durationMs: number | null;
-  detail: string | null;
 }
 
-export interface OutboundHttpLogsResponse {
-  entries: OutboundHttpEntry[];
+export interface NavitiaRequestSamplesResponse {
+  catalog: NavitiaRequestCatalogEntry[];
+  samples: NavitiaRequestSample[];
 }
 
 /** Observation train (debug admin — derniers status). */
