@@ -1,4 +1,5 @@
 import type { DashboardPeriodStats } from "@sncf-alerts/shared";
+import { DelayReasonsPanel } from "./DelayReasonsPanel";
 import { formatDurationMinutes } from "../lib/format";
 
 export function PeriodStats({
@@ -69,29 +70,8 @@ export function PeriodStats({
           {" · "}
           <span className="muted">Max</span> <strong>{max}</strong>
         </p>
-        {(stats.delayReasons?.length > 0 || (stats.delaysWithoutReason ?? 0) > 0) && (
-          <p>
-            <span className="muted">Motifs</span>{" "}
-            {(stats.delayReasons ?? []).length === 0 ? (
-              <strong>non renseignés</strong>
-            ) : (
-              (stats.delayReasons ?? []).map((r, i) => (
-                <span key={r.key}>
-                  {i > 0 ? " · " : null}
-                  <strong>{r.label}</strong> ({r.count})
-                </span>
-              ))
-            )}
-            {(stats.delaysWithoutReason ?? 0) > 0 ? (
-              <>
-                {(stats.delayReasons ?? []).length > 0 ? " · " : null}
-                <span className="muted">sans motif</span>{" "}
-                <strong>{stats.delaysWithoutReason}</strong>
-              </>
-            ) : null}
-          </p>
-        )}
       </div>
+      <DelayReasonsPanel stats={stats} />
     </article>
   );
 }

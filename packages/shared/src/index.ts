@@ -200,6 +200,15 @@ export interface WeatherDelayCorrelation {
   sharePercent: number;
 }
 
+export interface DelayReasonStat {
+  key: string;
+  label: string;
+  count: number;
+  avgDelayMinutes: number | null;
+  /** Part des retards avec motif connu (0–100) */
+  sharePercent: number;
+}
+
 export interface DashboardPeriodStats {
   events: number;
   delays: number;
@@ -217,7 +226,7 @@ export interface DashboardPeriodStats {
     unmatched: number;
   };
   /** Top motifs (clé regroupée) — hors retards sans motif */
-  delayReasons: Array<{ key: string; label: string; count: number }>;
+  delayReasons: DelayReasonStat[];
   /** Retards `kind=delay` sans `delay_reason_key` */
   delaysWithoutReason: number;
   /** Retards avec snapshot météo */

@@ -1394,7 +1394,8 @@ export class PgStore {
     const reasonRes = await pool.query(
       `SELECT delay_reason_key AS key,
               MIN(delay_reason) AS label,
-              COUNT(*)::int AS count
+              COUNT(*)::int AS count,
+              ROUND(AVG(delay_minutes) FILTER (WHERE delay_minutes IS NOT NULL))::int AS avg_delay
        FROM disruption_events
        WHERE ${eventFilter}
          AND kind = 'delay'
@@ -1455,6 +1456,10 @@ export class PgStore {
     const e = res.rows[0] ?? {};
     const d = delRes.rows[0] ?? {};
     const delaysWithWeather = Number(weatherCountRes.rows[0]?.n ?? 0);
+    const delaysWithReason = reasonRes.rows.reduce(
+      (sum, row) => sum + Number(row.count ?? 0),
+      0,
+    );
     const weatherCorrelation: WeatherDelayCorrelation[] = weatherRes.rows.map(
       (row) => {
         const bucket = String(row.bucket) as WeatherBucket;
@@ -1502,11 +1507,22 @@ export class PgStore {
         inbound: Number(e.inbound ?? 0),
         unmatched: Number(e.unmatched ?? 0),
       },
-      delayReasons: reasonRes.rows.map((row) => ({
-        key: String(row.key),
-        label: String(row.label ?? row.key),
-        count: Number(row.count ?? 0),
-      })),
+      delayReasons: reasonRes.rows.map((row) => {
+        const count = Number(row.count ?? 0);
+        return {
+          key: String(row.key),
+          label: String(row.label ?? row.key),
+          count,
+          avgDelayMinutes:
+            row.avg_delay === null || row.avg_delay === undefined
+              ? null
+              : Number(row.avg_delay),
+          sharePercent:
+            delaysWithReason > 0
+              ? Math.round((count / delaysWithReason) * 100)
+              : 0,
+        };
+      }),
       delaysWithoutReason: Number(e.delays_without_reason ?? 0),
       delaysWithWeather,
       weatherCorrelation,

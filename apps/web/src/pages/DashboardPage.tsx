@@ -24,6 +24,7 @@ import {
   type LiaisonScopeValue,
 } from "../components/LiaisonScopePicker";
 import { StatCard } from "../components/StatCard";
+import { DelayReasonsPanel } from "../components/DelayReasonsPanel";
 import { WeatherCorrelationPanel } from "../components/WeatherCorrelationPanel";
 import { errorMessage, formatDurationMinutes, formatRelative, formatWhen } from "../lib/format";
 
@@ -348,26 +349,8 @@ export function DashboardPage() {
             hint={`Aller ${p.byDirection.outbound} · Retour ${p.byDirection.inbound}`}
             compact
           />
-          <StatCard
-            label="Motifs"
-            value={
-              (p.delayReasons?.length ?? 0) === 0
-                ? p.delaysWithoutReason
-                  ? "Non renseignés"
-                  : "—"
-                : (p.delayReasons ?? [])
-                    .slice(0, 2)
-                    .map((r) => `${r.label} (${r.count})`)
-                    .join(" · ")
-            }
-            hint={
-              (p.delaysWithoutReason ?? 0) > 0
-                ? `${p.delaysWithoutReason} sans motif`
-                : undefined
-            }
-            compact
-          />
         </div>
+        <DelayReasonsPanel stats={p} />
         <WeatherCorrelationPanel stats={p} />
         <ActivityHeatmap
           days={data.activityHeatmap ?? []}
