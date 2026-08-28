@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const cfg = await apiGet<AuthConfigPublic>("/v1/auth/config");
       setVisitorEnabled(cfg.visitorEnabled);
     } catch {
-      setVisitorEnabled(true);
+      setVisitorEnabled(false);
     }
   }, []);
 
@@ -119,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => ({
       loading,
       me: me ?? null,
-      visitorEnabled: visitorEnabled ?? true,
+      visitorEnabled: visitorEnabled ?? false,
       showGate,
       login,
       logout,

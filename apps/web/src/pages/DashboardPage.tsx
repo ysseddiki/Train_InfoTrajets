@@ -199,7 +199,22 @@ export function DashboardPage() {
   }
 
   if (!data || scope === null) {
-    return <p className="muted page-enter">Chargement…</p>;
+    return (
+      <div className="page-enter dash-page">
+        <div className="dash-head">
+          <div>
+            <p className="eyebrow">Ops room · lecture</p>
+            <h1>Dashboard</h1>
+          </div>
+        </div>
+        <div className="skeleton-grid">
+          <div className="skeleton skeleton-card" />
+          <div className="skeleton skeleton-card" />
+          <div className="skeleton skeleton-card" />
+          <div className="skeleton skeleton-card" />
+        </div>
+      </div>
+    );
   }
 
   const periodMeta =

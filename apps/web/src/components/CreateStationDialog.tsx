@@ -32,18 +32,27 @@ export function CreateStationDialog({
   }
 
   return (
-    <div className="dialog-backdrop" role="presentation" onClick={onClose}>
+    <div
+      className="dialog-backdrop"
+      role="presentation"
+      onClick={onClose}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+    >
       <div
         className="card dialog-card"
         role="dialog"
+        aria-modal="true"
         aria-labelledby="create-station-title"
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
       >
         <h3 id="create-station-title">Nouvelle gare</h3>
         <form className="stack-form" onSubmit={(e) => void save(e)}>
           <label>
             Libellé
-            <input name="label" required disabled={busy} />
+            <input name="label" required disabled={busy} autoFocus />
           </label>
           <label>
             ID Navitia
@@ -67,7 +76,7 @@ export function CreateStationDialog({
               Annuler
             </button>
           </div>
-          {error && <p className="error">{error}</p>}
+          {error && <p className="error" role="alert">{error}</p>}
         </form>
       </div>
     </div>

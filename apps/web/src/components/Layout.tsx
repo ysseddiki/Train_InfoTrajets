@@ -136,7 +136,10 @@ export function Layout() {
         </div>
       </aside>
       <div className="shell-main">
-        <main className="shell-content">
+        <a href="#main-content" className="skip-link">
+          Aller au contenu principal
+        </a>
+        <main id="main-content" className="shell-content">
           {passwordOpen && me ? (
             <div className="account-drawer card">
               <AdminAccountPanel username={me.username} />

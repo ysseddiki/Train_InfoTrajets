@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { decryptSecret, encryptSecret } from "./secrets.js";
 import type {
   AlertDeliveryDto,
   ApiQuotaStatus,
@@ -390,6 +391,12 @@ export class PgStore {
     const username = process.env.ADMIN_USERNAME ?? "admin";
     const password = process.env.ADMIN_PASSWORD ?? "changeme";
 
+    if (process.env.NODE_ENV === "production" && password === "changeme") {
+      throw new Error(
+        "ADMIN_PASSWORD must be changed from default in production. Set a strong password in .env",
+      );
+    }
+
     const existing = await pool.query(
       `SELECT id, password_hash FROM admin_accounts WHERE username = $1`,
       [username],
@@ -625,7 +632,8 @@ export class PgStore {
     const key = secretMetaKey(p);
     if (!key) return null;
     const v = await this.getMeta(key);
-    return v?.trim() ? v : null;
+    if (!v?.trim()) return null;
+    return decryptSecret(v);
   }
 
   private async readStoredCheck(
@@ -727,7 +735,7 @@ export class PgStore {
     body: IngestConfigUpdate,
   ): Promise<IngestConfigPublic> {
     const nav = body.navitiaToken?.trim() ?? "";
-    if (nav) await this.setMeta(META_NAVITIA_TOKEN, nav);
+    if (nav) await this.setMeta(META_NAVITIA_TOKEN, encryptSecret(nav));
     if (body.activeProvider !== undefined) {
       const next = parseIngestProvider(body.activeProvider);
       await this.setMeta(META_INGEST_PROVIDER, next);
@@ -2034,7 +2042,7 @@ export class PgStore {
           (process.env.SMTP_FROM ?? "").trim(),
         );
         const pass = process.env.SMTP_PASSWORD ?? "";
-        if (pass) await this.setMeta(META_SMTP_PASSWORD, pass);
+        if (pass) await this.setMeta(META_SMTP_PASSWORD, encryptSecret(pass));
         await this.setMeta(
           META_SMTP_ENABLED,
           process.env.EMAIL_ENABLED === "true" ? "1" : "0",
@@ -2093,17 +2101,16 @@ export class PgStore {
     fromAddress: string;
   }> {
     const pub = await this.getSmtpPublic();
-    const password =
-      (await this.getMeta(META_SMTP_PASSWORD)) ??
-      process.env.SMTP_PASSWORD ??
-      "";
+    const passwordRaw =
+      (await this.getMeta(META_SMTP_PASSWORD)) ?? process.env.SMTP_PASSWORD;
+    const password = passwordRaw ? decryptSecret(passwordRaw) : null;
     return {
       enabled: pub.enabled,
       host: pub.host,
       port: pub.port,
       secure: pub.secure,
       username: pub.username,
-      password,
+      password: password ?? "",
       fromAddress: pub.fromAddress,
     };
   }
@@ -2129,7 +2136,7 @@ export class PgStore {
       await this.setMeta(META_SMTP_FROM, body.fromAddress.trim());
     }
     const pass = body.password?.trim() ?? "";
-    if (pass) await this.setMeta(META_SMTP_PASSWORD, pass);
+    if (pass) await this.setMeta(META_SMTP_PASSWORD, encryptSecret(pass));
     return this.getSmtpPublic();
   }
 

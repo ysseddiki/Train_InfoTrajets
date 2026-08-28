@@ -36,6 +36,13 @@ export function NotificationsPage() {
         <h1>Notifications</h1>
         <p className="error">Impossible de charger l’historique.</p>
         <pre>{error}</pre>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => window.location.reload()}
+        >
+          Réessayer
+        </button>
       </div>
     );
   }
@@ -56,7 +63,7 @@ export function NotificationsPage() {
         <DeliveriesTable deliveries={deliveries} />
       </section>
 
-      <section className="card" style={{ marginTop: "1rem" }}>
+      <section className="card" style={{ marginTop: "1rem" }} aria-label="Événements">
         <h2>Événements</h2>
         <EventsTable events={events} />
       </section>

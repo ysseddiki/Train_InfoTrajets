@@ -6,6 +6,8 @@ import { createIngestAdapter } from "./adapters/ingest.js";
 import { migrate } from "./db/pool.js";
 import { loadRepoEnv } from "./domain/env.js";
 import { getFeatureFlags } from "./domain/feature-flags.js";
+import { parseCorsOrigins } from "./domain/cors-origin.js";
+import { registerAdminGuard } from "./domain/admin-guard.js";
 import { store } from "./domain/store.js";
 import { registerAuthRoutes } from "./routes/auth.js";
 import { registerAdminRoutes } from "./routes/admin.js";
@@ -39,11 +41,23 @@ async function main() {
     },
   });
 
+  const corsAllowlist = parseCorsOrigins(process.env.CORS_ORIGINS);
   await app.register(cors, {
-    origin: true,
+    origin: (origin, cb) => {
+      if (!origin) {
+        cb(null, true);
+        return;
+      }
+      if (corsAllowlist.includes(origin)) {
+        cb(null, true);
+      } else {
+        cb(null, false);
+      }
+    },
     credentials: true,
   });
   await app.register(cookie);
+  await registerAdminGuard(app);
 
   app.get("/v1/health", async (): Promise<HealthResponse> => {
     const flags = await getFeatureFlags();

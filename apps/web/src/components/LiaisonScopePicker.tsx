@@ -15,6 +15,7 @@ export function LiaisonScopePicker({
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
 
   const selected =
@@ -23,6 +24,11 @@ export function LiaisonScopePicker({
     value === "all"
       ? "Toutes les liaisons"
       : (selected?.displayName ?? "Liaison");
+
+  const allOptions = [
+    ...options.map((o) => ({ id: o.id, displayName: o.displayName })),
+    { id: "all" as const, displayName: "Toutes les liaisons" },
+  ];
 
   useEffect(() => {
     if (!open) return;
@@ -40,6 +46,62 @@ export function LiaisonScopePicker({
     };
   }, [open]);
 
+  function focusOption(index: number) {
+    const buttons =
+      listRef.current?.querySelectorAll<HTMLButtonElement>("[role=option]");
+    buttons?.[index]?.focus();
+  }
+
+  function onTriggerKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setOpen(true);
+      const currentIndex = allOptions.findIndex((o) => o.id === value);
+      setTimeout(() => focusOption(Math.max(0, currentIndex)), 0);
+    }
+  }
+
+  function onListKeyDown(e: React.KeyboardEvent) {
+    const currentIndex = allOptions.findIndex((o) => o.id === value);
+    let nextIndex = currentIndex;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        nextIndex = (currentIndex + 1) % allOptions.length;
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        nextIndex =
+          (currentIndex - 1 + allOptions.length) % allOptions.length;
+        break;
+      case "Home":
+        e.preventDefault();
+        nextIndex = 0;
+        break;
+      case "End":
+        e.preventDefault();
+        nextIndex = allOptions.length - 1;
+        break;
+      case "Enter":
+      case " ":
+        e.preventDefault();
+        if (currentIndex >= 0) {
+          onChange(allOptions[currentIndex].id as LiaisonScopeValue);
+          setOpen(false);
+        }
+        return;
+      case "Escape":
+        e.preventDefault();
+        setOpen(false);
+        return;
+      default:
+        return;
+    }
+
+    focusOption(nextIndex);
+  }
+
   return (
     <div className={`liaison-scope${open ? " is-open" : ""}`} ref={rootRef}>
       <button
@@ -49,6 +111,7 @@ export function LiaisonScopePicker({
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={onTriggerKeyDown}
       >
         <span className="liaison-scope-avatar" aria-hidden>
           {value === "all" ? (
@@ -67,10 +130,12 @@ export function LiaisonScopePicker({
       </button>
       {open && (
         <ul
+          ref={listRef}
           id={listId}
           className="liaison-scope-menu"
           role="listbox"
           aria-label="Choisir une liaison"
+          onKeyDown={onListKeyDown}
         >
           {options.map((o) => (
             <li key={o.id} role="presentation">
@@ -78,6 +143,7 @@ export function LiaisonScopePicker({
                 type="button"
                 role="option"
                 aria-selected={value === o.id}
+                tabIndex={value === o.id ? 0 : -1}
                 className={`liaison-scope-option${value === o.id ? " is-selected" : ""}`}
                 onClick={() => {
                   onChange(o.id);
@@ -102,6 +168,7 @@ export function LiaisonScopePicker({
               type="button"
               role="option"
               aria-selected={value === "all"}
+              tabIndex={value === "all" ? 0 : -1}
               className={`liaison-scope-option${value === "all" ? " is-selected" : ""}`}
               onClick={() => {
                 onChange("all");

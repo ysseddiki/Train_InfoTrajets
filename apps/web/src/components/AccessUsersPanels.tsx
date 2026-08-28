@@ -69,8 +69,17 @@ export function UsersPanel() {
   }
 
   async function resetPassword(id: string, username: string) {
-    const password = window.prompt(`Nouveau mot de passe pour ${username}`);
+    const password = window.prompt(
+      `Nouveau mot de passe pour ${username} (min. ${ADMIN_PASSWORD_MIN_LENGTH} caractères)`,
+    );
     if (!password) return;
+    if (password.length < ADMIN_PASSWORD_MIN_LENGTH) {
+      setMsg({
+        text: `Le mot de passe doit contenir au moins ${ADMIN_PASSWORD_MIN_LENGTH} caractères`,
+        ok: false,
+      });
+      return;
+    }
     setBusy(true);
     setMsg(null);
     try {

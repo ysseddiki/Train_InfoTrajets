@@ -1,3 +1,4 @@
+import { useSearchParams } from "react-router-dom";
 import type {
   ApiQuotaStatus,
   LiaisonConfig,
@@ -50,6 +51,18 @@ type AdminSectionId =
   | "users"
   | "access"
   | "account";
+
+const VALID_SECTIONS: AdminSectionId[] = [
+  "liaisons",
+  "stations",
+  "alerts",
+  "data",
+  "debug",
+  "clear-stats",
+  "users",
+  "access",
+  "account",
+];
 
 type AdminNavItem = {
   id: AdminSectionId;
@@ -166,7 +179,16 @@ function AdminConsole({
   role: UserRole;
   onLogout: () => void;
 }) {
-  const [section, setSection] = useState<AdminSectionId>("liaisons");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const sectionParam = searchParams.get("section");
+  const section: AdminSectionId = VALID_SECTIONS.includes(
+    sectionParam as AdminSectionId,
+  )
+    ? (sectionParam as AdminSectionId)
+    : "liaisons";
+  const setSection = (id: AdminSectionId) => {
+    setSearchParams({ section: id });
+  };
   const [createStationOpen, setCreateStationOpen] = useState(false);
   const nav = navForRole(role);
   const sections = nav.flatMap((g) => g.items);
@@ -268,6 +290,18 @@ function AdminConsole({
       .split("\n")
       .map((x) => x.trim())
       .filter(Boolean);
+
+    const invalid = emails.filter(
+      (email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
+    );
+    if (invalid.length > 0) {
+      setRecipientsMsg({
+        text: `Emails invalides : ${invalid.join(", ")}`,
+        ok: false,
+      });
+      return;
+    }
+
     try {
       await apiSend("/v1/admin/channels/recipients", "PUT", { emails });
       setRecipients({ emails });
@@ -365,6 +399,13 @@ function AdminConsole({
         <h1>Console admin</h1>
         <p className="error">Impossible de charger la console.</p>
         <pre>{loadError}</pre>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => window.location.reload()}
+        >
+          Réessayer
+        </button>
       </div>
     );
   }
@@ -450,6 +491,7 @@ function AdminConsole({
           {liaisonActionMsg && (
             <p
               className={`form-msg ${liaisonActionMsg.ok ? "ok" : "error"}`}
+              role="alert"
             >
               {liaisonActionMsg.text}
             </p>
@@ -489,13 +531,20 @@ function AdminConsole({
                 name="emails"
                 rows={4}
                 defaultValue={recipients.emails.join("\n")}
+                aria-describedby="recipients-hint"
               />
             </label>
+            <p id="recipients-hint" className="muted field-hint">
+              Une adresse par ligne. Format email valide requis.
+            </p>
             <div className="admin-stack-actions">
               <button type="submit">Enregistrer</button>
             </div>
             {recipientsMsg && (
-              <p className={`form-msg ${recipientsMsg.ok ? "ok" : "error"}`}>
+              <p
+                className={`form-msg ${recipientsMsg.ok ? "ok" : "error"}`}
+                role="alert"
+              >
                 {recipientsMsg.text}
               </p>
             )}
@@ -531,7 +580,12 @@ function AdminConsole({
                 </button>
               </div>
               {teamsMsg && (
-                <p className={teamsMsg.ok ? "ok" : "error"}>{teamsMsg.text}</p>
+                <p
+                  className={teamsMsg.ok ? "ok" : "error"}
+                  role="alert"
+                >
+                  {teamsMsg.text}
+                </p>
               )}
             </article>
           </div>
@@ -592,11 +646,14 @@ function AdminConsole({
           {nav.map((group) => (
             <div key={group.id} className="admin-nav-group">
               <p className="admin-nav-label">{group.label}</p>
-              <ul className="admin-nav-list">
+              <ul className="admin-nav-list" role="tablist">
                 {group.items.map(({ id, label, icon: Icon, tone }) => (
-                  <li key={id}>
+                  <li key={id} role="presentation">
                     <button
                       type="button"
+                      role="tab"
+                      aria-selected={section === id}
+                      tabIndex={section === id ? 0 : -1}
                       className={[
                         "admin-nav-item",
                         section === id ? "is-active" : "",
@@ -605,7 +662,46 @@ function AdminConsole({
                         .filter(Boolean)
                         .join(" ")}
                       onClick={() => setSection(id)}
-                      aria-current={section === id ? "page" : undefined}
+                      onKeyDown={(e) => {
+                        const items = sections;
+                        const currentIndex = items.findIndex(
+                          (s) => s.id === section,
+                        );
+                        let nextIndex = currentIndex;
+
+                        switch (e.key) {
+                          case "ArrowDown":
+                          case "ArrowRight":
+                            e.preventDefault();
+                            nextIndex = (currentIndex + 1) % items.length;
+                            break;
+                          case "ArrowUp":
+                          case "ArrowLeft":
+                            e.preventDefault();
+                            nextIndex =
+                              (currentIndex - 1 + items.length) % items.length;
+                            break;
+                          case "Home":
+                            e.preventDefault();
+                            nextIndex = 0;
+                            break;
+                          case "End":
+                            e.preventDefault();
+                            nextIndex = items.length - 1;
+                            break;
+                          default:
+                            return;
+                        }
+
+                        const next = items[nextIndex];
+                        if (next) {
+                          setSection(next.id);
+                          e.currentTarget
+                            .closest(".admin-nav")
+                            ?.querySelectorAll<HTMLButtonElement>("[role=tab]")
+                            [nextIndex]?.focus();
+                        }
+                      }}
                     >
                       <Icon size={18} strokeWidth={2} aria-hidden />
                       <span>{label}</span>
