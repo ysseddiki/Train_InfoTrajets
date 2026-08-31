@@ -5,11 +5,13 @@ alwaysApply: true
 
 # SNCF-Alerts — Agent global
 
+Nouvelle machine / nouveau chat : lire d’abord **`AGENTS.md`** (setup, carte du code, règles, workflow OpenSpec).
+
 ## Produit v1
 
 - Outil **ops interne** (pas B2C voyageur)
 - Exactement **N liaisons** (Aller/Retour par liaison) : au moins une, plusieurs possibles
-- Surfaces : **Dashboard** (session ou visiteur) + **Réponse** (admin, dernière API) + **Admin** (selon le rôle)
+- Surfaces : **Dashboard** (session ou visiteur) + **Trains** (admin, observations) + **Admin** (selon le rôle)
 - Acteurs : comptes locaux `reader` / `liaison_editor` / `admin` — pas d’inscription publique ni de comptes voyageurs B2C
 - Notifications : **Email SMTP custom** + **Teams** uniquement
 
@@ -25,10 +27,20 @@ alwaysApply: true
 - Ne pas committer `.env` ni secrets
 - Ne pas logger tokens, mots de passe, webhooks
 - API admin : secrets masqués (`*Configured`, jamais la valeur)
-- Pas de stockage de mots de passe en clair (hash serveur)
+- Secrets en base chiffrés AES-256-GCM (`SECRETS_ENCRYPTION_KEY`) — utiliser `domain/secrets.ts`, pas de clair nouveau dans `app_meta`
+- CORS : allowlist `CORS_ORIGINS` uniquement — jamais `origin: true` avec credentials
+- Routes `/v1/admin/*` : session + rôle côté API (le filtrage UI ne suffit pas), `Cache-Control: no-store`
+- Pas de stockage de mots de passe en clair (hash bcrypt serveur) ; bootstrap prod refuse `ADMIN_PASSWORD=changeme`
+- SQL paramétré partout
+
+## UI / accessibilité
+
+- Thème clair par défaut (sombre via `data-theme`) ; pas de couleurs hardcodées claires — tokens CSS
+- Composants interactifs : clavier (tabs/listbox/dialogs), `role="alert"` sur messages de formulaire, focus visible
+- Ne jamais inventer un motif de retard ou une météo absente de la source
 
 ## OpenSpec
 
 - Lire `openspec/specs/` et `specs/system/baseline-v1.md` avant d’étendre le périmètre
 - Changements structurants → delta dans `openspec/changes/`
-- Ne pas réintroduire push, multi-users voyageurs, SSO, scrape G&C sans change OpenSpec
+- Ne pas réintroduire push, multi-users voyageurs, SSO, scrape G&C, failover ZOU/PRIM sans change OpenSpec

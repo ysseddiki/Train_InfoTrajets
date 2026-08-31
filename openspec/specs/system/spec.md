@@ -37,12 +37,41 @@ Le client web MUST n’appeler que l’API HTTP `/v1` ; les intégrations Naviti
 
 Le système MUST NOT stocker de mots de passe en clair, MUST NOT committer de secrets dans git, et MUST masquer les credentials dans les réponses API (`configured` / `****`).
 
+Les secrets opérationnels persistés en base (`app_meta`) — **mot de passe SMTP** et **token Navitia** — MUST être chiffrés au repos en **AES-256-GCM** lorsque `SECRETS_ENCRYPTION_KEY` est défini. Sans la clé, le stockage en clair est toléré en dev uniquement et MUST être documenté comme déconseillé en production. La lecture serveur MUST déchiffrer de façon transparente (et tolérer une valeur legacy en clair).
+
 #### Scenario: Lecture config SMTP
 
 - **GIVEN** un SMTP configuré avec mot de passe
 - **WHEN** l’admin appelle `GET /v1/admin/channels/smtp`
 - **THEN** la réponse n’inclut pas le mot de passe en clair
 - **AND** indique que le secret est configuré
+
+#### Scenario: Secret chiffré en base
+
+- **GIVEN** `SECRETS_ENCRYPTION_KEY` défini et un token Navitia enregistré via Admin
+- **WHEN** on lit la ligne `app_meta` correspondante en SQL
+- **THEN** la valeur stockée est au format `iv:tag:ciphertext` (hex), pas le token en clair
+- **AND** l’ingest utilise la valeur déchiffrée pour appeler Navitia
+
+### Requirement: Durcissement HTTP et CORS
+
+L’API MUST appliquer des en-têtes de sécurité sur toutes les réponses (`X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-Resource-Policy`) et un `Cache-Control: no-store` sur les routes `/v1/admin/*`. Un filet de sécurité MUST exiger une session pour toute route `/v1/admin/*` hors login/logout (défense en profondeur, avant le contrôle des rôles).
+
+CORS MUST refléter uniquement les origines listées dans `CORS_ORIGINS` (séparées par virgules). La liste vide MUST refuser toute origine navigateur cross-origin (l’UI passe par le proxy same-origin). `origin: true` combiné à `credentials: true` MUST NOT être utilisé.
+
+Le vhost nginx de la web UI SHOULD ajouter une `Content-Security-Policy` restrictive (`default-src 'self'`, `frame-ancestors 'none'`) en plus de HSTS / nosniff / X-Frame-Options / Referrer-Policy.
+
+#### Scenario: Origine non autorisée
+
+- **GIVEN** `CORS_ORIGINS` vide et une requête navigateur cross-origin avec `Origin: https://malicious.example`
+- **WHEN** le navigateur appelle l’API avec credentials
+- **THEN** la réponse n’inclut pas `Access-Control-Allow-Origin` pour cette origine
+
+#### Scenario: Headers admin
+
+- **GIVEN** une session admin
+- **WHEN** elle appelle `GET /v1/admin/liaisons`
+- **THEN** la réponse inclut `Cache-Control: no-store` et les en-têtes de sécurité
 
 ### Requirement: Stack client web React
 

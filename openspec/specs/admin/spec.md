@@ -14,6 +14,8 @@ La console admin MUST exiger une session. L’accès aux opérations MUST dépen
 - `liaison_editor` : CRUD liaisons ; lecture catalogue gares ; création d’une gare (`POST /v1/admin/stations`) depuis le formulaire liaison ; changement de son mot de passe
 - `admin` : toutes les opérations (canaux, ingest, debug, clear stats, gares CRUD, comptes, toggle visiteur)
 
+La section active de la console MUST être reflétée dans l’URL (`#/admin?section=…`) pour permettre deep-link et bouton retour ; une valeur inconnue MUST retomber sur `liaisons`.
+
 #### Scenario: Accès non authentifié
 
 - **GIVEN** aucune session
@@ -135,6 +137,8 @@ Chaque gare MAY encore exposer des champs **terminus / destinations d’aide** (
 
 Un admin SHALL pouvoir ajouter et retirer des adresses email destinataires dans l’interface ; ces adresses sont les seules cibles email v1.
 
+Le client SHOULD valider le format de chaque adresse avant l’envoi (une par ligne) et MUST afficher un message explicite listant les adresses invalides sans appeler l’API.
+
 #### Scenario: Ajout d’un destinataire
 
 - **GIVEN** un admin authentifié
@@ -193,6 +197,18 @@ La console SHALL exposer, pour un `admin` uniquement, une section **Comptes** (c
 - **GIVEN** un admin sur Accès
 - **WHEN** il désactive le mode visiteur
 - **THEN** `PUT /v1/admin/settings/access` persiste `visitorEnabled: false`
+
+#### Scenario: Email destinataire invalide
+
+- **GIVEN** un admin saisit `pas-un-email` dans la liste des destinataires
+- **WHEN** il soumet le formulaire
+- **THEN** le client affiche l’adresse invalide et n’appelle pas l’API
+
+#### Scenario: Section deep-linkable
+
+- **GIVEN** un admin sur `#/admin?section=clear-stats`
+- **WHEN** il recharge la page
+- **THEN** la section Clear stats est active après le chargement
 
 ### Requirement: Onglet Statuts trains (debug admin)
 

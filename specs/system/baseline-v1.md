@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.13.0`  
-> **Date** : 2026-08-20  
-> **Change** : `openspec/changes/heatmap-day-detail`  
+> **Version** : `1.15.0`  
+> **Date** : 2026-08-31  
+> **Change** : `openspec/changes/security-ux-hardening`  
 > **Format** : OpenSpec
 
 ---
@@ -144,9 +144,10 @@ Pas d’alias scrape G&C. Les liaisons référencent les gares via `external_id`
 | Élément | Stockage | Exposition API |
 |---------|----------|----------------|
 | SMTP host/port/user/from/TLS | config | visible |
-| SMTP password | env ou secret chiffré | `password_configured: true` |
+| SMTP password | DB chiffrée (AES-256-GCM via `SECRETS_ENCRYPTION_KEY`) ou env | `password_configured: true` |
 | Teams webhook URL | env ou secret chiffré | `webhook_configured: true` |
-| Email recipients | liste en DB | visible (ops, pas PII voyageur) |
+| Navitia token | DB chiffrée (AES-256-GCM via `SECRETS_ENCRYPTION_KEY`) | `token_preview` (5 car.) |
+| Email recipients | liste en DB (format validé côté client) | visible (ops, pas PII voyageur) |
 | Canaux actifs | `email_enabled`, `teams_enabled` | visible |
 
 ### 1.6 AlertDelivery
@@ -171,8 +172,10 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 
 - Base : `/v1`
 - JSON ; erreurs RFC 7807
-- Dashboard : session **ou** `visitorEnabled`
-- Admin : session cookie httpOnly ; autorisation par rôle
+- Dashboard : session **ou** `visitorEnabled` (client fail-closed si config illisible)
+- Admin : session cookie httpOnly ; autorisation par rôle ; filet session + headers de sécurité / no-store sur `/v1/admin/*`
+- CORS : allowlist `CORS_ORIGINS` (vide = aucune origine navigateur cross-origin)
+- Secrets au repos : SMTP password / token Navitia chiffrés AES-256-GCM si `SECRETS_ENCRYPTION_KEY` défini
 
 ### Dashboard (session ou visiteur)
 
@@ -203,10 +206,12 @@ Unicité soft : éviter le spam (dédoublonnage par `event_id` + `channel` pour 
 | GET/PUT | `/v1/admin/journeys/:direction` | Compat (1ʳᵉ liaison) |
 | GET/PUT | `/v1/admin/channels/smtp` | Config SMTP (password write-only) |
 | GET/PUT | `/v1/admin/channels/teams` | Webhook Teams (write-only) |
-| GET/PUT | `/v1/admin/channels/recipients` | Liste emails |
+| GET/PUT | `/v1/admin/channels/recipients` | Liste emails (format validé côté client) |
 | GET/PUT | `/v1/admin/ingest` | 3 providers + actif ; token write-only + check API |
 | POST | `/v1/admin/ingest/probe` | Test credential (Navitia / PRIM / stub) |
 | POST | `/v1/admin/channels/:type/test` | `email` \| `teams` |
+| GET | `/v1/admin/debug/train-observations` | Observations trains (admin ; `?trainNumber=&status=&limit=`) |
+| GET/DELETE | `/v1/admin/debug/outbound-http` | Échantillons requêtes Navitia masquées (admin) |
 
 ### Ports internes
 
@@ -282,7 +287,7 @@ File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non blo
 
 ### Secrets (env)
 
-Voir `.env.example` : `ADMIN_*`, `SMTP_*`, `TEAMS_*`, `SESSION_SECRET`, `INGEST_INTERVAL_MS`, `INGEST_IN_PROCESS`, `DEPARTURES_CACHE_TTL_MS`, `NAVITIA_DAILY_QUOTA`. **Token Navitia = Admin → Ingest (DB)** — pas dans `.env`. Prometheus : plus tard.
+Voir `.env.example` : `ADMIN_*`, `SMTP_*`, `TEAMS_*`, `SESSION_SECRET`, `SECRETS_ENCRYPTION_KEY`, `CORS_ORIGINS`, `INGEST_INTERVAL_MS`, `INGEST_IN_PROCESS`, `DEPARTURES_CACHE_TTL_MS`, `NAVITIA_DAILY_QUOTA`. **Token Navitia = Admin → Ingest (DB)** — pas dans `.env`. Prometheus : plus tard.
 
 ### NFR MVP
 
@@ -290,6 +295,8 @@ Voir `.env.example` : `ADMIN_*`, `SMTP_*`, `TEAMS_*`, `SESSION_SECRET`, `INGEST_
 - Détection → notif : viser < 2 min (hors panne provider)
 - Login rate-limité
 - Dashboard dépend entièrement de l’API
+- Bootstrap refusé en production si `ADMIN_PASSWORD` vaut `changeme`
+- Web UI : thème clair par défaut (sombre optionnel), code splitting par route, a11y clavier (tabs/listbox/dialogs)
 
 ---
 
@@ -324,3 +331,6 @@ specs/system/     # Baseline narrative
 | `1.10.0` | 2026-08-19 | Accès : visiteur, comptes locaux, rôles |
 | `1.11.0` | 2026-08-19 | Retrait failover ZOU (GTFS-RT) |
 | `1.12.0` | 2026-08-19 | Météo Open-Meteo + corrélation retards (dashboard) |
+| `1.13.0` | 2026-08-25 | Observations trains à l’heure, heatmap pondérée, board = prochain train, onglet Trains (admin), suppressions Navitia via `impacted_objects` |
+| `1.14.0` | 2026-08-28 | Indicateurs `onTimeTrains` / `observedTrains` / `totalDelayMinutes`, panneau Motifs aligné sur le format Météo, thème sombre optionnel (clair par défaut) |
+| `1.15.0` | 2026-08-31 | Durcissement : CORS allowlist, guard admin + headers, secrets chiffrés AES-256-GCM, bootstrap prod sans `changeme`, CSP nginx, fail-closed visiteur, a11y (clavier, dialogs, skip link), deep-link sections admin, code splitting |

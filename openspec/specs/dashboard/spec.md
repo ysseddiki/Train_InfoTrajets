@@ -49,11 +49,22 @@ Le client web SHALL proposer un bascule **clair / sombre**. Le défaut MUST êtr
 
 Les agrégats période SHALL exposer `today` (jour civil Europe/Paris depuis 00:00), `last24h` (glissant), `week` (lundi 00:00 Paris), `month` (1er du mois 00:00 Paris) et `year` (1er janvier 00:00 Paris). Chaque agrégat SHALL inclure un décompte des retards **par `delay_reason_key`** (top motifs), le nombre de retards **sans motif**, `observedTrains` : total des trains **déjà partis** observés sur la période, `onTimeTrains` : parmi eux ceux restés `on_time`, et `totalDelayMinutes` : somme des `delay_minutes` connus sur la période (retards `unknown` exclus). Un motif manquant MUST NOT être affiché comme une cause inventée. Les champs `last7d` / `last30d` MAY rester en rolling pour compat.
 
+Chaque motif (`DelayReasonStat`) SHALL exposer `key`, `label`, `count`, `avgDelayMinutes` (moyenne des retards du motif, `null` si aucune durée connue) et `sharePercent` (part des retards **avec motif connu**, 0–100).
+
+La section **Motifs de retard** du dashboard MUST utiliser le même format visuel que la section **Météo et retards** (carte avec titre, ligne récapitulative, liste `libellé | count | moy. X min · Y %`), et MUST être placée dans la même zone d’indicateurs — pas une carte KPI compacte.
+
 #### Scenario: Mix motifs
 
 - **GIVEN** 3 retards « travaux », 1 sans motif, sur la journée en cours
 - **WHEN** le dashboard charge la période Journée
 - **THEN** les stats listent travaux (3) et un compteur sans motif (1)
+
+#### Scenario: Format aligné météo
+
+- **GIVEN** 2 retards « travaux » (moyenne 15 min) et 1 retard « accident » sur la période
+- **WHEN** le dashboard affiche la section Motifs de retard
+- **THEN** chaque ligne affiche le libellé, le nombre, la moyenne et la part en %
+- **AND** la ligne récapitulative indique `3 retards avec motif` plus `N sans motif` si applicable
 
 #### Scenario: Cumul des retards
 
@@ -137,6 +148,8 @@ Le bandeau de statut d’une carte Aller/Retour MUST refléter le **prochain tra
 
 La heatmap MUST colorer un jour seulement s’il y a observation (trains surveillés et/ou événements). Un jour avec trains à l’heure et sans retard MUST être vert. Le score d’intensité MUST être dilué par le volume de trains à l’heure observés ce jour.
 
+L’intensité MUST NOT reposer uniquement sur la couleur : les niveaux doivent se distinguer aussi par un indice visuel non colorimétrique (ex. ombre interne / épaisseur de bordure croissante). Les cellules cliquables SHOULD offrir une cible tactile d’au moins ~14 px (davantage sur mobile). La sélection MUST utiliser un token de thème (visible en clair comme en sombre), pas une couleur fixe claire.
+
 #### Scenario: Journée calme observée
 
 - **GIVEN** des observations `on_time` sans événement retard/suppression ce jour
@@ -184,3 +197,29 @@ Un clic sur un jour de la heatmap (passé ou aujourd’hui, Europe/Paris) SHALL 
 - **GIVEN** un jour observé sans retard (cellule verte)
 - **WHEN** l’opérateur clique cette cellule
 - **THEN** le panneau indique qu’il n’y a aucun retard et affiche la météo du jour si elle est connue
+
+### Requirement: Accessibilité et chargement des surfaces
+
+La web UI SHALL respecter les exigences d’accessibilité suivantes :
+
+- Dialogs : `aria-modal="true"`, focus initial dans la boîte, fermeture à la touche Échap, clic backdrop
+- Patterns `tablist` / `listbox` : navigation flèches / Home / End, `tabIndex` roving (onglet actif seul dans l’ordre de tabulation)
+- Messages de formulaire (succès / erreur) : `role="alert"` pour annonce aux technologies d’assistance
+- Éléments interactifs : indicateur `:focus-visible` visible
+- Un lien d’évitement « Aller au contenu principal » SHALL être présent dans le shell
+- Les pages en erreur de chargement SHOULD proposer une action « Réessayer »
+- Les pages principales SHOULD afficher un squelette de chargement (skeleton) plutôt qu’un simple texte, avec animation désactivée si `prefers-reduced-motion`
+
+Le routeur client SHOULD charger les pages en **code splitting** (`React.lazy` + `Suspense`) afin que le bundle initial reste léger.
+
+#### Scenario: Clavier sur le sélecteur de période
+
+- **GIVEN** le focus sur le sélecteur de période des indicateurs
+- **WHEN** l’opérateur appuie sur Flèche droite
+- **THEN** la période suivante est activée et reçoit le focus
+
+#### Scenario: Dialog clavier
+
+- **GIVEN** la boîte « Nouvelle gare » ouverte
+- **WHEN** l’opérateur appuie sur Échap
+- **THEN** la boîte se ferme sans créer de gare

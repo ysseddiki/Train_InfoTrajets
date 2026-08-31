@@ -1,0 +1,21 @@
+# Tasks: security-ux-hardening
+
+- [x] CORS allowlist `CORS_ORIGINS` câblée (`origin: true` supprimé)
+- [x] `registerAdminGuard` enregistré (headers + no-store admin + filet session)
+- [x] Chiffrement AES-256-GCM des secrets `app_meta` (`SECRETS_ENCRYPTION_KEY`)
+- [x] Bootstrap prod refuse `ADMIN_PASSWORD=changeme`
+- [x] Client auth fail-closed si `/v1/auth/config` échoue
+- [x] CSP + Permissions-Policy sur le vhost nginx
+- [x] Reset mot de passe : validation min-length côté client
+- [x] Dialog gare accessible (aria-modal, focus, Échap)
+- [x] Navigation clavier tabs / listbox / nav admin
+- [x] `role="alert"` sur les messages de formulaire
+- [x] Skip link + focus-visible global
+- [x] Heatmap : cibles tactiles + indice non colorimétrique + sélection token thème
+- [x] Code splitting routes (`React.lazy`)
+- [x] Skeleton dashboard + retry Notifications/Admin
+- [x] Validation emails destinataires côté client
+- [x] Deep-link sections admin (`?section=`)
+- [x] Couleurs hardcodées → tokens thème
+- [x] Suppression `PeriodStats.tsx` (mort)
+- [x] Specs mises à jour (system, auth, dashboard, admin) + baseline 1.15.0

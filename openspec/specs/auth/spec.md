@@ -10,6 +10,8 @@ Authentification locale (login/mot de passe, session serveur). Plusieurs comptes
 
 Le système SHALL authentifier des comptes locaux (identifiant + mot de passe hashé serveur) via `POST /v1/admin/login`. Pas d’OIDC en v1. Un compte bootstrap MAY être créé depuis `ADMIN_USERNAME` / `ADMIN_PASSWORD` au premier boot.
 
+Le bootstrap MUST échouer au démarrage si `NODE_ENV=production` et `ADMIN_PASSWORD` vaut encore la valeur par défaut (`changeme`).
+
 #### Scenario: Login réussi
 
 - **GIVEN** des credentials valides d’un compte non désactivé
@@ -22,6 +24,12 @@ Le système SHALL authentifier des comptes locaux (identifiant + mot de passe ha
 - **GIVEN** un mot de passe incorrect ou un compte désactivé
 - **WHEN** `POST /v1/admin/login` est appelé
 - **THEN** l’API retourne `401` sans révéler si l’utilisateur existe
+
+#### Scenario: Bootstrap refusé en production
+
+- **GIVEN** `NODE_ENV=production` et `ADMIN_PASSWORD=changeme` (ou absent)
+- **WHEN** l’API démarre
+- **THEN** le seed échoue avec une erreur explicite demandant un mot de passe fort
 
 ### Requirement: Pas d’inscription publique
 
@@ -66,6 +74,8 @@ Le système SHALL exposer `GET /v1/auth/config` (public) `{ visitorEnabled }`. U
 
 Les routes de lecture dashboard (`/v1/dashboard/overview`, `/v1/liaisons`, `/v1/journeys`, `/v1/events`, `/v1/deliveries`) MUST exiger une session **ou** `visitorEnabled = true`. Sinon `401`.
 
+Le client MUST adopter une posture **fail-closed** : si `GET /v1/auth/config` échoue, le mode visiteur MUST être considéré désactivé côté UI (porte d’entrée connexion, pas d’accès anonyme par défaut).
+
 #### Scenario: Visiteur désactivé sans session
 
 - **GIVEN** `visitorEnabled = false` et aucune session
@@ -78,9 +88,18 @@ Les routes de lecture dashboard (`/v1/dashboard/overview`, `/v1/liaisons`, `/v1/
 - **WHEN** un client appelle `GET /v1/dashboard/overview`
 - **THEN** l’API retourne `200` avec l’overview
 
+#### Scenario: Config illisible côté client
+
+- **GIVEN** l’API `/v1/auth/config` en erreur ou injoignable
+- **WHEN** la web UI initialise l’auth
+- **THEN** `visitorEnabled` est traité comme `false` côté client
+- **AND** la porte d’entrée affiche la connexion
+
 ### Requirement: Gestion des comptes par un admin
 
 Un `admin` SHALL pouvoir lister, créer et modifier des comptes (`GET/POST /v1/admin/users`, `PATCH /v1/admin/users/:id` : rôle, désactivation, reset mot de passe). Les réponses MUST NOT inclure hash ni mot de passe. Le système MUST refuser de désactiver ou rétrograder le dernier `admin` actif (`400`).
+
+Le reset de mot de passe côté UI MUST passer par un formulaire masqué validant la longueur minimale (`ADMIN_PASSWORD_MIN_LENGTH`) — jamais par une invite système non masquée.
 
 #### Scenario: Création
 

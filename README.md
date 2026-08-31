@@ -2,7 +2,7 @@
 
 Outil **ops interne** : une ou plusieurs **liaisons** SNCF (chaque liaison = Aller + Retour), dashboard ops room, console admin, notifications **Email (SMTP)** et **Teams**.
 
-> Specs : `openspec/specs/` · Baseline : `specs/system/baseline-v1.md` · Change : `openspec/changes/ops-smtp-drop-prim/`
+> Specs : `openspec/specs/` · Baseline : `specs/system/baseline-v1.md` · **Reprise de dev (agent / nouvelle machine) : [`AGENTS.md`](AGENTS.md)**
 
 ## Architecture
 
@@ -19,8 +19,10 @@ Le client **ne fonctionne pas sans l’API**. Token Navitia = **Admin → Ingest
 
 - Node.js **≥ 20**
 - **PostgreSQL 16** (Docker Compose fourni)
-- Accès réseau restreint (VPN/firewall) pour le dashboard (pas d’auth app viewer en v1)
+- Accès réseau restreint (VPN/firewall) recommandé pour le dashboard
 - Compte admin pour la console
+
+**Reprise sur une autre machine** : tout est dans le dépôt (code, règles `.cursor/rules/`, skill `.cursor/skills/`, specs OpenSpec). Après clone : `cp .env.example .env`, renseigner `ADMIN_PASSWORD` + `DATABASE_URL` (+ `SECRETS_ENCRYPTION_KEY` recommandé), `docker compose up -d db`, `npm install`, `npm run dev:api` + `npm run dev:web`. Détail complet : [`AGENTS.md`](AGENTS.md).
 
 ## Systemd (API ≠ ingest ≠ web) — recommandé en prod
 
@@ -162,8 +164,12 @@ npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 - Ne pas logger `Authorization`, `SMTP_PASSWORD`, `TEAMS_WEBHOOK_URL`, clés API
 - L’API admin masque les secrets (`passwordConfigured` / `webhookConfigured` / `tokenPreview` 5 caractères)
 - Mot de passe admin stocké **hashé** (bcrypt) en base ; session cookie **httpOnly**
+- Secrets opérationnels en base (SMTP password, token Navitia) **chiffrés AES-256-GCM** quand `SECRETS_ENCRYPTION_KEY` est défini (`openssl rand -base64 32`) — recommandé en prod
 - Changement du mot de passe : Admin → Compte (`PUT /v1/admin/account/password`)
 - Rate-limit sur `/v1/admin/login`
+- CORS : allowlist `CORS_ORIGINS` (vide = aucune origine navigateur cross-origin ; l’UI passe par le proxy same-origin)
+- Headers de sécurité + `no-store` sur `/v1/admin/*` ; CSP sur le vhost nginx (`deploy/nginx/sncf-alerts.conf`)
+- En production (`NODE_ENV=production`), l’API **refuse de démarrer** si `ADMIN_PASSWORD` vaut `changeme`
 - Changer `ADMIN_PASSWORD` (premier boot) et `SESSION_SECRET` avant tout déploiement
 - Logs : cookies / passwords / webhooks redactés
 
@@ -255,14 +261,15 @@ Ne jamais coller cette URL dans le dépôt git.
 | Chemin | Rôle |
 |--------|------|
 | `openspec/specs/*` | Source de vérité par domaine |
-| `openspec/changes/refine-ops-platform-v1/` | Pivot ops en cours |
-| `specs/system/baseline-v1.md` | Baseline narrative v1.1 |
+| `openspec/changes/*` | Deltas archivés (historique des décisions, ex. `security-ux-hardening`) |
+| `specs/system/baseline-v1.md` | Baseline narrative versionnée |
+| `AGENTS.md` | Guide agent : setup, carte du code, règles, workflow OpenSpec |
 
 Travailler par **deltas** (`ADDED` / `MODIFIED` / `REMOVED`) avant d’étendre le code.
 
 ## Cursor
 
-Règles dans `.cursor/rules/` : une règle **globale** + règles par domaine (`api`, `web`, `admin`, `dashboard`, `notifications`, `ingest`, `openspec`).
+Règles dans `.cursor/rules/` : une règle **globale** + règles par domaine (`api`, `web`, `admin`, `dashboard`, `notifications`, `ingest`, `openspec`). Skill projet : `.cursor/skills/navitia-json-canvas/` (analyse visuelle de JSON Navitia). Tout est commité : le dev est reprenable sur une autre machine après un simple clone (voir [`AGENTS.md`](AGENTS.md)).
 
 ## Features marquées (revert)
 
