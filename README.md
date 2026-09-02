@@ -24,64 +24,78 @@ Le client **ne fonctionne pas sans l’API**. Token Navitia = **Admin → Ingest
 
 **Reprise sur une autre machine** : tout est dans le dépôt (code, règles `.cursor/rules/`, skill `.cursor/skills/`, specs OpenSpec). Après clone : `cp .env.example .env`, renseigner `ADMIN_PASSWORD` + `DATABASE_URL` (+ `SECRETS_ENCRYPTION_KEY` recommandé), `docker compose up -d db`, `npm install`, `npm run dev:api` + `npm run dev:web`. Détail complet : [`AGENTS.md`](AGENTS.md).
 
-## Déploiement prod — deux services + nginx
+## Déploiement prod — Docker Compose (recommandé)
 
-L’UI n’est **pas** un service : c’est un **build statique** (`apps/web/dist`) servi par
-nginx. Aucun serveur de développement ne tourne en production. Deux unités systemd
-seulement : **api** (HTTP `/v1`) et **ingest** (poll).
+Quatre conteneurs : **db**, **api**, **ingest**, **web** (nginx + build statique). Seul
+`web` expose les ports 80/443 — l’API n’est pas joignable depuis l’extérieur.
 
-Sur le serveur (chemins / `User=` à adapter) :
+**Prérequis serveur** : Docker Engine + Docker Compose v2.
 
 ```bash
-sudo cp deploy/systemd/sncf-alerts-api.service /etc/systemd/system/
-sudo cp deploy/systemd/sncf-alerts-ingest.service /etc/systemd/system/
-# Éditer User= et WorkingDirectory= si besoin
-sudo systemctl daemon-reload
-sudo systemctl enable --now sncf-alerts-api sncf-alerts-ingest
-sudo systemctl status sncf-alerts-api sncf-alerts-ingest
+git clone git@github.com:ysseddiki/Train_InfoTrajets.git
+cd Train_InfoTrajets
+cp .env.example .env
+# Éditer : ADMIN_PASSWORD (fort), POSTGRES_PASSWORD, SERVER_NAME, SECRETS_ENCRYPTION_KEY
+
+./scripts/deploy-docker.sh
 ```
 
-Les unités définissent `NODE_ENV=production` : sans lui, le refus de démarrer sur
-`ADMIN_PASSWORD=changeme` serait inactif.
-
-Après `./scripts/update.sh` (qui rebuild l’UI) :
+TLS Let's Encrypt (DNS pointé, ports 80/443 ouverts) :
 
 ```bash
+./scripts/init-letsencrypt-docker.sh ops.exemple.fr admin@exemple.fr
+```
+
+Mise à jour :
+
+```bash
+git pull
+./scripts/deploy-docker.sh   # rebuild + redémarre les conteneurs
+```
+
+Renouvellement certificat (cron quotidien recommandé) :
+
+```bash
+docker compose -f docker-compose.prod.yml --profile certbot run --rm certbot renew
+docker compose -f docker-compose.prod.yml exec web nginx -s reload
+```
+
+Vérifications :
+
+```bash
+docker compose -f docker-compose.prod.yml ps
+docker compose -f docker-compose.prod.yml exec api curl -fsS http://127.0.0.1:3001/v1/health
+curl -k -I https://ops.exemple.fr/
+```
+
+`COOKIE_SECURE=true` dans `.env`. Les variables `DATABASE_URL`, `TRUSTED_PROXIES` et
+`API_HOST` sont surchargées par `docker-compose.prod.yml` pour le réseau interne.
+
+### Migration depuis systemd
+
+1. Dumper la base existante : `pg_dump … > backup.sql`
+2. Arrêter les services : `sudo systemctl disable --now sncf-alerts-api sncf-alerts-ingest nginx`
+3. Lancer `./scripts/deploy-docker.sh`
+4. Restaurer : `docker compose -f docker-compose.prod.yml exec -T db psql -U sncf sncf_alerts < backup.sql`
+
+<details>
+<summary>Déploiement bare-metal (systemd + nginx hôte) — legacy</summary>
+
+Deux unités systemd : **api** et **ingest**. L’UI est un build statique servi par nginx
+sur l’hôte (`apps/web/dist`). Voir `deploy/systemd/` et `deploy/nginx/sncf-alerts.conf`.
+
+```bash
+sudo cp deploy/systemd/sncf-alerts-{api,ingest}.service /etc/systemd/system/
+./scripts/update.sh
 sudo systemctl restart sncf-alerts-api sncf-alerts-ingest
 sudo systemctl reload nginx
 ```
 
-Dans `.env` : `INGEST_IN_PROCESS=false` pour que l’API ne double pas le poll.
+</details>
 
-> **Migration depuis l’ancien déploiement** : `sudo systemctl disable --now sncf-alerts-web`
-> puis `sudo rm /etc/systemd/system/sncf-alerts-web.service`. Le script Let's Encrypt le
-> fait automatiquement.
+### Dev local (tout-en-un)
 
-### HTTPS Let's Encrypt (prod)
-
-Prérequis : un **nom de domaine** (DNS A/AAAA → IP du serveur), ports **80** et **443** ouverts.
-
-```bash
-npm run build -w @sncf-alerts/web
-sudo ./scripts/setup-letsencrypt.sh ops.exemple.fr admin@exemple.fr
-# → nginx :80/:443, sert apps/web/dist, proxy /v1 → 127.0.0.1:3001
-sudo certbot renew --dry-run
-```
-
-Garder `COOKIE_SECURE=true`. Conf nginx d’exemple : `deploy/nginx/sncf-alerts.conf`
-(CSP sans `script-src 'unsafe-inline'`, `limit_req` sur le login).
-
-### Exposition réseau
-
-`API_HOST` vaut `127.0.0.1` par défaut : l’API n’est joignable qu’à travers nginx, qui
-porte TLS, HSTS, CSP et la limitation de débit. Passer à `0.0.0.0` contourne toutes ces
-protections — à réserver aux cas où un pare-feu ferme explicitement le port 3001.
-
-`TRUSTED_PROXIES` (défaut `loopback`) définit les sources dont `X-Forwarded-For` est
-accepté. Sans cette allowlist, le rate-limit de connexion compterait toutes les requêtes
-sur l’IP du proxy, donc dans un seul compteur partagé.
-
-Dev local (tout-en-un) : laisser `INGEST_IN_PROCESS=true` (défaut) et `npm run dev:api` + `npm run dev:web`.
+`INGEST_IN_PROCESS=true` (défaut) + `npm run dev:api` + `npm run dev:web`.
 
 Sans token Navitia : `INGEST_PROVIDER=stub` + **Admin → Debug** (inject / historique) pour peupler le dashboard.
 

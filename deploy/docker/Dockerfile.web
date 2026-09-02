@@ -1,0 +1,20 @@
+# nginx + build statique Vite. Build depuis la racine :
+#   docker build -f deploy/docker/Dockerfile.web .
+
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/web/package.json apps/web/
+COPY packages/shared ./packages/shared
+COPY apps/web ./apps/web
+RUN npm ci --workspace=@sncf-alerts/web --workspace=@sncf-alerts/shared --include-workspace-root
+RUN npm run build -w @sncf-alerts/web
+
+FROM nginx:1.27-alpine
+RUN apk add --no-cache openssl
+COPY deploy/docker/nginx.conf /etc/nginx/nginx.conf
+COPY deploy/nginx/docker.conf.template /etc/nginx/templates/default.conf.template
+COPY deploy/docker/entrypoint-web.sh /docker-entrypoint.d/40-tls-bootstrap.sh
+RUN chmod +x /docker-entrypoint.d/40-tls-bootstrap.sh
+COPY --from=build /app/apps/web/dist /usr/share/nginx/html
+EXPOSE 80 443

@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.16.0`  
+> **Version** : `1.17.0`  
 > **Date** : 2026-09-02  
-> **Change** : `openspec/changes/security-prod-posture`  
+> **Change** : `openspec/changes/containerized-deploy`  
 > **Format** : OpenSpec
 
 ---
@@ -274,7 +274,7 @@ File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non blo
 | DB | PostgreSQL 16 (phase suivante ; mémoire/sqlite OK pour stub initial) |
 | Queue | table `notify_jobs` (Postgres) ; Redis optionnel plus tard |
 | Auth | session cookie + rôles locaux + mode visiteur |
-| Workloads | `sncf-alerts-api` ≠ `sncf-alerts-ingest` (systemd, `NODE_ENV=production`) ; UI = statique, pas d’unité |
+| Workloads | Docker Compose prod (`db`, `api`, `ingest`, `web`) — alternative systemd documentée |
 
 ### Externes
 
@@ -338,3 +338,4 @@ specs/system/     # Baseline narrative
 | `1.14.0` | 2026-08-28 | Indicateurs `onTimeTrains` / `observedTrains` / `totalDelayMinutes`, panneau Motifs aligné sur le format Météo, thème sombre optionnel (clair par défaut) |
 | `1.15.0` | 2026-08-31 | Durcissement : CORS allowlist, guard admin + headers, secrets chiffrés AES-256-GCM, bootstrap prod sans `changeme`, CSP nginx, fail-closed visiteur, a11y (clavier, dialogs, skip link), deep-link sections admin, code splitting |
 | `1.16.0` | 2026-09-02 | Posture de production : UI en build statique nginx (fin du serveur Vite en prod, CSP sans `script-src 'unsafe-inline'`), `NODE_ENV=production` dans les units, `API_HOST` local, rate-limit login par IP réelle + identifiant (`trustProxy`), plafond de lecture `/v1/*`, budget Open-Meteo, nodemailer 9.x (`npm audit` au vert) |
+| `1.17.0` | 2026-09-02 | Déploiement conteneurisé : `docker-compose.prod.yml` (db, api, ingest, web), Dockerfiles, `deploy-docker.sh`, Let's Encrypt Docker ; systemd = legacy |

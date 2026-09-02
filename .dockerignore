@@ -1,0 +1,27 @@
+# Dépendances et artefacts locaux
+node_modules
+**/node_modules
+apps/web/dist
+
+# Secrets et config locale
+.env
+.env.*
+!.env.example
+
+# Git / IDE
+.git
+.gitignore
+.cursor
+*.md
+!README.md
+
+# Specs et historique (hors image runtime)
+openspec
+specs
+
+# Déploiement bare-metal (alternative documentée)
+deploy/systemd
+
+# Tests et coverage
+**/*.test.ts
+coverage

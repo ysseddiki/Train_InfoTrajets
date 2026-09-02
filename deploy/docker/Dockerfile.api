@@ -1,0 +1,24 @@
+# Image API + worker ingest (même artefact, commande différente dans compose).
+# Build depuis la racine du monorepo : docker build -f deploy/docker/Dockerfile.api .
+
+FROM node:22-alpine AS deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/api/package.json apps/api/
+COPY packages/shared/package.json packages/shared/
+# tsx est en devDependency mais requis au runtime (pas de build tsc API pour l'instant)
+RUN npm ci --workspace=@sncf-alerts/api --workspace=@sncf-alerts/shared --include-workspace-root
+
+FROM node:22-alpine AS runner
+WORKDIR /app
+RUN apk add --no-cache curl
+ENV NODE_ENV=production
+COPY package.json package-lock.json ./
+COPY --from=deps /app/node_modules ./node_modules
+COPY apps/api ./apps/api
+COPY packages/shared ./packages/shared
+WORKDIR /app/apps/api
+EXPOSE 3001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+  CMD curl -fsS "http://127.0.0.1:${API_PORT:-3001}/v1/health" || exit 1
+CMD ["node", "--import", "tsx", "src/index.ts"]

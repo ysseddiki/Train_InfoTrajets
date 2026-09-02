@@ -126,11 +126,33 @@ En production, il MUST être déployé sous forme de build statique (`vite build
 
 ### Requirement: Documentation déploiement adminsys
 
-Le dépôt SHALL fournir des unités systemd d’exemple (`deploy/systemd/` : api, ingest) et une section README expliquant API vs ingest vs UI statique.
+Le dépôt SHALL documenter le déploiement de production via **Docker Compose**
+(`docker-compose.prod.yml`) comme méthode recommandée : services `db`, `api`, `ingest`,
+`web` (nginx + build statique). Un script `scripts/deploy-docker.sh` SHALL automatiser
+build et démarrage.
 
-Les unités de déploiement MUST définir `NODE_ENV=production` pour l’API et le worker d’ingest, afin que les gardes conditionnées à ce mode soient effectives. Le déploiement web MUST reposer sur un build statique servi par nginx, sans unité systemd dédiée à l’UI.
+Les unités systemd (`deploy/systemd/`) MAY rester documentées comme alternative bare-metal.
 
-#### Scenario: Install units
+En mode conteneurisé, l’API et l’ingest MUST NOT publier de ports sur l’hôte ; seul le
+service `web` expose HTTP/HTTPS. `NODE_ENV=production` MUST être défini pour l’API et
+l’ingest (variable d’environnement du compose ou des unités systemd).
+
+#### Scenario: Stack compose opérationnelle
+
+- **GIVEN** un serveur avec Docker et le fichier `.env` configuré
+- **WHEN** on exécute `./scripts/deploy-docker.sh`
+- **THEN** les conteneurs `db`, `api`, `ingest` et `web` sont `running`
+- **AND** l’UI est joignable via HTTPS sur le port 443 du conteneur `web`
+- **AND** l’API n’est pas joignable directement depuis l’extérieur du réseau Docker
+
+#### Scenario: TLS Let's Encrypt en Docker
+
+- **GIVEN** le DNS pointe vers le serveur et la stack est démarrée
+- **WHEN** on exécute `./scripts/init-letsencrypt-docker.sh <domaine> <email>`
+- **THEN** un certificat est obtenu via HTTP-01
+- **AND** nginx recharge les certificats sans reconstruire l’image `web`
+
+#### Scenario: Install units (bare-metal legacy)
 
 - **GIVEN** un serveur Linux avec le repo déployé
 - **WHEN** l’adminsys copie `deploy/systemd/*.service` et active les services

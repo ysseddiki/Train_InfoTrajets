@@ -41,6 +41,7 @@ npm run dev:web                  # UI https://0.0.0.0:443 (cert auto-signé en d
 | `npm run test` | Tests API |
 | `npm audit --audit-level=high` | **À faire passer avant tout commit** |
 | `npm run build` | Build workspaces — produit `apps/web/dist`, servi par nginx en prod |
+| `./scripts/deploy-docker.sh` | **Prod** : build images + `docker compose up` |
 
 ## 3. Carte du code
 
@@ -59,12 +60,12 @@ packages/shared     Types partagés — AUCUN secret, aucune valeur sensible
 openspec/specs/     Source de vérité par domaine (auth, dashboard, admin, ingest, notifications, system)
 openspec/changes/   Deltas archivés (un dossier par évolution structurante)
 specs/system/       Baseline narrative versionnée (baseline-v1.md)
-deploy/             systemd units (api, ingest) + vhost nginx (statique, CSP, HSTS, limit_req)
-scripts/            update.sh (pull + build serveur), setup-letsencrypt.sh
+deploy/             Dockerfiles (`deploy/docker/`), compose prod, nginx, systemd legacy
+scripts/            deploy-docker.sh, init-letsencrypt-docker.sh, update.sh (bare-metal)
 ```
 
-**Prod** : deux services seulement (`api`, `ingest`). L’UI est un **build statique**
-(`apps/web/dist`) servi par nginx — pas de serveur Vite, pas de HMR, pas de sourcemap.
+**Prod (recommandé)** : `./scripts/deploy-docker.sh` — quatre conteneurs (`db`, `api`,
+`ingest`, `web`). Alternative bare-metal : unités `deploy/systemd/` + nginx hôte.
 
 ## 4. Règles non négociables
 
@@ -111,7 +112,7 @@ Certaines expérimentations sont balisées `BEGIN/END FEATURE:<id>`. Pour les re
 | API refuse de démarrer (prod) | `ADMIN_PASSWORD` encore `changeme` → mettre un mot de passe fort |
 | Log « NODE_ENV n’est pas production » | unité systemd sans `Environment=NODE_ENV=production` → gardes de prod inactives |
 | UI 401 sur `/v1/*` en dev | API pas démarrée ou proxy Vite — vérifier `dev:api` sur :3001 |
-| UI prod figée sur l’ancienne version | build non régénéré → `npm run build -w @sncf-alerts/web` puis `systemctl reload nginx` |
+| UI prod figée sur l’ancienne version | Docker : `./scripts/deploy-docker.sh` ; bare-metal : rebuild + `nginx reload` |
 | `429` inattendu sur le login | rate-limit par IP **ou** par identifiant ; vérifier `TRUSTED_PROXIES` (sinon compteur partagé) |
 | API injoignable depuis l’extérieur | attendu : `API_HOST=127.0.0.1`, tout passe par nginx |
 | Secrets illisibles après ajout de `SECRETS_ENCRYPTION_KEY` | les anciennes valeurs en clair restent lisibles (fallback) ; les ré-enregistrer via Admin pour les chiffrer |

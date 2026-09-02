@@ -1,0 +1,119 @@
+# Production — stack conteneurisée complète.
+#
+# Démarrage :
+#   cp .env.example .env   # éditer ADMIN_PASSWORD, POSTGRES_PASSWORD, SERVER_NAME…
+#   ./scripts/deploy-docker.sh
+#
+# TLS Let's Encrypt (une fois le DNS pointé) :
+#   ./scripts/init-letsencrypt-docker.sh domaine.fr email@domaine.fr
+#
+# Le réseau interne a un sous-réseau fixe : TRUSTED_PROXIES pointe dessus pour que
+# l'API fasse confiance à X-Forwarded-For depuis le conteneur nginx uniquement.
+
+name: sncf-alerts
+
+networks:
+  sncf:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24
+
+volumes:
+  sncf_alerts_pg:
+  certbot_www:
+  certbot_certs:
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sncf}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sncf}
+      POSTGRES_DB: ${POSTGRES_DB:-sncf_alerts}
+    volumes:
+      - sncf_alerts_pg:/var/lib/postgresql/data
+    networks:
+      - sncf
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-sncf} -d ${POSTGRES_DB:-sncf_alerts}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      INGEST_IN_PROCESS: "false"
+      API_HOST: "0.0.0.0"
+      API_PORT: "3001"
+      DATABASE_URL: postgres://${POSTGRES_USER:-sncf}:${POSTGRES_PASSWORD:-sncf}@db:5432/${POSTGRES_DB:-sncf_alerts}
+      TRUSTED_PROXIES: "172.28.0.0/24"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - sncf
+    # Pas de ports publiés : seul `web` est exposé.
+
+  ingest:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.api
+    restart: unless-stopped
+    command: ["node", "--import", "tsx", "src/worker-ingest.ts"]
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      INGEST_IN_PROCESS: "false"
+      API_HOST: "0.0.0.0"
+      DATABASE_URL: postgres://${POSTGRES_USER:-sncf}:${POSTGRES_PASSWORD:-sncf}@db:5432/${POSTGRES_DB:-sncf_alerts}
+    depends_on:
+      db:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - sncf
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/docker/Dockerfile.web
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      SERVER_NAME: ${SERVER_NAME:-localhost}
+    volumes:
+      - certbot_www:/var/www/certbot:ro
+      - certbot_certs:/etc/letsencrypt:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - sncf
+
+  certbot:
+    image: certbot/certbot:latest
+    profiles:
+      - certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - certbot_certs:/etc/letsencrypt
+    networks:
+      - sncf
