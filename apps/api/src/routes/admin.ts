@@ -50,8 +50,12 @@ export async function registerAdminRoutes(app: FastifyInstance) {
     Body: { username?: string; password?: string };
   }>("/v1/admin/login", async (req, reply) => {
     const ip = req.ip;
-    const rate = checkLoginRateLimit(ip);
+    const username = req.body?.username ?? "";
+    const password = req.body?.password ?? "";
+
+    const rate = checkLoginRateLimit(ip, username);
     if (!rate.allowed) {
+      reply.header("Retry-After", String(rate.retryAfterSec));
       return reply.code(429).send({
         type: "/errors/rate-limit",
         title: "Too many login attempts",
@@ -60,8 +64,6 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       });
     }
 
-    const username = req.body?.username ?? "";
-    const password = req.body?.password ?? "";
     req.log.info({ loginAttempt: sanitizeForLog({ username }) }, "admin login");
 
     const admin = await store.verifyLogin(username, password);
@@ -73,7 +75,7 @@ export async function registerAdminRoutes(app: FastifyInstance) {
       });
     }
 
-    resetLoginRateLimit(ip);
+    resetLoginRateLimit(ip, admin.username);
     const session = await store.createSession(admin.id);
     setSessionCookie(reply, session.id, session.expiresAt);
     return { authenticated: true, username: admin.username, role: admin.role };

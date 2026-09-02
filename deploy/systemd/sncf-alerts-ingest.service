@@ -8,6 +8,7 @@ Type=simple
 User=debian
 WorkingDirectory=/home/debian/Train_InfoTrajets
 EnvironmentFile=-/home/debian/Train_InfoTrajets/.env
+Environment=NODE_ENV=production
 ExecStart=/usr/bin/npm run start:ingest -w @sncf-alerts/api
 Restart=on-failure
 RestartSec=10

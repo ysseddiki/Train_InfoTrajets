@@ -32,6 +32,10 @@ Nouvelle machine / nouveau chat : lire d’abord **`AGENTS.md`** (setup, carte d
 - Routes `/v1/admin/*` : session + rôle côté API (le filtrage UI ne suffit pas), `Cache-Control: no-store`
 - Pas de stockage de mots de passe en clair (hash bcrypt serveur) ; bootstrap prod refuse `ADMIN_PASSWORD=changeme`
 - SQL paramétré partout
+- **Prod = build statique** (`apps/web/dist`) servi par nginx : pas de serveur Vite, pas de `<script>` inline ni de `onclick=` dans `index.html` (CSP sans `script-src 'unsafe-inline'`)
+- API en écoute locale (`API_HOST=127.0.0.1`) ; `trustProxy` aligné sur `TRUSTED_PROXIES` sinon les compteurs de rate-limit fusionnent
+- Route accessible sans session déclenchant un appel externe → passer par un `OutboundBudget`
+- `npm audit --audit-level=high` au vert avant tout commit
 
 ## UI / accessibilité
 

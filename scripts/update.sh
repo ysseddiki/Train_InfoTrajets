@@ -14,5 +14,11 @@ git reset --hard "origin/${branch}"
 echo "→ npm install"
 npm install
 
+# L'UI est servie en statique par nginx : sans rebuild, le déploiement reste sur
+# l'ancienne version du client.
+echo "→ Build client (apps/web/dist)"
+npm run build -w @sncf-alerts/web
+
 echo "Done. Redémarre les services :"
-echo "  sudo systemctl restart sncf-alerts-api sncf-alerts-ingest sncf-alerts-web"
+echo "  sudo systemctl restart sncf-alerts-api sncf-alerts-ingest"
+echo "  sudo systemctl reload nginx"

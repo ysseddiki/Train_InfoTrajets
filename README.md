@@ -24,51 +24,62 @@ Le client **ne fonctionne pas sans l’API**. Token Navitia = **Admin → Ingest
 
 **Reprise sur une autre machine** : tout est dans le dépôt (code, règles `.cursor/rules/`, skill `.cursor/skills/`, specs OpenSpec). Après clone : `cp .env.example .env`, renseigner `ADMIN_PASSWORD` + `DATABASE_URL` (+ `SECRETS_ENCRYPTION_KEY` recommandé), `docker compose up -d db`, `npm install`, `npm run dev:api` + `npm run dev:web`. Détail complet : [`AGENTS.md`](AGENTS.md).
 
-## Systemd (API ≠ ingest ≠ web) — recommandé en prod
+## Déploiement prod — deux services + nginx
 
-Trois unités : **api** (HTTP `/v1`), **ingest** (poll), **web** (UI Vite + proxy `/v1` → api).
+L’UI n’est **pas** un service : c’est un **build statique** (`apps/web/dist`) servi par
+nginx. Aucun serveur de développement ne tourne en production. Deux unités systemd
+seulement : **api** (HTTP `/v1`) et **ingest** (poll).
 
 Sur le serveur (chemins / `User=` à adapter) :
 
 ```bash
 sudo cp deploy/systemd/sncf-alerts-api.service /etc/systemd/system/
 sudo cp deploy/systemd/sncf-alerts-ingest.service /etc/systemd/system/
-sudo cp deploy/systemd/sncf-alerts-web.service /etc/systemd/system/
 # Éditer User= et WorkingDirectory= si besoin
-# Port 443 : si EACCES avec User=debian → User=root (comme souvent déjà pour api)
 sudo systemctl daemon-reload
-sudo systemctl enable --now sncf-alerts-api sncf-alerts-ingest sncf-alerts-web
-sudo systemctl status sncf-alerts-api sncf-alerts-ingest sncf-alerts-web
+sudo systemctl enable --now sncf-alerts-api sncf-alerts-ingest
+sudo systemctl status sncf-alerts-api sncf-alerts-ingest
 ```
 
-Après `./scripts/update.sh` :
+Les unités définissent `NODE_ENV=production` : sans lui, le refus de démarrer sur
+`ADMIN_PASSWORD=changeme` serait inactif.
+
+Après `./scripts/update.sh` (qui rebuild l’UI) :
 
 ```bash
-sudo systemctl restart sncf-alerts-api sncf-alerts-ingest sncf-alerts-web
+sudo systemctl restart sncf-alerts-api sncf-alerts-ingest
+sudo systemctl reload nginx
 ```
 
 Dans `.env` : `INGEST_IN_PROCESS=false` pour que l’API ne double pas le poll.
+
+> **Migration depuis l’ancien déploiement** : `sudo systemctl disable --now sncf-alerts-web`
+> puis `sudo rm /etc/systemd/system/sncf-alerts-web.service`. Le script Let's Encrypt le
+> fait automatiquement.
 
 ### HTTPS Let's Encrypt (prod)
 
 Prérequis : un **nom de domaine** (DNS A/AAAA → IP du serveur), ports **80** et **443** ouverts.
 
-**Recommandé — nginx termine TLS** (renouvellement automatique) :
-
 ```bash
+npm run build -w @sncf-alerts/web
 sudo ./scripts/setup-letsencrypt.sh ops.exemple.fr admin@exemple.fr
-# → WEB_BEHIND_PROXY=true, Vite sur 127.0.0.1:5173, nginx :80/:443
+# → nginx :80/:443, sert apps/web/dist, proxy /v1 → 127.0.0.1:3001
 sudo certbot renew --dry-run
 ```
 
-**Alternatif — Vite lit les certificats LE** (sans nginx) :
+Garder `COOKIE_SECURE=true`. Conf nginx d’exemple : `deploy/nginx/sncf-alerts.conf`
+(CSP sans `script-src 'unsafe-inline'`, `limit_req` sur le login).
 
-```bash
-sudo ./scripts/setup-letsencrypt.sh ops.exemple.fr admin@exemple.fr --vite-direct
-# → WEB_TLS_CERT / WEB_TLS_KEY dans .env, Vite sur :443
-```
+### Exposition réseau
 
-Garder `COOKIE_SECURE=true`. Conf nginx d’exemple : `deploy/nginx/sncf-alerts.conf`.
+`API_HOST` vaut `127.0.0.1` par défaut : l’API n’est joignable qu’à travers nginx, qui
+porte TLS, HSTS, CSP et la limitation de débit. Passer à `0.0.0.0` contourne toutes ces
+protections — à réserver aux cas où un pare-feu ferme explicitement le port 3001.
+
+`TRUSTED_PROXIES` (défaut `loopback`) définit les sources dont `X-Forwarded-For` est
+accepté. Sans cette allowlist, le rate-limit de connexion compterait toutes les requêtes
+sur l’IP du proxy, donc dans un seul compteur partagé.
 
 Dev local (tout-en-un) : laisser `INGEST_IN_PROCESS=true` (défaut) et `npm run dev:api` + `npm run dev:web`.
 
@@ -154,7 +165,9 @@ npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 - Notifications : `https://127.0.0.1:443/#/notifications`
 - Admin : `https://127.0.0.1:443/#/admin`
 
-> Port 443 = HTTPS. **Dev** : certificat Vite auto-signé (avertissement navigateur). **Prod** : Let's Encrypt via `scripts/setup-letsencrypt.sh` (voir section Systemd).
+> `npm run dev:web` sert le **serveur de développement Vite** : réservé au poste local.
+> En production, c’est un build statique derrière nginx (voir section Déploiement prod).
+> Port 443 = HTTPS avec certificat auto-signé en dev (avertissement navigateur).
 > Avec HTTPS, garder `COOKIE_SECURE=true` pour la session admin (cookie httpOnly).
 - Health : `http://127.0.0.1:3001/v1/health`
 
@@ -166,10 +179,14 @@ npm run dev:web   # https://0.0.0.0:443  (proxy /v1 → API)
 - Mot de passe admin stocké **hashé** (bcrypt) en base ; session cookie **httpOnly**
 - Secrets opérationnels en base (SMTP password, token Navitia) **chiffrés AES-256-GCM** quand `SECRETS_ENCRYPTION_KEY` est défini (`openssl rand -base64 32`) — recommandé en prod
 - Changement du mot de passe : Admin → Compte (`PUT /v1/admin/account/password`)
-- Rate-limit sur `/v1/admin/login`
+- Rate-limit sur `/v1/admin/login` par **IP réelle** et par **identifiant**, avec backoff ; plafond de lecture par IP sur `/v1/*`
+- `TRUSTED_PROXIES` (défaut `loopback`) : sans allowlist, `X-Forwarded-For` serait ignoré et toutes les requêtes derrière nginx partageraient un compteur
+- API en écoute locale (`API_HOST=127.0.0.1`) : le reverse-proxy n’est pas contournable
 - CORS : allowlist `CORS_ORIGINS` (vide = aucune origine navigateur cross-origin ; l’UI passe par le proxy same-origin)
-- Headers de sécurité + `no-store` sur `/v1/admin/*` ; CSP sur le vhost nginx (`deploy/nginx/sncf-alerts.conf`)
-- En production (`NODE_ENV=production`), l’API **refuse de démarrer** si `ADMIN_PASSWORD` vaut `changeme`
+- Headers de sécurité + `no-store` sur `/v1/admin/*` ; CSP sur le vhost nginx (`deploy/nginx/sncf-alerts.conf`) **sans** `script-src 'unsafe-inline'`
+- UI de production = build statique (pas de serveur de dev, pas de HMR, pas de sourcemap)
+- Dépendances : `npm audit --audit-level=high` doit être au vert avant tout commit
+- En production (`NODE_ENV=production`, défini par les unités systemd), l’API **refuse de démarrer** si `ADMIN_PASSWORD` vaut `changeme`
 - Changer `ADMIN_PASSWORD` (premier boot) et `SESSION_SECRET` avant tout déploiement
 - Logs : cookies / passwords / webhooks redactés
 

@@ -4,27 +4,13 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>SNCF-Alerts</title>
-    <script>
-      /* Clair par défaut ; applique le thème avant le paint pour éviter un flash. */
-      (function () {
-        try {
-          var t = localStorage.getItem("sncf.theme");
-          if (t !== "dark" && t !== "light") t = "light";
-          document.documentElement.dataset.theme = t;
-          document.documentElement.style.colorScheme = t;
-        } catch (e) {
-          document.documentElement.dataset.theme = "light";
-          document.documentElement.style.colorScheme = "light";
-        }
-      })();
-    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
+      id="webfonts"
       href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap"
       rel="stylesheet"
       media="print"
-      onload="this.media='all'"
     />
     <noscript>
       <link
@@ -32,6 +18,8 @@
         rel="stylesheet"
       />
     </noscript>
+    <!-- Thème avant paint + bascule des webfonts. Externe : CSP sans 'unsafe-inline'. -->
+    <script src="/theme-boot.js"></script>
   </head>
   <body>
     <div id="root"></div>

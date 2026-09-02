@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
 # Obtient / branche un certificat Let's Encrypt pour SNCF-Alerts (Debian).
+#
+# nginx termine le TLS et sert le **build statique** du client (apps/web/dist).
+# Il n'y a plus de service Node pour l'UI : le mode « Vite direct sur :443 » a été
+# retiré (un serveur de développement n'a pas sa place en production).
+#
 # Usage :
 #   sudo ./scripts/setup-letsencrypt.sh exemple.domaine.fr email@exemple.fr
-#   sudo ./scripts/setup-letsencrypt.sh exemple.domaine.fr email@exemple.fr --vite-direct
 set -euo pipefail
 
 DOMAIN="${1:-}"
 EMAIL="${2:-}"
-MODE="${3:-}"
 
 if [[ -z "$DOMAIN" || -z "$EMAIL" ]]; then
-  echo "Usage: sudo $0 <domaine> <email> [--vite-direct]" >&2
-  echo "  (défaut) nginx termine TLS ; Vite en HTTP local :5173" >&2
-  echo "  --vite-direct  Vite lit les PEM Let's Encrypt sur le port 443" >&2
+  echo "Usage: sudo $0 <domaine> <email>" >&2
   exit 1
 fi
 
@@ -24,16 +25,24 @@ fi
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ENV_FILE="${REPO_ROOT}/.env"
 NGINX_SRC="${REPO_ROOT}/deploy/nginx/sncf-alerts.conf"
+WEB_ROOT="${REPO_ROOT}/apps/web/dist"
 WEBROOT="/var/www/certbot"
 
 upsert_env() {
   local key="$1" value="$2"
   touch "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
   if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
     sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
   else
     echo "${key}=${value}" >> "$ENV_FILE"
   fi
+}
+
+drop_env() {
+  local key="$1"
+  [[ -f "$ENV_FILE" ]] || return 0
+  sed -i "/^${key}=/d" "$ENV_FILE"
 }
 
 echo "→ Install certbot + nginx (si besoin)"
@@ -43,78 +52,44 @@ apt-get install -y -qq nginx certbot python3-certbot-nginx ssl-cert
 
 mkdir -p "$WEBROOT"
 
-if [[ "$MODE" == "--vite-direct" ]]; then
-  echo "→ Mode Vite direct (port 443 + PEM Let's Encrypt)"
-  echo "  Arrêt temporaire du web pour libérer 80/443 si besoin…"
-  systemctl stop sncf-alerts-web 2>/dev/null || true
-  if systemctl is-active --quiet nginx; then
-    certbot certonly --nginx -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive || \
-      certbot certonly --standalone -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive
-  else
-    certbot certonly --standalone -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive
-  fi
-
-  CERT="/etc/letsencrypt/live/${DOMAIN}/fullchain.pem"
-  KEY="/etc/letsencrypt/live/${DOMAIN}/privkey.pem"
-  if [[ ! -f "$CERT" || ! -f "$KEY" ]]; then
-    echo "Certificat introuvable sous /etc/letsencrypt/live/${DOMAIN}/" >&2
-    exit 1
-  fi
-
-  usermod -aG ssl-cert debian 2>/dev/null || true
-  chmod 640 "$KEY" 2>/dev/null || true
-  chgrp ssl-cert "$KEY" 2>/dev/null || true
-
-  upsert_env WEB_BEHIND_PROXY false
-  upsert_env WEB_HOST 0.0.0.0
-  upsert_env WEB_PORT 443
-  upsert_env WEB_TLS_CERT "$CERT"
-  upsert_env WEB_TLS_KEY "$KEY"
-  upsert_env COOKIE_SECURE true
-
-  mkdir -p /etc/letsencrypt/renewal-hooks/deploy
-  cat > /etc/letsencrypt/renewal-hooks/deploy/sncf-alerts-web.sh <<'HOOK'
-#!/bin/bash
-set -euo pipefail
-if [[ -n "${RENEWED_LINEAGE:-}" ]]; then
-  KEY="${RENEWED_LINEAGE}/privkey.pem"
-  chgrp ssl-cert "$KEY" 2>/dev/null || true
-  chmod 640 "$KEY" 2>/dev/null || true
-fi
-systemctl restart sncf-alerts-web 2>/dev/null || true
-HOOK
-  chmod +x /etc/letsencrypt/renewal-hooks/deploy/sncf-alerts-web.sh
-
+# Migration depuis l'ancien déploiement (serveur Vite sous systemd)
+if systemctl list-unit-files | grep -q '^sncf-alerts-web\.service'; then
+  echo "→ Retrait de l'ancien service web (Vite)"
+  systemctl disable --now sncf-alerts-web 2>/dev/null || true
+  rm -f /etc/systemd/system/sncf-alerts-web.service
   systemctl daemon-reload
-  systemctl start sncf-alerts-web
-  echo "OK — Vite sert https://${DOMAIN}/ avec Let's Encrypt"
-  echo "Vérifier : sudo systemctl status sncf-alerts-web"
-  exit 0
 fi
 
-echo "→ Mode nginx (recommandé)"
+echo "→ Build statique du client"
+if [[ ! -d "$WEB_ROOT" ]]; then
+  su -s /bin/bash -c "cd '$REPO_ROOT' && npm run build -w @sncf-alerts/web" debian
+fi
+if [[ ! -f "${WEB_ROOT}/index.html" ]]; then
+  echo "Build introuvable : ${WEB_ROOT}/index.html" >&2
+  echo "Lancer 'npm run build -w @sncf-alerts/web' puis relancer ce script." >&2
+  exit 1
+fi
+
+echo "→ Configuration nginx"
 CONF_DST="/etc/nginx/sites-available/sncf-alerts"
-sed "s/SERVER_NAME/${DOMAIN}/g" "$NGINX_SRC" > "$CONF_DST"
+sed -e "s/SERVER_NAME/${DOMAIN}/g" -e "s|WEB_ROOT|${WEB_ROOT}|g" "$NGINX_SRC" > "$CONF_DST"
 ln -sfn "$CONF_DST" /etc/nginx/sites-enabled/sncf-alerts
 rm -f /etc/nginx/sites-enabled/default
 
-upsert_env WEB_BEHIND_PROXY true
-upsert_env WEB_HOST 127.0.0.1
-upsert_env WEB_PORT 5173
-# Plus de PEM côté Vite
-if grep -q "^WEB_TLS_CERT=" "$ENV_FILE" 2>/dev/null; then
-  sed -i "/^WEB_TLS_CERT=/d" "$ENV_FILE"
-fi
-if grep -q "^WEB_TLS_KEY=" "$ENV_FILE" 2>/dev/null; then
-  sed -i "/^WEB_TLS_KEY=/d" "$ENV_FILE"
-fi
-upsert_env COOKIE_SECURE true
+# nginx doit pouvoir traverser l'arborescence jusqu'au build
+chmod o+x /home/debian /home/debian/Train_InfoTrajets 2>/dev/null || true
 
-systemctl stop sncf-alerts-web 2>/dev/null || true
+upsert_env COOKIE_SECURE true
+# L'UI n'est plus servie par Vite : ces variables ne concernent que le dev local
+drop_env WEB_BEHIND_PROXY
+drop_env WEB_HOST
+drop_env WEB_PORT
+drop_env WEB_TLS_CERT
+drop_env WEB_TLS_KEY
+
 nginx -t
 systemctl enable --now nginx
-systemctl daemon-reload
-systemctl restart sncf-alerts-web 2>/dev/null || true
+systemctl reload nginx
 
 echo "→ Demande certificat Let's Encrypt"
 certbot --nginx -d "$DOMAIN" --email "$EMAIL" --agree-tos --non-interactive --redirect
@@ -126,6 +101,6 @@ systemctl reload nginx 2>/dev/null || true
 HOOK
 chmod +x /etc/letsencrypt/renewal-hooks/deploy/sncf-alerts-nginx.sh
 
-echo "OK — https://${DOMAIN}/ (nginx + Let's Encrypt)"
-echo "Vite doit être actif : sudo systemctl status sncf-alerts-web nginx"
+echo "OK — https://${DOMAIN}/ (nginx + Let's Encrypt, build statique)"
+echo "Services attendus : sncf-alerts-api, sncf-alerts-ingest, nginx"
 echo "Renouvellement : sudo certbot renew --dry-run"

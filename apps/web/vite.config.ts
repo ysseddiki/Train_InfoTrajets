@@ -1,63 +1,40 @@
-import fs from "node:fs";
 import basicSsl from "@vitejs/plugin-basic-ssl";
 import react from "@vitejs/plugin-react";
-import { defineConfig, type ServerOptions } from "vite";
+import { defineConfig } from "vite";
 
 /**
- * TLS :
- * - WEB_TLS_CERT + WEB_TLS_KEY → certificat Let's Encrypt (ou autre)
- * - WEB_BEHIND_PROXY=true → HTTP local (nginx termine le TLS)
- * - sinon → HTTPS auto-signé (dev, plugin basicSsl)
+ * Ce serveur est réservé au **développement**. En production, le client est un build
+ * statique servi par nginx (`deploy/nginx/sncf-alerts.conf`) : aucun processus Vite ne
+ * tourne, ce qui permet une CSP sans `script-src 'unsafe-inline'` et supprime HMR,
+ * sourcemaps et middlewares de dev de la surface exposée.
  */
-function resolveHttps(): ServerOptions["https"] | false {
-  if (process.env.WEB_BEHIND_PROXY === "true") {
-    return false;
-  }
+const port = Number(process.env.WEB_PORT ?? 443);
+const host = process.env.WEB_HOST ?? "0.0.0.0";
 
-  const certPath = process.env.WEB_TLS_CERT?.trim();
-  const keyPath = process.env.WEB_TLS_KEY?.trim();
-  if (certPath && keyPath) {
-    if (!fs.existsSync(certPath) || !fs.existsSync(keyPath)) {
-      throw new Error(
-        `WEB_TLS_CERT / WEB_TLS_KEY introuvables (${certPath}, ${keyPath})`,
-      );
-    }
-    return {
-      cert: fs.readFileSync(certPath),
-      key: fs.readFileSync(keyPath),
-    };
-  }
-
-  return true;
-}
-
-const https = resolveHttps();
-const behindProxy = process.env.WEB_BEHIND_PROXY === "true";
-const port = Number(
-  process.env.WEB_PORT ?? (behindProxy ? 5173 : https ? 443 : 5173),
-);
-const host = process.env.WEB_HOST ?? (behindProxy ? "127.0.0.1" : "0.0.0.0");
-
-/** Hosts autorisés (Vite 6 bloque sinon le Host header / reverse-proxy). */
+/**
+ * Vite bloque les `Host` inconnus (protection contre le rebinding DNS). On liste donc
+ * explicitement les hôtes de dev plutôt que d'ouvrir à tous.
+ */
 function resolveAllowedHosts(): true | string[] {
-  if (process.env.WEB_ALLOWED_HOSTS?.trim() === "*") return true;
-  // Derrière nginx / certificat LE : accepter le FQDN public
-  if (behindProxy || process.env.WEB_TLS_CERT) return true;
-
-  const extra = (process.env.WEB_ALLOWED_HOSTS ?? "")
+  const raw = (process.env.WEB_ALLOWED_HOSTS ?? "").trim();
+  if (raw === "*") return true;
+  const extra = raw
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
-  return ["trains.yseddiki.fr", "localhost", "127.0.0.1", ...extra];
+  return ["localhost", "127.0.0.1", ...extra];
 }
 
 export default defineConfig({
-  plugins: [react(), ...(https === true ? [basicSsl()] : [])],
+  plugins: [react(), basicSsl()],
+  build: {
+    // Pas de sourcemap en production : le bundle ne doit pas exposer les sources.
+    sourcemap: false,
+  },
   server: {
     host,
     port,
     strictPort: true,
-    https: https || undefined,
     allowedHosts: resolveAllowedHosts(),
     proxy: {
       "/v1": {

@@ -59,7 +59,39 @@ L’API MUST appliquer des en-têtes de sécurité sur toutes les réponses (`X-
 
 CORS MUST refléter uniquement les origines listées dans `CORS_ORIGINS` (séparées par virgules). La liste vide MUST refuser toute origine navigateur cross-origin (l’UI passe par le proxy same-origin). `origin: true` combiné à `credentials: true` MUST NOT être utilisé.
 
-Le vhost nginx de la web UI SHOULD ajouter une `Content-Security-Policy` restrictive (`default-src 'self'`, `frame-ancestors 'none'`) en plus de HSTS / nosniff / X-Frame-Options / Referrer-Policy.
+Le vhost nginx de la web UI MUST ajouter une `Content-Security-Policy` restrictive (`default-src 'self'`, `frame-ancestors 'none'`) en plus de HSTS / nosniff / X-Frame-Options / Referrer-Policy. La CSP MUST NOT inclure `'unsafe-inline'` dans `script-src`.
+
+Le client web MUST être servi en production sous forme de **build statique** par le reverse-proxy. Le serveur de développement Vite MUST NOT être utilisé comme serveur de production (sources, sourcemaps, HMR et middlewares de dev hors surface exposée).
+
+L’API MUST écouter par défaut sur une interface locale (`127.0.0.1`). Une écoute publique MUST être un choix explicite, documenté comme exigeant un pare-feu fermé, afin que HSTS, CSP et limitation de débit du reverse-proxy ne soient pas contournables.
+
+Le système MUST appliquer une limitation de débit sur `/v1/*` (API, par IP réelle) et sur les routes d’authentification (reverse-proxy). Les appels sortants vers des services tiers déclenchés par une route accessible sans session MUST être bornés par un budget par fenêtre de temps.
+
+#### Scenario: Pas de serveur de dev en production
+
+- **GIVEN** un déploiement avec `NODE_ENV=production`
+- **WHEN** on inspecte le service web
+- **THEN** un build statique est servi par nginx (aucun processus `vite`, aucun endpoint HMR)
+- **AND** aucun sourcemap de production n’est exposé publiquement
+
+#### Scenario: API non joignable hors proxy
+
+- **GIVEN** nginx en terminaison TLS et la configuration par défaut
+- **WHEN** on tente d’atteindre `http://<ip-publique>:3001/v1/health`
+- **THEN** la connexion échoue (écoute locale uniquement)
+
+#### Scenario: Débit borné sur les routes de lecture
+
+- **GIVEN** le mode visiteur actif
+- **WHEN** un client sans session dépasse le seuil de requêtes `/v1/*`
+- **THEN** la réponse est `429` avec un `Retry-After`
+
+#### Scenario: Amplification météo bornée
+
+- **GIVEN** le mode visiteur actif
+- **WHEN** un client non authentifié interroge `/v1/dashboard/day` sur de nombreuses dates
+- **THEN** le budget d’appels Open-Meteo par fenêtre n’est pas dépassé
+- **AND** la réponse reste valide sans météo plutôt que de déclencher un appel sortant
 
 #### Scenario: Origine non autorisée
 
@@ -77,6 +109,8 @@ Le vhost nginx de la web UI SHOULD ajouter une `Content-Security-Policy` restric
 
 Le client `apps/web` MUST être une application **Vite + React + TypeScript**. Il MUST n’appeler que l’API HTTP `/v1` et MUST NOT embarquer de logique d’ingest ni de secrets (SMTP, webhooks, clés Navitia).
 
+En production, il MUST être déployé sous forme de build statique (`vite build` → `apps/web/dist`) ; le serveur de développement est réservé au poste local. `index.html` MUST NOT contenir de `<script>` inline ni de gestionnaire d’événement inline, afin que la CSP puisse interdire `script-src 'unsafe-inline'` (l’amorçage du thème vit dans `public/theme-boot.js`).
+
 #### Scenario: Bundle web
 
 - **GIVEN** le package `apps/web`
@@ -92,10 +126,19 @@ Le client `apps/web` MUST être une application **Vite + React + TypeScript**. I
 
 ### Requirement: Documentation déploiement adminsys
 
-Le dépôt SHALL fournir des unités systemd d’exemple (`deploy/systemd/` : api, ingest, web) et une section README expliquant API vs ingest vs UI.
+Le dépôt SHALL fournir des unités systemd d’exemple (`deploy/systemd/` : api, ingest) et une section README expliquant API vs ingest vs UI statique.
+
+Les unités de déploiement MUST définir `NODE_ENV=production` pour l’API et le worker d’ingest, afin que les gardes conditionnées à ce mode soient effectives. Le déploiement web MUST reposer sur un build statique servi par nginx, sans unité systemd dédiée à l’UI.
 
 #### Scenario: Install units
 
 - **GIVEN** un serveur Linux avec le repo déployé
 - **WHEN** l’adminsys copie `deploy/systemd/*.service` et active les services
 - **THEN** l’API et l’ingest peuvent tourner en process séparés
+
+#### Scenario: Unité systemd conforme
+
+- **GIVEN** les unités de déploiement du dépôt
+- **WHEN** on les inspecte
+- **THEN** `NODE_ENV=production` est défini pour l’API et le worker d’ingest
+- **AND** aucune unité ne lance de serveur de développement

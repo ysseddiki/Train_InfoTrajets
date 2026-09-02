@@ -1,9 +1,9 @@
 # SNCF-Alerts — System Baseline v1.1 (Ops)
 
 > **Statut** : Baseline produit & architecture (ops interne)  
-> **Version** : `1.15.0`  
-> **Date** : 2026-08-31  
-> **Change** : `openspec/changes/security-ux-hardening`  
+> **Version** : `1.16.0`  
+> **Date** : 2026-09-02  
+> **Change** : `openspec/changes/security-prod-posture`  
 > **Format** : OpenSpec
 
 ---
@@ -269,12 +269,12 @@ File `notify_jobs` : ingest enfile → worker drain SMTP/Teams (API HTTP non blo
 |--------|-------|
 | Monorepo | npm/pnpm workspaces |
 | API | Node.js 22 + TypeScript (Fastify) |
-| Web | Vite + React + TypeScript |
+| Web | Vite + React + TypeScript — **build statique servi par nginx en prod** |
 | Shared | `packages/shared` types |
 | DB | PostgreSQL 16 (phase suivante ; mémoire/sqlite OK pour stub initial) |
 | Queue | table `notify_jobs` (Postgres) ; Redis optionnel plus tard |
 | Auth | session cookie + rôles locaux + mode visiteur |
-| Workloads | `sncf-alerts-api` ≠ `sncf-alerts-ingest` (systemd) |
+| Workloads | `sncf-alerts-api` ≠ `sncf-alerts-ingest` (systemd, `NODE_ENV=production`) ; UI = statique, pas d’unité |
 
 ### Externes
 
@@ -293,9 +293,12 @@ Voir `.env.example` : `ADMIN_*`, `SMTP_*`, `TEAMS_*`, `SESSION_SECRET`, `SECRETS
 
 - API health < 100 ms
 - Détection → notif : viser < 2 min (hors panne provider)
-- Login rate-limité
+- Login rate-limité par **IP réelle** et par **identifiant** (backoff) ; plafond de lecture par IP sur `/v1/*`
+- Appels sortants tiers déclenchés sans session bornés par un budget par fenêtre
 - Dashboard dépend entièrement de l’API
-- Bootstrap refusé en production si `ADMIN_PASSWORD` vaut `changeme`
+- API en écoute locale (`API_HOST=127.0.0.1`) : le reverse-proxy n’est pas contournable
+- Bootstrap refusé en production si `ADMIN_PASSWORD` vaut `changeme` (`NODE_ENV=production` porté par les units)
+- Dépendances : `npm audit --audit-level=high` au vert
 - Web UI : thème clair par défaut (sombre optionnel), code splitting par route, a11y clavier (tabs/listbox/dialogs)
 
 ---
@@ -334,3 +337,4 @@ specs/system/     # Baseline narrative
 | `1.13.0` | 2026-08-25 | Observations trains à l’heure, heatmap pondérée, board = prochain train, onglet Trains (admin), suppressions Navitia via `impacted_objects` |
 | `1.14.0` | 2026-08-28 | Indicateurs `onTimeTrains` / `observedTrains` / `totalDelayMinutes`, panneau Motifs aligné sur le format Météo, thème sombre optionnel (clair par défaut) |
 | `1.15.0` | 2026-08-31 | Durcissement : CORS allowlist, guard admin + headers, secrets chiffrés AES-256-GCM, bootstrap prod sans `changeme`, CSP nginx, fail-closed visiteur, a11y (clavier, dialogs, skip link), deep-link sections admin, code splitting |
+| `1.16.0` | 2026-09-02 | Posture de production : UI en build statique nginx (fin du serveur Vite en prod, CSP sans `script-src 'unsafe-inline'`), `NODE_ENV=production` dans les units, `API_HOST` local, rate-limit login par IP réelle + identifiant (`trustProxy`), plafond de lecture `/v1/*`, budget Open-Meteo, nodemailer 9.x (`npm audit` au vert) |

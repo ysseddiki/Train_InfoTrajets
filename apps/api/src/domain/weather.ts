@@ -1,5 +1,7 @@
 import type { EventWeatherSnapshot, WeatherBucket } from "@sncf-alerts/shared";
 import { TtlCache } from "./departures-cache.js";
+import { envPositiveInt } from "./env.js";
+import { OutboundBudget } from "./outbound-budget.js";
 import { loggedFetch } from "./outbound-http-log.js";
 import { addDaysYmd, parisYmd } from "./paris-calendar.js";
 
@@ -8,6 +10,23 @@ const snapshotCache = new TtlCache<EventWeatherSnapshot & { fetchedAt: string }>
   CACHE_TTL_MS,
 );
 const dailyCache = new TtlCache<EventWeatherSnapshot>(30 * 60_000);
+
+/**
+ * `/v1/dashboard/day` est accessible en mode visiteur et peut viser n'importe quelle
+ * date : sans budget, un client non authentifié génère un appel Open-Meteo par jour.
+ *
+ * Créé à la première utilisation : `loadRepoEnv()` tourne après l'évaluation des imports.
+ */
+let budget: OutboundBudget | null = null;
+export function openMeteoBudget(): OutboundBudget {
+  if (!budget) {
+    budget = new OutboundBudget(
+      envPositiveInt("WEATHER_BUDGET_MAX", 120),
+      envPositiveInt("WEATHER_BUDGET_WINDOW_MS", 60_000),
+    );
+  }
+  return budget;
+}
 
 const BUCKET_LABELS: Record<WeatherBucket, string> = {
   clear: "Beau temps",
@@ -59,6 +78,7 @@ export async function geocodeStationLabel(
 ): Promise<GeocodeHit | null> {
   const q = `${label.trim()} France`.trim();
   if (!q || q === "France") return null;
+  if (!openMeteoBudget().tryConsume()) return null;
   const url =
     "https://geocoding-api.open-meteo.com/v1/search?" +
     new URLSearchParams({
@@ -96,6 +116,7 @@ async function fetchOpenMeteoCurrent(
   lat: number,
   lon: number,
 ): Promise<EventWeatherSnapshot | null> {
+  if (!openMeteoBudget().tryConsume()) return null;
   const url =
     "https://api.open-meteo.com/v1/forecast?" +
     new URLSearchParams({
@@ -201,6 +222,7 @@ async function fetchOpenMeteoDailyUrl(
   url: string,
   ymd: string,
 ): Promise<EventWeatherSnapshot | null> {
+  if (!openMeteoBudget().tryConsume()) return null;
   try {
     const res = await loggedFetch(
       url,

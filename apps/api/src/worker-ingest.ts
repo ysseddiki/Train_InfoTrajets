@@ -7,6 +7,7 @@ import { createIngestAdapter } from "./adapters/ingest.js";
 import { migrate } from "./db/pool.js";
 import { loadRepoEnv } from "./domain/env.js";
 import { processNotifyJobs } from "./domain/notify.js";
+import { productionModeWarning } from "./domain/runtime-mode.js";
 import { store } from "./domain/store.js";
 
 loadRepoEnv();
@@ -16,6 +17,9 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function main() {
+  const warning = productionModeWarning();
+  if (warning) console.warn(`[ingest] ${warning}`);
+
   await migrate();
   await store.seed();
 

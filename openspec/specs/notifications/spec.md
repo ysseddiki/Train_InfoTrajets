@@ -10,6 +10,14 @@ Envoi d’alertes via Email (serveur SMTP custom) et Microsoft Teams, avec histo
 
 Le système SHALL supporter les canaux `email` (serveur SMTP custom configurable **en admin / DB**) et `teams` (webhook, `.env`), activables indépendamment.
 
+La bibliothèque d’envoi email MUST être maintenue dans une version exempte de vulnérabilité connue d’injection d’en-tête ou de commande SMTP (CRLF) : elle MUST NOT être épinglée sur une version corrigée en amont. `npm audit --audit-level=high` MUST être au vert avant tout commit.
+
+#### Scenario: Dépendance email saine
+
+- **GIVEN** le dépôt à jour
+- **WHEN** on exécute `npm audit --audit-level=high`
+- **THEN** aucune vulnérabilité n’est signalée sur la chaîne d’envoi email
+
 #### Scenario: Test d’envoi
 
 - **GIVEN** un canal email configuré via `PUT /v1/admin/channels/smtp`
