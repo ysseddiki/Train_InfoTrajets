@@ -26,50 +26,57 @@ Le client **ne fonctionne pas sans l’API**. Token Navitia = **Admin → Ingest
 
 ## Déploiement prod — Docker Compose (recommandé)
 
-Quatre conteneurs : **db**, **api**, **ingest**, **web** (nginx + build statique). Seul
-`web` expose les ports 80/443 — l’API n’est pas joignable depuis l’extérieur.
+Quatre conteneurs : **db**, **api**, **ingest**, **web**. Seul `web` expose 80/443.
 
-**Prérequis serveur** : Docker Engine + Docker Compose v2.
+**Prérequis serveur** : Docker Engine + Compose v2, DNS pointé, ports 80/443 ouverts.
+
+### Première install (recommandé)
 
 ```bash
 git clone git@github.com:ysseddiki/Train_InfoTrajets.git
 cd Train_InfoTrajets
-cp .env.example .env
-# Éditer : ADMIN_PASSWORD (fort), POSTGRES_PASSWORD, SERVER_NAME, SECRETS_ENCRYPTION_KEY
 
-./scripts/deploy-docker.sh
+# Génère .env (secrets aléatoires hex) + affiche le mot de passe admin
+./scripts/init-env.sh trains.yseddiki.fr contact@yseddiki.fr
+
+# Ou tout-en-un (env + build + up + Let's Encrypt) :
+# sudo ./scripts/bootstrap-prod.sh trains.yseddiki.fr contact@yseddiki.fr --deploy --tls
+
+sudo ./scripts/deploy-docker.sh
+sudo ./scripts/init-letsencrypt-docker.sh trains.yseddiki.fr contact@yseddiki.fr
+
+cat .admin-credentials   # login / mot de passe UI
 ```
 
-TLS Let's Encrypt (DNS pointé, ports 80/443 ouverts) :
+`init-env.sh` ne demande que **domaine** + **email**. Il génère `ADMIN_PASSWORD`,
+`POSTGRES_PASSWORD` (URL-safe), `SESSION_SECRET`, `SECRETS_ENCRYPTION_KEY`, écrit
+`.env` (chmod 600) et `.admin-credentials`.
 
-```bash
-./scripts/init-letsencrypt-docker.sh ops.exemple.fr admin@exemple.fr
-```
-
-Mise à jour :
+### Mise à jour
 
 ```bash
 git pull
-./scripts/deploy-docker.sh   # rebuild + redémarre les conteneurs
+sudo ./scripts/deploy-docker.sh
 ```
 
-Renouvellement certificat (cron quotidien recommandé) :
+### Renouvellement certificat (cron quotidien)
 
 ```bash
-docker compose -f docker-compose.prod.yml --profile certbot run --rm certbot renew
-docker compose -f docker-compose.prod.yml exec web nginx -s reload
+sudo docker compose -f docker-compose.prod.yml --profile certbot run --rm certbot renew
+sudo docker compose -f docker-compose.prod.yml exec web nginx -s reload
 ```
 
-Vérifications :
+### Vérifications
 
 ```bash
-docker compose -f docker-compose.prod.yml ps
-docker compose -f docker-compose.prod.yml exec api curl -fsS http://127.0.0.1:3001/v1/health
-curl -k -I https://ops.exemple.fr/
+sudo docker compose -f docker-compose.prod.yml ps
+sudo docker compose -f docker-compose.prod.yml exec api \
+  node -e "fetch('http://127.0.0.1:3001/v1/health').then(r=>r.json()).then(console.log)"
+curl -I https://trains.yseddiki.fr/
 ```
 
-`COOKIE_SECURE=true` dans `.env`. Les variables `DATABASE_URL`, `TRUSTED_PROXIES` et
-`API_HOST` sont surchargées par `docker-compose.prod.yml` pour le réseau interne.
+`DATABASE_URL`, `TRUSTED_PROXIES` et `API_HOST` sont surchargés par
+`docker-compose.prod.yml` pour le réseau interne.
 
 ### Migration depuis systemd
 

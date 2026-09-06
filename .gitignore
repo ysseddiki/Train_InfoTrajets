@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+.admin-credentials
 *.pem
 *.key
 

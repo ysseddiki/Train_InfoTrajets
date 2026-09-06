@@ -1,8 +1,8 @@
 # nginx + build statique Vite. Build depuis la racine :
 #   docker build -f deploy/docker/Dockerfile.web .
 #
-# Pas d'`apk add` : openssl est déjà fourni par l'image nginx alpine.
-# Évite le hang IPv6 vers dl-cdn.alpinelinux.org pendant le build.
+# openssl est requis par entrypoint-web.sh (cert auto-signé bootstrap).
+# Le build compose utilise network: host pour éviter le hang IPv6 Alpine CDN.
 
 FROM node:22-alpine AS build
 WORKDIR /app
@@ -14,6 +14,7 @@ RUN npm ci --workspace=@sncf-alerts/web --workspace=@sncf-alerts/shared --includ
 RUN npm run build -w @sncf-alerts/web
 
 FROM nginx:1.27-alpine
+RUN apk add --no-cache openssl
 COPY deploy/docker/nginx.conf /etc/nginx/nginx.conf
 COPY deploy/nginx/docker.conf.template /etc/nginx/templates/default.conf.template
 COPY deploy/docker/entrypoint-web.sh /docker-entrypoint.d/40-tls-bootstrap.sh

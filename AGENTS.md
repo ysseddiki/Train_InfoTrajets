@@ -41,6 +41,8 @@ npm run dev:web                  # UI https://0.0.0.0:443 (cert auto-signé en d
 | `npm run test` | Tests API |
 | `npm audit --audit-level=high` | **À faire passer avant tout commit** |
 | `npm run build` | Build workspaces — produit `apps/web/dist`, servi par nginx en prod |
+| `./scripts/init-env.sh` | Génère `.env` + `.admin-credentials` (domaine + email) |
+| `./scripts/bootstrap-prod.sh` | Init env (+ optionnel `--deploy` `--tls`) |
 | `./scripts/deploy-docker.sh` | **Prod** : build images + `docker compose up` |
 
 ## 3. Carte du code
@@ -61,11 +63,17 @@ openspec/specs/     Source de vérité par domaine (auth, dashboard, admin, inge
 openspec/changes/   Deltas archivés (un dossier par évolution structurante)
 specs/system/       Baseline narrative versionnée (baseline-v1.md)
 deploy/             Dockerfiles (`deploy/docker/`), compose prod, nginx, systemd legacy
-scripts/            deploy-docker.sh, init-letsencrypt-docker.sh, update.sh (bare-metal)
+scripts/            init-env.sh, bootstrap-prod.sh, deploy-docker.sh, init-letsencrypt-docker.sh, update.sh
 ```
 
-**Prod (recommandé)** : `./scripts/deploy-docker.sh` — quatre conteneurs (`db`, `api`,
-`ingest`, `web`). Alternative bare-metal : unités `deploy/systemd/` + nginx hôte.
+**Prod (recommandé)** :
+```bash
+./scripts/init-env.sh <domaine> <email>
+sudo ./scripts/deploy-docker.sh
+sudo ./scripts/init-letsencrypt-docker.sh <domaine> <email>
+# ou : sudo ./scripts/bootstrap-prod.sh <domaine> <email> --deploy --tls
+```
+Alternative bare-metal : unités `deploy/systemd/` + nginx hôte.
 
 ## 4. Règles non négociables
 
@@ -113,7 +121,9 @@ Certaines expérimentations sont balisées `BEGIN/END FEATURE:<id>`. Pour les re
 | Log « NODE_ENV n’est pas production » | unité systemd sans `Environment=NODE_ENV=production` → gardes de prod inactives |
 | UI 401 sur `/v1/*` en dev | API pas démarrée ou proxy Vite — vérifier `dev:api` sur :3001 |
 | UI prod figée sur l’ancienne version | Docker : `./scripts/deploy-docker.sh` ; bare-metal : rebuild + `nginx reload` |
-| Build Docker hang sur `apk` / Alpine CDN | IPv6 bridge BuildKit — compose force `network: host` au build ; Dockerfiles sans `apk` |
+| Build Docker hang sur `apk` / Alpine CDN | IPv6 bridge BuildKit — compose force `network: host` au build |
+| `web` Restarting (127) | `openssl` manquant — présent dans Dockerfile.web ; rebuild `web` |
+| API `Invalid URL` / DATABASE_URL | `POSTGRES_PASSWORD` avec `/+` (base64) — régénérer via `init-env.sh --force` |
 | `429` inattendu sur le login | rate-limit par IP **ou** par identifiant ; vérifier `TRUSTED_PROXIES` (sinon compteur partagé) |
 | API injoignable depuis l’extérieur | attendu : `API_HOST=127.0.0.1`, tout passe par nginx |
 | Secrets illisibles après ajout de `SECRETS_ENCRYPTION_KEY` | les anciennes valeurs en clair restent lisibles (fallback) ; les ré-enregistrer via Admin pour les chiffrer |

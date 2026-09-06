@@ -29,6 +29,15 @@ fi
 echo "→ Redémarrage web avec SERVER_NAME=${DOMAIN}"
 $COMPOSE up -d web
 
+# web Restarting → ACME Connection refused ; échouer tôt
+sleep 2
+if ! $COMPOSE ps --status running --format '{{.Service}}' 2>/dev/null | grep -qx web; then
+  echo "Le conteneur web n'est pas Up — Let's Encrypt échouera (Connection refused)." >&2
+  $COMPOSE ps >&2 || true
+  $COMPOSE logs web --tail 30 >&2 || true
+  exit 1
+fi
+
 echo "→ Demande certificat (certbot webroot)"
 $COMPOSE --profile certbot run --rm certbot certonly \
   --webroot -w /var/www/certbot \

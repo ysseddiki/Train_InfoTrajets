@@ -1,11 +1,10 @@
 # Production — stack conteneurisée complète.
 #
-# Démarrage :
-#   cp .env.example .env   # éditer ADMIN_PASSWORD, POSTGRES_PASSWORD, SERVER_NAME…
-#   ./scripts/deploy-docker.sh
-#
-# TLS Let's Encrypt (une fois le DNS pointé) :
-#   ./scripts/init-letsencrypt-docker.sh domaine.fr email@domaine.fr
+# Première install :
+#   ./scripts/init-env.sh domaine.fr email@domaine.fr
+#   sudo ./scripts/deploy-docker.sh
+#   sudo ./scripts/init-letsencrypt-docker.sh domaine.fr email@domaine.fr
+# Ou : sudo ./scripts/bootstrap-prod.sh domaine.fr email@domaine.fr --deploy --tls
 #
 # Le réseau interne a un sous-réseau fixe : TRUSTED_PROXIES pointe dessus pour que
 # l'API fasse confiance à X-Forwarded-For depuis le conteneur nginx uniquement.
@@ -77,6 +76,9 @@ services:
       network: host
     restart: unless-stopped
     command: ["node", "--import", "tsx", "src/worker-ingest.ts"]
+    # Même image que api → HEALTHCHECK HTTP inapplicable (worker sans serveur).
+    healthcheck:
+      disable: true
     env_file:
       - .env
     environment:
