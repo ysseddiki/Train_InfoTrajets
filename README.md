@@ -63,17 +63,20 @@ sudo ./scripts/deploy-docker.sh
 
 ```bash
 sudo docker compose -f docker-compose.prod.yml --profile certbot run --rm certbot renew
-sudo docker compose -f docker-compose.prod.yml exec web nginx -s reload
+sudo docker compose -f docker-compose.prod.yml up -d --force-recreate web
 ```
 
 ### Vérifications
 
 ```bash
 sudo docker compose -f docker-compose.prod.yml ps
-sudo docker compose -f docker-compose.prod.yml exec api \
-  node -e "fetch('http://127.0.0.1:3001/v1/health').then(r=>r.json()).then(console.log)"
-curl -I https://trains.yseddiki.fr/
+sudo docker compose -f docker-compose.prod.yml --profile certbot run --rm certbot certificates
+echo | openssl s_client -connect 127.0.0.1:443 -servername "$(grep ^SERVER_NAME= .env | cut -d= -f2-)" 2>/dev/null \
+  | openssl x509 -noout -issuer -dates
 ```
+
+Si le navigateur reste bloqué (`ERR_CERT_AUTHORITY_INVALID` + HSTS) après un vrai LE :
+Chrome/Edge → `chrome://net-internals/#hsts` → Delete domain security policies → ton domaine.
 
 `DATABASE_URL`, `TRUSTED_PROXIES` et `API_HOST` sont surchargés par
 `docker-compose.prod.yml` pour le réseau interne.
